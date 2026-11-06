@@ -1,0 +1,74 @@
+{
+  "documents": [
+    {
+      "kb_id": "KB-01",
+      "file": "asthma w copd.docx",
+      "diseases": [
+        "1. أدوية الربو – Asthma",
+        "2. أدوية الانسداد الرئوي المزمن – COPD"
+      ]
+    },
+    {
+      "kb_id": "KB-02",
+      "file": "gerd& vomiting.docx",
+      "diseases": [
+        "1. أدوية قرحة المعدة والحموضة – Peptic Ulcer & GERD",
+        "2. Nausea & Vomiting – الغثيان والقيء"
+      ]
+    },
+    {
+      "kb_id": "KB-03",
+      "file": "pain headache ibs arthritis.docx",
+      "diseases": [
+        "1. Pain & Fever – الألم والحرارة",
+        "2. Headache & Migraine – الصداع"
+      ]
+    },
+    {
+      "kb_id": "KB-04",
+      "file": "pharyngitis.docx",
+      "diseases": [
+        "1. أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis"
+      ]
+    },
+    {
+      "kb_id": "KB-05",
+      "file": "أدوية الالتهاب الرئوي.docx",
+      "diseases": [
+        "1. أدوية الالتهاب الرئوي – Pneumonia",
+        "10. أدوية الالتهاب الرئوي – Pneumonia"
+      ]
+    },
+    {
+      "kb_id": "KB-06",
+      "file": "ادويه الحساسيه و الجيوب الانفيه.docx",
+      "diseases": [
+        "1. أدوية الحساسية – Allergic Diseases",
+        "2. أدوية التهاب الجيوب الأنفية – Sinusitis"
+      ]
+    },
+    {
+      "kb_id": "KB-07",
+      "file": "ادويه السكر.docx",
+      "diseases": [
+        "2. أدوية السكر – Antidiabetic Drugs"
+      ]
+    },
+    {
+      "kb_id": "KB-08",
+      "file": "ادويه الضغط و الكوليسترول.docx",
+      "diseases": [
+        "1. أدوية الضغط – Antihypertensive Drugs",
+        "2. أدوية الكوليسترول والدهون – Dyslipidemia"
+      ]
+    },
+    {
+      "kb_id": "KB-09",
+      "file": "ادويه القولون و التهابات المفاصل.docx",
+      "diseases": [
+        "1. أدوية القولون العصبي – Irritable Bowel Syndrome (IBS)",
+        "2. أدوية التهاب المفاصل – Arthritis"
+      ]
+    }
+  ]
+}
