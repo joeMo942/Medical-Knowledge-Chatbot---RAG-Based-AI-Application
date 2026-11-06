@@ -7,7 +7,11 @@ from docx import Document
 
 from medrag.dump import render_dump
 from medrag.ingest import kb_dir, load_knowledge_base
+from collections import Counter
+
 from medrag.manifest import load_manifest
+from medrag.models import Line, Table
+from medrag.splitter import strip_numbering
 
 pytestmark = pytest.mark.kb
 
@@ -23,9 +27,13 @@ def test_every_section_is_complete_and_unique(real_kb):
         assert doc.sections
         for s in doc.sections:
             assert s.kb_id == doc.kb_id and s.title
-            assert s.section or s.kind == "overview"
-            for row in s.rows:
-                assert row.text == " – ".join(row.cells)
+            assert s.section, "every Section has a citation heading"
+            for t in s.tables:
+                if t.kind == "products":
+                    n = len(t.header.cells)
+                    assert {t.trade_name_col, t.active_ingredient_col} <= set(range(n))
+                    assert t.trade_name_col != t.active_ingredient_col
+                    assert all(len(r.cells) == n for r in t.rows)
         assert len({s.path for s in doc.sections}) == len(doc.sections)
 
 
@@ -82,3 +90,110 @@ def test_ingestion_twice_is_identical(real_kb):
 def test_committed_structure_dump_is_current(real_kb):
     committed = (ROOT / "docs" / "kb-structure.md").read_text(encoding="utf-8")
     assert committed == render_dump(load_knowledge_base())
+
+
+# (product rows, other rows) per KB Document, as classified from table headers.
+EXPECTED_ROWS = {
+    "KB-01": (144, 18), "KB-02": (76, 17), "KB-03": (98, 11), "KB-04": (48, 7),
+    "KB-05": (76, 7), "KB-06": (154, 15), "KB-07": (103, 73), "KB-08": (157, 123),
+    "KB-09": (116, 19),
+}
+
+
+def test_product_and_other_row_counts_are_pinned(real_kb):
+    got = {
+        k: (sum(len(s.product_rows) for s in d.sections), sum(len(s.other_rows) for s in d.sections))
+        for k, d in real_kb.items()
+    }
+    assert got == EXPECTED_ROWS
+    assert sum(p for p, _ in got.values()) == 972 and sum(o for _, o in got.values()) == 290
+
+
+def test_table_kinds_overall(real_kb):
+    kinds = Counter()
+    for d in real_kb.values():
+        for s in d.sections:
+            for t in s.tables:
+                kinds[t.kind] += len(t.rows)
+    assert kinds == {"products": 972, "side_effects": 202, "otc": 87, "other": 1}
+
+
+def _section(doc, name):
+    return next(s for s in doc.sections if s.section.startswith(name))
+
+
+def _table_after(section, label):
+    items = section.items
+    i = next(k for k, it in enumerate(items) if isinstance(it, Line) and it.text == label)
+    assert isinstance(items[i + 1], Table)
+    return items[i + 1]
+
+
+def test_sublabels_tie_to_the_right_table(real_kb):
+    insulins = _section(real_kb["KB-07"], "Insulins")
+    rapid = _table_after(insulins, "A. Rapid-acting Insulin")
+    assert rapid.rows[0].text == "NovoRapid – Insulin Aspart" and len(rapid.rows) == 5
+    premixed = _table_after(insulins, "E. Premixed Insulin")
+    assert premixed.rows[0].cells[0] == "Mixtard 30" and rapid is not premixed
+    abx = _section(real_kb["KB-04"], "Antibiotics")
+    linco = _table_after(abx, "D. Lincosamides")
+    assert [r.text for r in linco.rows][0] == "Dalacin C – Clindamycin" and len(linco.rows) == 2
+    macro = _table_after(abx, "C. Macrolides")
+    assert macro.rows[0].text == "Zithromax – Azithromycin"
+
+
+def test_reversed_tables_are_typed_with_active_ingredient_first(real_kb):
+    secretagogues = _section(real_kb["KB-09"], "Secretagogues").tables[0]
+    assert secretagogues.header.cells == ("Generic Name", "Examples of International Trade Names")
+    assert (secretagogues.kind, secretagogues.trade_name_col, secretagogues.active_ingredient_col) == (
+        "products", 1, 0)
+    assert len(secretagogues.rows) == 4
+    bdmards = _section(real_kb["KB-09"], "Biologic DMARDs").tables[0]
+    assert bdmards.header.cells == ("Drug Class / Generic", "Trade Names")
+    assert (bdmards.kind, bdmards.trade_name_col, bdmards.active_ingredient_col) == ("products", 1, 0)
+    assert len(bdmards.rows) == 9
+
+
+def test_citation_headings_come_from_the_source(real_kb):
+    for entry in load_manifest():
+        paragraphs = {
+            strip_numbering(p.text) for p in Document(str(kb_dir() / entry.file)).paragraphs
+        }
+        for s in real_kb[entry.kb_id].sections:
+            assert s.title in paragraphs, (s.section_id, s.title)
+            assert s.section in paragraphs, (s.section_id, s.section)
+
+
+def test_headingless_blocks_cite_their_disease_title(real_kb):
+    headingless = [
+        s for d in real_kb.values() for s in d.sections if not s.heading_present
+    ]
+    assert sorted((s.kb_id, s.kind) for s in headingless) == [
+        ("KB-01", "overview"), ("KB-02", "otc"), ("KB-05", "overview")
+    ]
+    assert all(s.section == s.title for s in headingless)
+
+
+def test_omega3_keeps_its_otc_note_inside_the_section(real_kb):
+    dys = [s for s in real_kb["KB-08"].sections if s.title.endswith("Dyslipidemia")]
+    assert not any(s.kind == "otc" for s in dys)
+    omega = _section(real_kb["KB-08"], "Omega-3")
+    assert "OTC ولا Prescription؟" in omega.lines
+
+
+def test_every_source_paragraph_is_accounted_for_exactly_once(real_kb):
+    for entry in load_manifest():
+        raw = Counter(
+            p.text.strip()
+            for p in Document(str(kb_dir() / entry.file)).paragraphs
+            if p.text.strip()
+        )
+        doc = real_kb[entry.kb_id]
+        lines = Counter(l.strip() for s in doc.sections for l in s.lines)
+        headings = Counter(s.section for s in doc.sections if s.heading_present)
+        headings.update(strip_numbering(h) for h in entry.diseases)
+        # Stored headings have their numbering stripped; compare on stripped text.
+        leftover = Counter()
+        for text, n in (raw - lines).items():
+            leftover[strip_numbering(text)] += n
+        assert leftover == headings, entry.kb_id

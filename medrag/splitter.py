@@ -7,22 +7,26 @@ Rules (Word heading styles are unreliable, so they are only a fallback):
     manifest's disease headings starts that disease. Repeating the current
     disease heading (KB-05 has it as "1." and "10.") changes nothing.
   * A paragraph that is an "OTC vs Prescription" heading starts an "otc"
-    Section of its own.
+    Section of its own, provided it is not a Heading 3 and has a table of
+    its own before the next heading. Otherwise it stays a line inside the
+    current class (KB-08 has one inside Omega-3, KB-03 has inline ones).
   * Any other numbered paragraph ("4. Fibrates", "2. NSAIDs - ...", whatever
     its style) is a drug-class heading and starts a Section.
   * Any other Heading 1/2 paragraph is also a drug-class heading.
   * Everything else (lettered sub-headings such as "A. Sucralfate", "Side
     Effects", Heading 3 labels, body lines, tables) stays inside the current
     Section.
-  * A "Drug class" table with no heading before it (KB-02 has one, after an
-    empty Heading 2) opens an "otc" Section whose name is supplied by us.
+  * An OTC classification table with no heading before it (KB-02 has one,
+    after an empty Heading 2) opens an "otc" Section with no heading of its
+    own; it cites its disease title.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-from .models import Row, Section, SectionKind, Table
+from .models import Item, Line, Section, SectionKind
+from .tables import build_table
 
 _NUMBERING = re.compile(r"^\s*\d+\s*[.)]\s+")
 _NUMBERED = re.compile(r"^\s*\d+\s*[.)]\s+\S")
@@ -30,9 +34,6 @@ _NUMBERED = re.compile(r"^\s*\d+\s*[.)]\s+\S")
 # followed by a line break and the explanation; those are not headings.
 _OTC_HEADING = re.compile(r"^(?:ملخص\s+)?OTC\s+(?:vs|ولا)\s+Prescription[^\n]*$", re.I)
 _TOP_HEADING_STYLES = {"Heading 1", "Heading 2"}
-
-# Name given to an OTC block that has no heading text in the source.
-UNNAMED_OTC_SECTION = "OTC vs Prescription"
 
 
 @dataclass(frozen=True)
@@ -61,24 +62,45 @@ class _Builder:
     def __init__(self, kb_id: str, title: str):
         self.kb_id = kb_id
         self.title = title
-        self.section: str | None = None
+        self.heading: str | None = None  # own heading, numbering stripped
         self.kind: SectionKind = "overview"
-        self.heading_present = True
-        self.lines: list[str] = []
-        self.tables: list[Table] = []
+        self.items: list[Item] = []
 
     def build(self) -> Section | None:
-        if self.kind == "overview" and not self.lines and not self.tables:
+        if self.kind == "overview" and not self.items:
             return None
         return Section(
             kb_id=self.kb_id,
             title=self.title,
-            section=self.section,
+            # No heading of its own: cite the nearest enclosing real heading.
+            section=self.heading if self.heading is not None else self.title,
             kind=self.kind,
-            lines=tuple(self.lines),
-            tables=tuple(self.tables),
-            heading_present=self.heading_present,
+            items=tuple(self.items),
+            heading_present=self.heading is not None,
         )
+
+
+def _is_boundary(block: Block, known: set[str]) -> bool:
+    """A paragraph that starts a new disease or Section."""
+    if not isinstance(block, ParagraphBlock) or not block.text.strip():
+        return False
+    text = block.text.strip()
+    return bool(
+        strip_numbering(text) in known
+        or _OTC_HEADING.match(text)
+        or _NUMBERED.match(text)
+        or block.style in _TOP_HEADING_STYLES
+    )
+
+
+def _has_own_table(blocks: list[Block], start: int, known: set[str]) -> bool:
+    """Is there a table after blocks[start] before the next heading?"""
+    for block in blocks[start + 1 :]:
+        if isinstance(block, TableBlock):
+            return True
+        if _is_boundary(block, known):
+            return False
+    return False
 
 
 def split_sections(
@@ -96,7 +118,7 @@ def split_sections(
         if cur is not None and (s := cur.build()) is not None:
             sections.append(s)
 
-    for block in blocks:
+    for i, block in enumerate(blocks):
         if isinstance(block, ParagraphBlock):
             text = block.text.strip()
             if not text:
@@ -113,30 +135,29 @@ def split_sections(
                     f"{kb_id}: text before the first disease heading: {text[:40]!r}"
                 )
             if _OTC_HEADING.match(text):
-                flush()
-                cur = _Builder(kb_id, cur.title)
-                cur.section, cur.kind = text, "otc"
+                if block.style != "Heading 3" and _has_own_table(blocks, i, known):
+                    flush()
+                    cur = _Builder(kb_id, cur.title)
+                    cur.heading, cur.kind = text, "otc"
+                else:
+                    cur.items.append(Line(block.text))
             elif _NUMBERED.match(text) or block.style in _TOP_HEADING_STYLES:
                 flush()
                 cur = _Builder(kb_id, cur.title)
-                cur.section, cur.kind = name, "class"
+                cur.heading, cur.kind = name, "class"
             else:
-                cur.lines.append(block.text)
+                cur.items.append(Line(block.text))
         else:
             if cur is None:
                 raise SplitError(f"{kb_id}: table before the first disease heading")
-            header, *data = block.rows
-            if cur.kind != "otc" and header[0].strip().lower() == "drug class":
+            if not block.rows or any(len(r) == 0 for r in block.rows):
+                raise SplitError(f"{kb_id}: empty table or table row with no cells")
+            table = build_table(block.rows)
+            if table.kind == "otc" and cur.kind != "otc":
                 flush()
                 cur = _Builder(kb_id, cur.title)
-                cur.section, cur.kind = UNNAMED_OTC_SECTION, "otc"
-                cur.heading_present = False
-            cur.tables.append(
-                Table(
-                    header=Row.from_cells(header),
-                    rows=tuple(Row.from_cells(r) for r in data),
-                )
-            )
+                cur.kind = "otc"  # no heading of its own in the source
+            cur.items.append(table)
     flush()
 
     if seen_diseases != expected:

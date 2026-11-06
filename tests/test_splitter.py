@@ -1,5 +1,8 @@
 import pytest
 
+from medrag.models import Line, Table
+from medrag.tables import classify
+
 from medrag.splitter import ParagraphBlock as P, SplitError, TableBlock as T, split_sections
 
 H2, H3 = "Heading 2", "Heading 3"
@@ -60,7 +63,10 @@ def test_repeated_disease_heading_does_not_split_or_duplicate():
         P("1. Penicillins", H2),
     ], ["1. Pneumonia", "10. Pneumonia"])
     assert diseases == ("Pneumonia",)
-    assert [(s.kind, s.section) for s in secs] == [("overview", None), ("class", "Penicillins")]
+    assert [(s.kind, s.section) for s in secs] == [
+        ("overview", "Pneumonia"), ("class", "Penicillins")
+    ]
+    assert not secs[0].heading_present  # cites its disease title
     assert secs[0].lines == ("overview line",)
 
 
@@ -93,9 +99,11 @@ def test_headingless_drug_class_table_opens_unnamed_otc_section():
         P("1. Asthma"), P("7. Antibiotics"), table(["T", "A"], ["x", "y"]),
         table(["Drug class", "التصنيف"], ["Amoxicillin", "Rx"]),
     ], ["1. Asthma"])
+    # No heading of its own: it cites the disease title, nothing invented.
     assert [(s.section, s.kind, s.heading_present) for s in secs] == [
-        ("Antibiotics", "class", True), ("OTC vs Prescription", "otc", False)
+        ("Antibiotics", "class", True), ("Asthma", "otc", False)
     ]
+    assert secs[1].path == "Asthma › [table with no heading in source]"
 
 
 def test_drug_class_header_inside_a_class_is_not_an_otc_section():
@@ -119,9 +127,10 @@ def test_table_rows_verbatim_with_header_empty_cells_and_en_dash():
     (tbl,) = secs[0].tables
     assert tbl.header.cells == ("الاسم التجاري", "Active ingredient")
     assert tbl.header.text == "الاسم التجاري – Active ingredient"
-    assert [r.text for r in tbl.rows] == ["Controloc – Pantoprazole", "Strepsils Plus / Orofar – "]
+    assert [r.text for r in tbl.rows] == ["Controloc – Pantoprazole", "Strepsils Plus / Orofar"]
     assert tbl.rows[1].cells == ("Strepsils Plus / Orofar", "")
     assert "–" in tbl.rows[0].text and "-" not in tbl.rows[0].text
+    assert (tbl.kind, tbl.trade_name_col, tbl.active_ingredient_col) == ("products", 0, 1)
 
 
 def test_body_lines_are_verbatim():
@@ -147,3 +156,68 @@ def test_duplicate_section_path_is_an_error():
 def test_section_ids_are_unique_and_carry_kb_id():
     _, secs = split([P("1. Asthma"), P("1. SABA"), P("2. COPD"), P("1. SABA")])
     assert [s.section_id for s in secs] == ["KB-XX › Asthma › SABA", "KB-XX › COPD › SABA"]
+
+
+def test_items_keep_reading_order_so_tables_tie_to_their_sublabel():
+    _, secs = split([
+        P("1. Asthma"), P("5. Antibiotics"), P("intro"),
+        P("A. Penicillins", H3), table(["T", "A"], ["Amoxil", "Amoxicillin"]),
+        P("D. Lincosamides", H3), table(["T", "A"], ["Dalacin C", "Clindamycin"]),
+        P("Common side effects:"),
+    ], ["1. Asthma"])
+    items = secs[0].items
+    assert [type(i) for i in items] == [Line, Line, Table, Line, Table, Line]
+    assert items[3].text == "D. Lincosamides"
+    assert items[4].rows[0].cells == ("Dalacin C", "Clindamycin")
+    assert secs[0].lines == ("intro", "A. Penicillins", "D. Lincosamides", "Common side effects:")
+    assert [r.text for r in secs[0].rows] == ["Amoxil – Amoxicillin", "Dalacin C – Clindamycin"]
+    assert secs[0].render().splitlines() == [
+        "Asthma › Antibiotics", "intro", "A. Penicillins", "T – A", "Amoxil – Amoxicillin",
+        "D. Lincosamides", "T – A", "Dalacin C – Clindamycin", "Common side effects:",
+    ]
+
+
+@pytest.mark.parametrize("header,expected", [
+    (("Trade name", "Active ingredient"), ("products", 0, 1)),
+    (("Trade Name", "Active Ingredients"), ("products", 0, 1)),
+    (("Brand name", "Active ingredient"), ("products", 0, 1)),
+    (("الاسم التجاري", "Active ingredient"), ("products", 0, 1)),
+    (("الاسم التجاري في مصر", "Active ingredient"), ("products", 0, 1)),
+    (("Trade name", "Active ingredient", "Main indication"), ("products", 0, 1)),
+    (("Trade Name", "Active Ingredient", "الاستخدام"), ("products", 0, 1)),
+    (("Generic Name", "Examples of International Trade Names"), ("products", 1, 0)),
+    (("Drug Class / Generic", "Trade Names"), ("products", 1, 0)),
+    (("Side effect", "التوضيح"), ("side_effects", None, None)),
+    (("Drug", "Common / Important Side Effects"), ("side_effects", None, None)),
+    (("Drug Class", "Classification"), ("otc", None, None)),
+    (("Drug class / Product", "التصنيف"), ("otc", None, None)),
+    (("Drug", "Active Ingredient"), ("other", None, None)),
+    (("Foo", "Bar"), ("other", None, None)),
+])
+def test_table_classification_from_header(header, expected):
+    assert classify(header) == expected
+
+
+def test_otc_heading_that_is_heading3_stays_a_line_in_its_class():
+    _, secs = split([
+        P("1. Asthma"), P("4. Omega-3", H2), P("Contraindications", H3),
+        P("OTC ولا Prescription؟", H3), P("Fish oil: OTC"),
+        P("5. Bile Acid", H2), table(["T", "A"], ["x", "y"]),
+    ], ["1. Asthma"])
+    assert [(s.section, s.kind) for s in secs] == [("Omega-3", "class"), ("Bile Acid", "class")]
+    assert secs[0].lines == ("Contraindications", "OTC ولا Prescription؟", "Fish oil: OTC")
+
+
+def test_otc_heading_without_table_of_its_own_stays_a_line():
+    _, secs = split([
+        P("1. Asthma"), P("1. SABA", H2), P("OTC vs Prescription", H2), P("text"),
+        P("2. LABA", H2), table(["T", "A"], ["x", "y"]),
+    ], ["1. Asthma"])
+    assert [s.section for s in secs] == ["SABA", "LABA"]
+    assert secs[0].lines == ("OTC vs Prescription", "text")
+
+
+@pytest.mark.parametrize("rows", [(), ((),), (("a", "b"), ())])
+def test_malformed_tables_raise_split_error_naming_the_kb(rows):
+    with pytest.raises(SplitError, match="KB-XX"):
+        split([P("1. Asthma"), P("1. SABA"), T(rows=rows)], ["1. Asthma"])
