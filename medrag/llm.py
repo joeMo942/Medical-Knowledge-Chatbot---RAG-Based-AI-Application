@@ -24,9 +24,10 @@ class LLMTruncated(LLMError):
     """The reply hit the output-token cap, so it is incomplete (and usually not valid JSON).
     The pipeline answers with the fixed not-found text instead of an error."""
 
-    def __init__(self, completion_tokens: int | None, cap: int):
+    def __init__(self, completion_tokens: int | None, cap: int, prompt_tokens: int | None = None):
         super().__init__(f"reply cut off at {completion_tokens} tokens (cap {cap})")
         self.completion_tokens = completion_tokens
+        self.prompt_tokens = prompt_tokens
         self.cap = cap
 
 
@@ -94,7 +95,7 @@ class OllamaClient:
             r.raise_for_status()
             body = r.json()
             if body.get("done_reason") == "length":
-                raise LLMTruncated(body.get("eval_count"), cap)
+                raise LLMTruncated(body.get("eval_count"), cap, body.get("prompt_eval_count"))
             return LLMResult(
                 data=_parse_object(body["message"]["content"]),
                 prompt_tokens=body.get("prompt_eval_count"),
@@ -157,7 +158,8 @@ class OpenAICompatClient:
             r.raise_for_status()
             body = r.json()
             if body["choices"][0].get("finish_reason") == "length":
-                raise LLMTruncated((body.get("usage") or {}).get("completion_tokens"), cap)
+                usage = body.get("usage") or {}
+                raise LLMTruncated(usage.get("completion_tokens"), cap, usage.get("prompt_tokens"))
             usage = body.get("usage") or {}
             return LLMResult(
                 data=_parse_object(body["choices"][0]["message"]["content"]),

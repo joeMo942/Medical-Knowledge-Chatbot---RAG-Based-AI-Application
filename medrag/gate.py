@@ -94,7 +94,7 @@ class LLMGate:
                     result = await self._llm.complete_json(system, user, schema, max_tokens=cap)
                 except LLMTruncated as exc:
                     self._recent.append(time.monotonic() - t0)
-                    record_call(None, exc.completion_tokens)
+                    record_call(exc.prompt_tokens, exc.completion_tokens)
                     log.warning("LLM reply truncated: %s completion tokens used, cap %d, %.1fs",
                                 exc.completion_tokens, cap, time.monotonic() - t0)
                     raise
@@ -102,6 +102,7 @@ class LLMGate:
                     # A finished call, even a failed one, held the GPU this long.
                     # A cancelled call (timeout, client gone) says nothing: skipped.
                     self._recent.append(time.monotonic() - t0)
+                    record_call(None, None)
                     raise
                 self._recent.append(time.monotonic() - t0)
                 self._observe(result)

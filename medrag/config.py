@@ -8,7 +8,7 @@ from dataclasses import dataclass
 # Replaced by the real model name when hybrid BGE-M3 search lands (#6).
 EMBEDDING_PLACEHOLDER = "none (lexical placeholder until #6)"
 
-FALSE_VALUES = {"0", "false", "no", "off"}
+TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,8 @@ class Settings:
     decode_tok_s: float = 53.0
     llm_margin_s: float = 2.5
     # Send the X-Medrag-Usage response header (tokens and LLM calls of the request); body unchanged.
-    usage_header: bool = True
+    # Off by default: it is for evaluation runs (MEDRAG_USAGE_HEADER=1).
+    usage_header: bool = False
 
     def __post_init__(self) -> None:
         if self.budget_s <= self.llm_est_s:
@@ -65,5 +66,5 @@ class Settings:
             min_output_tokens=int(e("MEDRAG_MIN_OUTPUT_TOKENS") or d.min_output_tokens),
             decode_tok_s=float(e("MEDRAG_DECODE_TOK_S") or d.decode_tok_s),
             llm_margin_s=float(e("MEDRAG_LLM_MARGIN_S") or d.llm_margin_s),
-            usage_header=(e("MEDRAG_USAGE_HEADER") or str(d.usage_header)).strip().lower() not in FALSE_VALUES,
+            usage_header=(e("MEDRAG_USAGE_HEADER") or str(int(d.usage_header))).strip().lower() in TRUE_VALUES,
         )
