@@ -131,6 +131,20 @@ def test_citation_validity_counts_every_citation_not_every_reply():
     assert (s["responses_all_valid"]["ok"], s["responses_all_valid"]["n"]) == (1, 2)
 
 
+def test_a_citation_matching_two_headingless_sections_is_valid_when_either_holds_the_snippet():
+    # Blocks without a heading of their own cite the disease title, so an overview and an OTC table of
+    # the same disease share (title, section). The snippet only has to be in one of them.
+    overview = Section("KB-02", "Peptic Ulcer & GERD", "Peptic Ulcer & GERD", "overview",
+                       (Line("Acid-related disorders of the stomach."),), heading_present=False)
+    otc = Section("KB-02", "Peptic Ulcer & GERD", "Peptic Ulcer & GERD", "otc",
+                  (Table(Row.from_cells(["Drug class", "Classification"]), (Row.from_cells(["PPIs", "Some OTC"]),)),),
+                  heading_present=False)
+    kb = build_kb_index([doc(overview, otc)])
+    c = cite(doc_id="KB-02", title="Peptic Ulcer & GERD", section="Peptic Ulcer & GERD", snippet="PPIs – Some OTC")
+    assert check_citation(c, kb)["snippet_valid"] is True
+    assert check_citation({**c, "snippet": "Acid-related disorders of the stomach."}, kb)["snippet_valid"] is True
+
+
 def test_label_line_citations_are_counted():
     sec = Section("KB-04", "Pain & Arthritis", "NSAIDs", "class", (Line("Common side effects:"), Line("Tremors and cramps.")))
     kb = build_kb_index([doc(sec)])

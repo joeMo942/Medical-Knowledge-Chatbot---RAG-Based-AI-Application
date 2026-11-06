@@ -309,6 +309,9 @@ def test_colonless_label_lines_are_counted_as_labels_in_snippet_checks():
         assert snippet_check(label, HEADINGS) == {"valid": True, "label": True}, label
     for content in ("Menthol", "OTC: None", "H. pylori is treated with a combination regimen."):
         assert snippet_check(content, HEADINGS) == {"valid": True, "label": False}, content
+    # A snippet is a label only when EVERY line holding it is a label: here a content line holds it too.
+    both = Section("KB-07", "Diabetes", "Biguanides", "class", (Line("Side Effects"), Line("Side Effects are usually mild.")))
+    assert snippet_check("Side Effects", both) == {"valid": True, "label": False}
 
 
 def test_norm_maps_arabic_indic_digits_to_ascii():
