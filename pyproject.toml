@@ -9,6 +9,9 @@ description = "Drug-information RAG chatbot: knowledge base ingestion and servin
 requires-python = ">=3.12"
 dependencies = [
     "python-docx>=1.1,<2",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "httpx>=0.27,<1",
 ]
 
 [project.optional-dependencies]
@@ -18,11 +21,12 @@ dev = ["pytest>=8"]
 include = ["medrag*"]
 
 [tool.setuptools.package-data]
-medrag = ["kb_manifest.json"]
+medrag = ["kb_manifest.json", "static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
 markers = [
+    "e2e: needs the running docker compose stack (and the KB files); skipped when the API is not reachable",
     "kb: needs the real KB .docx files (data/ is not committed); skipped when they are absent",
 ]

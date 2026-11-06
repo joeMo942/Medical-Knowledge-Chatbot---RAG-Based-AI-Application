@@ -1,0 +1,5 @@
+# CPU-only fallback (no NVIDIA GPU). Much slower, and /chat may exceed 30 s.
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
+services:
+  ollama:
+    deploy: !reset null

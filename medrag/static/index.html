@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drug Information Assistant</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 46rem; margin: 0 auto; padding: 1rem; }
+  #log { min-height: 50vh; }
+  .msg { margin: .6rem 0; padding: .6rem .8rem; border-radius: .5rem; white-space: pre-wrap; }
+  .user { background: #e8f0fe; } .bot { background: #f3f3f3; }
+  .meta { font-size: .8rem; color: #555; margin-top: .4rem; }
+  blockquote { margin: .3rem 0 0; padding-left: .6rem; border-inline-start: 3px solid #999; font-size: .85rem; }
+  form { display: flex; gap: .5rem; } input { flex: 1; padding: .6rem; font-size: 1rem; }
+  button { padding: .6rem 1rem; font-size: 1rem; }
+</style>
+</head>
+<body>
+<h1>Drug Information Assistant</h1>
+<div id="log"></div>
+<form id="f"><input id="q" dir="auto" autocomplete="off" placeholder="Ask about a drug / اسأل عن دواء" required>
+<button>Send</button></form>
+<script>
+let sid = null;
+const log = document.getElementById("log"), q = document.getElementById("q");
+function add(cls, text) {
+  const d = document.createElement("div"); d.className = "msg " + cls; d.dir = "auto";
+  d.textContent = text; log.appendChild(d); return d;
+}
+document.getElementById("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const message = q.value.trim(); if (!message) return;
+  q.value = ""; add("user", message);
+  const bot = add("bot", "...");
+  try {
+    const r = await fetch("/chat", {
+      method: "POST",
+      headers: Object.assign({"Content-Type": "application/json"}, sid ? {"X-Session-Id": sid} : {}),
+      body: JSON.stringify(sid ? {message, session_id: sid} : {message}),
+    });
+    sid = r.headers.get("X-Session-Id") || sid;
+    const data = await r.json();
+    if (!r.ok) { bot.textContent = "Error: " + (data.error || r.status); return; }
+    bot.textContent = data.answer;
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = data.status + " / " + data.language; bot.appendChild(meta);
+    for (const c of data.citations) {
+      const b = document.createElement("blockquote"); b.dir = "auto";
+      b.textContent = c.doc_id + " - " + c.title + " > " + c.section + ": " + c.snippet;
+      bot.appendChild(b);
+    }
+  } catch (err) { bot.textContent = "Error: " + err; }
+});
+</script>
+</body>
+</html>
