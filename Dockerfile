@@ -5,7 +5,8 @@ WORKDIR /app
 # constraints.txt pins every dependency (regenerate: pip freeze inside a fresh image, minus medrag)
 COPY pyproject.toml constraints.txt ./
 COPY medrag ./medrag
-RUN pip install -c constraints.txt . && useradd --system --uid 10001 medrag
+# pip builds in-tree; drop its leftovers (build/, *.egg-info) so only the installed package remains.
+RUN pip install -c constraints.txt . && rm -rf build medrag.egg-info && useradd --system --uid 10001 medrag
 USER medrag
 
 # The KB .docx files are not in the image: mount them and point MEDRAG_KB_DIR at them.

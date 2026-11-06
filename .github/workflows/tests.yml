@@ -17,9 +17,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
       - name: Install
-        run: pip install -e ".[dev]"
+        # Same library versions as the Docker image (constraints.txt); pytest itself is not pinned there.
+        run: pip install -c constraints.txt -e ".[dev]"
       # No models and no KB files: data/ is not committed, so the tests marked
       # `kb` skip themselves and the synthetic-fixture tests run.
       - name: Unit tests
