@@ -1,7 +1,9 @@
 """API tests: fake LLM, small synthetic Sections; no Ollama and no KB files needed."""
 import asyncio
 import json
+import re
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -365,6 +367,15 @@ def test_usage_header_on_busy_500_counts_no_calls():
     assert r.status_code == 500 and usage_of(r)["llm_calls"] == 0
 
 
+def test_usage_header_on_a_timeout_500():
+    # Same set-up as test_slow_llm_is_500_within_budget: the call starts, the request budget runs out.
+    r = uclient(FakeLLM(answered(), delay=5), budget_s=0.2, llm_est_s=0.05, llm_margin_s=0.0,
+                min_output_tokens=1).post("/chat", json=Q)
+    assert r.status_code == 500 and r.json() == {"error": "the request timed out"}
+    # The cancelled call reported no usage, and is not counted as a finished call.
+    assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0}
+
+
 def test_usage_meter_adds_up_several_llm_calls_of_one_request():
     from medrag.gate import LLMGate
     from medrag.usage import start_meter
@@ -390,3 +401,13 @@ def test_usage_header_can_be_turned_off_and_setting_from_env(monkeypatch):
     assert Settings.from_env().usage_header is True
     monkeypatch.setenv("MEDRAG_USAGE_HEADER", "0")
     assert Settings.from_env().usage_header is False
+
+
+def test_compose_keeps_the_usage_header_off_by_default():
+    # The graded stack is docker compose: the header must be opt-in there too, not only in Settings.
+    root = Path(__file__).resolve().parents[1]
+    for f in sorted(root.glob("docker-compose*.yml")):
+        for value in re.findall(r"MEDRAG_USAGE_HEADER:\s*(\S+)", f.read_text(encoding="utf-8")):
+            assert value == "${MEDRAG_USAGE_HEADER:-0}", f"{f.name}: {value}"
+    assert re.search(r"MEDRAG_USAGE_HEADER:\s*\$\{MEDRAG_USAGE_HEADER:-0\}",
+                     (root / "docker-compose.yml").read_text(encoding="utf-8"))
