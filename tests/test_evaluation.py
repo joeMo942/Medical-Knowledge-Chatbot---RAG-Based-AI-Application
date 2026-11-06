@@ -167,6 +167,14 @@ def test_shipped_set_has_every_status_and_label(shipped):
     assert any(c.multi_turn for c in cases)
 
 
+def test_shipped_answered_turns_check_the_answer_text_not_only_the_cited_section(shipped):
+    # A cited Section alone passes any row of it (a side-effects row for a contraindications question).
+    for case in parse_cases(shipped):
+        for t in case.turns:
+            if t.expected_status == "answered":
+                assert t.answer_must_mention or t.answer_must_mention_all, case.id
+
+
 def test_the_system_never_imports_the_test_set():
     package = Path(medrag.__file__).parent
     for py in package.rglob("*.py"):

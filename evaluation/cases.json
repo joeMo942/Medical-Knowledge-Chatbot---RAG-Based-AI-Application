@@ -59,6 +59,17 @@
     "note": "The ARBs Section of KB-08 has a Contraindications list.",
     "expected_sections": [
       "ARBs – Angiotensin II Receptor Blockers"
+    ],
+    "answer_must_mention": [
+      "Pregnancy",
+      "الحمل",
+      "stenosis",
+      "الشريانين",
+      "Hyperkalemia",
+      "البوتاسيوم",
+      "hypotension",
+      "hepatic",
+      "biliary"
     ]
   },
   {
@@ -955,6 +966,17 @@
     "note": "Contraindications of ACE Inhibitors: 'Pregnancy: ممنوعة أثناء الحمل بسبب خطر إصابة الجنين'.",
     "expected_sections": [
       "ACE Inhibitors"
+    ],
+    "answer_must_mention": [
+      "ممنوع",
+      "يمنع",
+      "contraindicated",
+      "not allowed",
+      "must not",
+      "avoid",
+      "الجنين",
+      "fetal",
+      "fetus"
     ]
   },
   {
@@ -972,6 +994,15 @@
     "note": "Statins Section: breastfeeding is not recommended.",
     "expected_sections": [
       "Statins"
+    ],
+    "answer_must_mention": [
+      "not recommended",
+      "avoid",
+      "should not",
+      "not advised",
+      "contraindicated",
+      "لا ينصح",
+      "لا يُنصح"
     ]
   },
   {
