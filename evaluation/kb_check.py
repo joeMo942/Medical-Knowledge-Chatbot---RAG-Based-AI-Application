@@ -4,6 +4,7 @@
 - the documents that contain an anchor but are not listed are printed, so each omission is deliberate;
 - every `expected_sections` entry must be a Section of one of the expected Documents;
 - at least one `answer_must_mention` term must occur in one of the expected Documents;
+- every `answer_must_mention_all` term must occur in one of the expected Documents;
 - every `absent_terms` entry of an out-of-scope trap must occur nowhere in the KB.
 
 Matching is case-insensitive and ignores Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants."""
@@ -73,6 +74,9 @@ def relevance_problems(cases: list[Case], texts: dict[str, str], sections: dict[
             if t.answer_must_mention and not any(norm(term) in texts.get(kb, "")
                                                  for kb in t.expected_kb_ids for term in t.answer_must_mention):
                 errors.append(f"{where}: none of {list(t.answer_must_mention)} occurs in {list(t.expected_kb_ids)}")
+            for term in t.answer_must_mention_all:
+                if not any(norm(term) in texts.get(kb, "") for kb in t.expected_kb_ids):
+                    errors.append(f"{where}: {term!r} (answer_must_mention_all) occurs in none of {list(t.expected_kb_ids)}")
     return errors
 
 

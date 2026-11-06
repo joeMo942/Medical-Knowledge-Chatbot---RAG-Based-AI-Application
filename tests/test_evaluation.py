@@ -76,6 +76,9 @@ def test_answered_needs_a_relevance_check_and_only_answered_may_have_one():
     assert any("relevance" in e for e in errors_of(c))
     assert errors_of(answered_case(answer_must_mention=[], expected_sections=["PPIs"])) == []
     assert any("relevance" in e for e in errors_of(good_case(answer_must_mention=["x"])))
+    assert errors_of(answered_case(answer_must_mention=[], answer_must_mention_all=["500", "65"])) == []
+    assert any("relevance" in e for e in errors_of(good_case(answer_must_mention_all=["x"])))
+    assert any("answer_must_mention_all" in e for e in errors_of(answered_case(answer_must_mention_all=["", "x"])))
     assert any("expected_sections" in e for e in errors_of(answered_case(expected_sections="PPIs")))
 
 

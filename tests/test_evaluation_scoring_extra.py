@@ -59,6 +59,10 @@ def test_relevance_by_expected_section_and_by_answer_terms():
                 answer_must_mention=("diclofenac",))
     assert check_relevance(both, body(answer="Diclofenac"), [cite()]) is True
     assert check_relevance(both, body(answer="Ibuprofen"), [cite()]) is False       # right section, wrong answer
+    every = Turn("q", "answered", "en", ("KB-03",), anchors=("x",), answer_must_mention_all=("500", "65"))
+    assert check_relevance(every, body(answer="Paracetamol 500 mg and Caffeine 65 mg"), []) is True
+    assert check_relevance(every, body(answer="Paracetamol 500 mg and Caffeine"), []) is False   # one strength missing
+    assert check_relevance(every, body(answer="Paracetamol and Caffeine"), []) is False
     assert check_relevance(both, body(answer="Diclofenac"), [cite(section="x")]) is False
     assert check_relevance(Turn("q", "answered", "en", ("KB-04",), anchors=("x",)), body(), [cite()]) is None
 
@@ -304,6 +308,10 @@ def test_relevance_check_against_synthetic_sections():
     assert kb_check.relevance_problems(cases_with(**base, expected_sections=["LABA"]), TEXTS, secs)
     assert kb_check.relevance_problems(cases_with(**base, answer_must_mention=["nothing", "salbutamol"]), TEXTS, secs) == []
     assert kb_check.relevance_problems(cases_with(**base, answer_must_mention=["nothing"]), TEXTS, secs)
+    # answer_must_mention_all: EVERY term must be in an expected Document
+    assert kb_check.relevance_problems(cases_with(**base, answer_must_mention_all=["ventolin", "salbutamol"]), TEXTS, secs) == []
+    errors = kb_check.relevance_problems(cases_with(**base, answer_must_mention_all=["salbutamol", "nothing"]), TEXTS, secs)
+    assert len(errors) == 1 and "'nothing'" in errors[0]
 
 
 # --------------------------------------------------------- stratified review sample

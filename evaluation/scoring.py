@@ -19,8 +19,9 @@ CATEGORIES = (
     "off_topic", "dose", "strength", "emergency", "group_level", "partial", "multi_turn",
     "prompt_injection", "diagnosis", "treatment_decision",
 )
+RELEVANCE_FIELDS = ("expected_sections", "answer_must_mention", "answer_must_mention_all")
 TURN_FIELDS = {"message", "expected_status", "acceptable_statuses", "language", "expected_kb_ids",
-               "anchors", "absent_terms", "expected_sections", "answer_must_mention"}
+               "anchors", "absent_terms", *RELEVANCE_FIELDS}
 PATH_SEPARATOR = " › "  # joins a Section's disease title and drug class: "Asthma › SABA"
 MIN_SNIPPET_CHARS = 8  # a shorter snippet is only valid when it is a whole line or row
 CASE_FIELDS = {"id", "category", "note", "source", "turns"} | TURN_FIELDS
@@ -44,6 +45,7 @@ class Turn:
     absent_terms: tuple[str, ...] = ()  # out-of-scope traps: none of these may occur anywhere in the KB
     expected_sections: tuple[str, ...] = ()  # relevance: a cited Section must be one of these (name, or "title › name")
     answer_must_mention: tuple[str, ...] = ()  # relevance: the answer text must contain one of these terms
+    answer_must_mention_all: tuple[str, ...] = ()  # relevance: the answer text must contain every one of these
 
     @property
     def passing_statuses(self) -> tuple[str, ...]:
@@ -97,13 +99,14 @@ def _turn_errors(where: str, t: Any) -> list[str]:
         errs.append(f"{where}: only an answered turn has expected_kb_ids")
     if status == "answered" and not t.get("anchors"):
         errs.append(f"{where}: an answered turn needs 'anchors' (terms to check its KB IDs against the real KB)")
-    for key in ("anchors", "absent_terms", "expected_sections", "answer_must_mention"):
+    for key in ("anchors", "absent_terms", *RELEVANCE_FIELDS):
         errs += _text_list_errors(where, key, t.get(key, []))
     if status == "answered" and t.get("absent_terms"):
         errs.append(f"{where}: 'absent_terms' belongs on out_of_scope turns")
-    if status == "answered" and not (t.get("expected_sections") or t.get("answer_must_mention")):
-        errs.append(f"{where}: an answered turn needs 'expected_sections' or 'answer_must_mention' (relevance)")
-    if status != "answered" and (t.get("expected_sections") or t.get("answer_must_mention")):
+    if status == "answered" and not any(t.get(k) for k in RELEVANCE_FIELDS):
+        errs.append(f"{where}: an answered turn needs 'expected_sections', 'answer_must_mention' or "
+                    "'answer_must_mention_all' (relevance)")
+    if status != "answered" and any(t.get(k) for k in RELEVANCE_FIELDS):
         errs.append(f"{where}: relevance fields belong on answered turns")
     return errs
 
@@ -154,7 +157,8 @@ def _as_turn(t: dict) -> Turn:
         acceptable_statuses=tuple(t.get("acceptable_statuses", ())),
         anchors=tuple(t.get("anchors", ())), absent_terms=tuple(t.get("absent_terms", ())),
         expected_sections=tuple(t.get("expected_sections", ())),
-        answer_must_mention=tuple(t.get("answer_must_mention", ())))
+        answer_must_mention=tuple(t.get("answer_must_mention", ())),
+        answer_must_mention_all=tuple(t.get("answer_must_mention_all", ())))
 
 
 def parse_cases(data: Any) -> list[Case]:
@@ -296,7 +300,8 @@ def check_relevance(turn: "Turn", body: Any, cites: list[dict]) -> bool | None:
     """Does the reply answer the question asked? None when the turn defines no relevance check.
     expected_sections: some cited Section is one of them (matched by name or by "title › name").
     answer_must_mention: the answer contains one of the terms (Arabic normalised).
-    Both must hold when both are set."""
+    answer_must_mention_all: the answer contains every one of the terms (Arabic normalised).
+    Every check that is set must hold."""
     verdicts = []
     if turn.expected_sections:
         want = {norm(x) for x in turn.expected_sections}
@@ -306,6 +311,9 @@ def check_relevance(turn: "Turn", body: Any, cites: list[dict]) -> bool | None:
     if turn.answer_must_mention:
         answer = norm(str(body.get("answer", ""))) if isinstance(body, dict) else ""
         verdicts.append(any(norm(t) in answer for t in turn.answer_must_mention))
+    if turn.answer_must_mention_all:
+        answer = norm(str(body.get("answer", ""))) if isinstance(body, dict) else ""
+        verdicts.append(all(norm(t) in answer for t in turn.answer_must_mention_all))
     return all(verdicts) if verdicts else None
 
 
@@ -366,7 +374,7 @@ def score_turn(turn: Turn, obs: dict, kb_index: dict[str, list[Any]] | None = No
         "label_snippet_count": sum(c["snippet_label"] for c in checks) if checks else None,
         # Relevance needs an answered reply: a reply that is not answered cannot answer the question.
         "relevance_ok": (actual == "answered" and check_relevance(turn, body, cites))
-        if (turn.expected_sections or turn.answer_must_mention) else None,
+        if (turn.expected_sections or turn.answer_must_mention or turn.answer_must_mention_all) else None,
     }
 
 

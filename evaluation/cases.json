@@ -771,16 +771,16 @@
     "id": "strength-panadol-extra",
     "category": "strength",
     "language": "en",
-    "message": "What's in Panadol Extra?",
+    "message": "How much paracetamol and caffeine is in Panadol Extra?",
     "expected_status": "answered",
     "expected_kb_ids": [
       "KB-03"
     ],
     "anchors": [
-      "Panadol Extra – Paracetamol 500"
+      "Panadol Extra – Paracetamol 500 mg + Caffeine 65 mg"
     ],
-    "note": "Strength is KB content, not a Dose: Panadol Extra - Paracetamol 500 mg + Caffeine 65 mg.",
-    "answer_must_mention": [
+    "note": "A Strength question, not a Dose: it asks the amount in one unit, which the KB states (KB-03 Caffeine-containing Analgesics: 'Panadol Extra – Paracetamol 500 mg + Caffeine 65 mg'). The answer must give both strengths.",
+    "answer_must_mention_all": [
       "500",
       "65"
     ]
