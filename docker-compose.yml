@@ -1,0 +1,78 @@
+# One command: `docker compose up`  (add -d to detach; --wait to block until healthy).
+# Needs the KB .docx files in ./data (not in git) and an NVIDIA GPU (see ADR 0001).
+# No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up` (slower).
+#
+# Start order: ollama (healthy) -> model-pull (downloads the LLM once into the
+# named volume, then exits) -> api (healthy only after the model is present).
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.15
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  model-pull:
+    image: ollama/ollama:0.40.15
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      MEDRAG_LLM_MODEL: ${MEDRAG_LLM_MODEL:-qwen3.5:4b}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if ollama show "$$MEDRAG_LLM_MODEL" >/dev/null 2>&1; then
+          echo "model $$MEDRAG_LLM_MODEL already present, skipping download"
+        else
+          echo "downloading $$MEDRAG_LLM_MODEL (first run only)"
+          ollama pull "$$MEDRAG_LLM_MODEL"
+        fi
+    restart: "no"
+
+  api:
+    build: .
+    depends_on:
+      ollama:
+        condition: service_healthy
+      model-pull:
+        condition: service_completed_successfully
+    environment:
+      MEDRAG_KB_DIR: /kb
+      MEDRAG_LLM_BACKEND: ${MEDRAG_LLM_BACKEND:-ollama}
+      MEDRAG_OLLAMA_URL: http://ollama:11434
+      MEDRAG_LLM_MODEL: ${MEDRAG_LLM_MODEL:-qwen3.5:4b}
+      # Optional hosted backend (off by default); values come from your shell or .env, never from this file.
+      MEDRAG_OPENAI_BASE_URL: ${MEDRAG_OPENAI_BASE_URL:-}
+      MEDRAG_OPENAI_MODEL: ${MEDRAG_OPENAI_MODEL:-}
+      MEDRAG_OPENAI_API_KEY: ${MEDRAG_OPENAI_API_KEY:-}
+    volumes:
+      - ./data:/kb:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
