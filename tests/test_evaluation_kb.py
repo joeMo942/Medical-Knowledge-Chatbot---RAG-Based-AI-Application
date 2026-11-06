@@ -22,6 +22,27 @@ def test_every_expected_kb_id_is_backed_by_the_real_kb_and_every_trap_is_a_real_
     assert notes == []   # no Document with an anchor is left out of the expected IDs unexplained
 
 
+# Short body lines of the real KB with no sentence content that DO carry a fact (an item of a list).
+KB_SHORT_CONTENT_LINES = {
+    "Menthol", "Camphor", "Methyl salicylate", "Capsaicin", "Diethylamine salicylate", "OTC: None",
+    "Depends on formulation", "Psyllium / Ispaghula husk", "Plantago ovata", "Methylcellulose",
+}
+
+
+@pytest.mark.kb
+def test_every_short_heading_like_line_of_the_real_kb_is_classified(real_kb):
+    """Every body line of up to 7 words that is not a sentence (no final '.') is either a label or a
+    known content line, so a new heading shape in the KB cannot slip through as support unnoticed."""
+    from evaluation.scoring import is_label_line
+    short = {p.strip() for d in real_kb.values() for s in d.sections for ln in s.lines for p in ln.split("\n")
+             if p.strip() and len(p.split()) <= 7 and not p.strip().endswith(".")}
+    labels = {x for x in short if is_label_line(x)}
+    assert short - labels == KB_SHORT_CONTENT_LINES
+    for heading in ("Prescription Only", "Side Effects", "Contraindications", "C. Nitroimidazoles",
+                    "الأدوية الموجودة في السوق المصري", "OTC ولا Prescription؟", "Common side effects:"):
+        assert heading in labels
+
+
 def test_normalisation_for_matching():
     assert kb_check.norm("يُتجنب") == kb_check.norm("يتجنب")
     assert kb_check.norm("أمي") == kb_check.norm("امي")

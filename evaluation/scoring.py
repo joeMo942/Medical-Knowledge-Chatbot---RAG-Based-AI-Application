@@ -220,12 +220,40 @@ def check_contract(http_status: int | None, body: Any) -> list[str]:
 # ------------------------------------------------------------------ snippet check
 
 _DIACRITICS = re.compile("[\u064b-\u065f\u0670\u0640]")
-_ARABIC_FOLD = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه"})
+_ARABIC_FOLD = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه",
+                              # Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits -> 0-9
+                              **{chr(0x0660 + i): str(i) for i in range(10)},
+                              **{chr(0x06F0 + i): str(i) for i in range(10)}})
 
 
 def norm(text: str) -> str:
-    """Case-insensitive text with Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants folded."""
+    """Case-insensitive text with Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants folded,
+    and Arabic-Indic digits mapped to 0-9 ("٥٠٠" matches "500")."""
     return _DIACRITICS.sub("", text).translate(_ARABIC_FOLD).casefold()
+
+
+# Body lines that only introduce what follows and support no claim by themselves, derived from the
+# real KB (every short body line without sentence content): mostly the per-class headings of KB-07 and
+# KB-08. Content lines that are just as short ("Menthol", "OTC: None", "Depends on formulation") are
+# NOT labels.
+LABEL_LINES = frozenset(norm(x) for x in (
+    "Prescription Only", "Side Effects", "Side Effects (الأعراض الجانبية)", "Contraindications",
+    "Contraindications (موانع الاستعمال)", "الأدوية", "الأدوية الموجودة في السوق المصري",
+    "الأدوية والمستحضرات الموجودة في السوق المصري", "مستحضر خاص بالـMigraine",
+))
+# Lettered sub-headings ("C. Nitroimidazoles") and Arabic ordinal ones ("أولًا: Aspirin – ...").
+_SUB_HEADING = re.compile(r"^(?:[A-Z]\.\s+\S|(?:أولًا|ثانيًا|ثالثًا|رابعًا|أولا|ثانيا|ثالثا|رابعا)\s*:)")
+
+
+def is_label_line(text: str) -> bool:
+    """A body line that labels what follows: it ends in ':' or a question mark ("Common side effects:",
+    "OTC ولا Prescription؟"), is a lettered or ordinal sub-heading ("C. Nitroimidazoles", "أولًا: Aspirin"),
+    or is one of LABEL_LINES ("Prescription Only", "Contraindications")."""
+    t = text.strip()
+    if t.endswith((":", "؟", "?")) or norm(t) in LABEL_LINES:
+        return True
+    # A sentence ends in '.': "H. pylori is ..." would match the lettered pattern but is content.
+    return bool(_SUB_HEADING.match(t)) and not t.endswith(".")
 
 
 def _is_word_char(ch: str) -> bool:
@@ -248,21 +276,21 @@ def _on_word_boundaries(s: str, text: str) -> bool:
 def _units(section: Any) -> list[tuple[str, bool]]:
     """(text, is_label_line) for every body line and data row of a Section, split on line breaks
     (a soft break inside a paragraph makes two units); duck-typed: .lines and .rows[].text. Never the
-    heading and never a table header row. A label line is a body line ending in ':'."""
+    heading and never a table header row. Label lines: see is_label_line (data rows never are)."""
     out: list[tuple[str, bool]] = []
     for text, is_line in [*((ln, True) for ln in section.lines), *((r.text, False) for r in section.rows)]:
         for part in text.split("\n"):
             part = part.strip()
             if part:
-                out.append((part, is_line and part.endswith(":")))
+                out.append((part, is_line and is_label_line(part)))
     return out
 
 
 def snippet_check(snippet: str, section: Any) -> dict[str, bool]:
     """`valid`: the snippet is a whole body line or data row of the Section, or lies inside ONE of them,
     is at least MIN_SNIPPET_CHARS long and starts and ends on word boundaries (so not "a" or "oloc – Pant").
-    `label`: it is valid but only because of label lines (a body line ending in ':', such as "Common
-    side effects:"), which support no claim by themselves."""
+    `label`: it is valid but only because of label lines (is_label_line: "Common side effects:",
+    "Prescription Only", "C. Nitroimidazoles"), which support no claim by themselves."""
     snip = snippet.strip()
     holders = [(u, lab) for u, lab in _units(section)
                if snip and (snip == u or (len(snip) >= MIN_SNIPPET_CHARS and _on_word_boundaries(snip, u)))]

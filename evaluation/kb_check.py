@@ -7,7 +7,8 @@
 - every `answer_must_mention_all` term must occur in one of the expected Documents;
 - every `absent_terms` entry of an out-of-scope trap must occur nowhere in the KB.
 
-Matching is case-insensitive and ignores Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants."""
+Matching is case-insensitive and ignores Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants;
+Arabic-Indic digits match ASCII digits."""
 from __future__ import annotations
 
 import argparse

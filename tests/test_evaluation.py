@@ -265,6 +265,54 @@ def test_label_lines_are_valid_but_counted_as_labels():
     assert snippet_check("Tremors.", LABELLED) == {"valid": True, "label": False}
     assert snippet_check("Cataflam – Diclofenac potassium", LABELLED) == {"valid": True, "label": False}
     assert snippet_check("made up", LABELLED) == {"valid": False, "label": False}
+    # the heading-like first part of a soft-break paragraph labels what follows
+    assert snippet_check("OTC ولا Prescription؟", LABELLED) == {"valid": True, "label": True}
+
+
+HEADINGS = Section("KB-07", "Diabetes", "Biguanides", "class", (
+    Line("Prescription Only"), Line("الأدوية الموجودة في السوق المصري"), Line("Side Effects"),
+    Line("Contraindications (موانع الاستعمال)"), Line("C. Nitroimidazoles"), Line("أولًا: Aspirin – Acetylsalicylic Acid"),
+    Line("Menthol"), Line("OTC: None"), Line("Depends on formulation"),
+    Line("H. pylori is treated with a combination regimen."),
+    Line("Severe renal impairment: eGFR أقل من 30 mL/min/1.73m²."),
+))
+
+
+@pytest.mark.parametrize("line", [
+    "Prescription Only", "prescription only", "الأدوية الموجودة في السوق المصري", "Side Effects",
+    "Contraindications (موانع الاستعمال)", "C. Nitroimidazoles", "A. Penicillins", "E. Premixed Insulin",
+    "أولًا: Aspirin – Acetylsalicylic Acid", "ثانيًا: Topical Salicylates", "OTC ولا Prescription؟",
+    "Common side effects:", "Is it OTC?",
+])
+def test_heading_like_body_lines_without_a_colon_are_labels(line):
+    assert scoring.is_label_line(line)
+
+
+@pytest.mark.parametrize("line", [
+    "Menthol", "OTC: None", "Depends on formulation", "Tremors.", "H. pylori is treated with a combination regimen.",
+    "Severe renal impairment: eGFR أقل من 30 mL/min/1.73m².", "Pregnancy: ممنوعة أثناء الحمل.",
+    "Prescription Only for adults",
+])
+def test_content_lines_are_not_labels(line):
+    assert not scoring.is_label_line(line)
+
+
+def test_colonless_label_lines_are_counted_as_labels_in_snippet_checks():
+    for label in ("Prescription Only", "Side Effects", "C. Nitroimidazoles", "الأدوية الموجودة في السوق المصري"):
+        assert snippet_check(label, HEADINGS) == {"valid": True, "label": True}, label
+    for content in ("Menthol", "OTC: None", "H. pylori is treated with a combination regimen."):
+        assert snippet_check(content, HEADINGS) == {"valid": True, "label": False}, content
+
+
+def test_norm_maps_arabic_indic_digits_to_ascii():
+    assert scoring.norm("٥٠٠ ملغ") == scoring.norm("500 ملغ")
+    assert scoring.norm("۶۵") == "65" and scoring.norm("٠١٢٣٤٥٦٧٨٩") == "0123456789"
+    assert scoring.norm("۰۱۲۳۴۵۶۷۸۹") == "0123456789"
+    t = Turn("q", "answered", "ar", ("KB-03",), anchors=("x",), answer_must_mention_all=("500", "65"))
+    arabic = {"answer": "بنادول اكسترا فيه باراسيتامول ٥٠٠ مجم وكافيين ٦٥ مجم", "citations": [],
+              "status": "answered", "language": "ar"}
+    assert scoring.check_relevance(t, arabic, []) is True
+    assert kb_check.norm("الأسبوع ٣٠") == kb_check.norm("الأسبوع 30")     # kb_check uses the same norm
 
 
 def _doc(section):
