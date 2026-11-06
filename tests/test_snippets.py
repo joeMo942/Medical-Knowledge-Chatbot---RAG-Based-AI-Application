@@ -46,9 +46,17 @@ def test_fragments_cut_inside_a_word_are_rejected(fragment):
     assert not is_valid_snippet(fragment, LABELLED)
 
 
-@pytest.mark.parametrize("words", ["علاج الألم والالتهاب", "مُسَكِّن للألم", "Trade Names في مصر:"])
+@pytest.mark.parametrize("words", ["علاج الألم والالتهاب", "مُسَكِّن للألم", "الاستخدام: علاج الألم"])
 def test_arabic_and_mixed_whole_word_spans_are_accepted(words):
     assert is_valid_snippet(words, LABELLED)
+    assert cite(words) == words
+
+
+@pytest.mark.parametrize("label", ["Trade Names في مصر:", "Trade Names في مصر"])
+def test_a_label_the_model_supplies_on_its_own_is_repaired(label):
+    # Verbatim KB text, but it introduces the table and supports nothing.
+    assert is_valid_snippet(label, LABELLED)
+    assert cite(label, hints="ايه البدائل التجارية لـ Brufen؟ Nurofen") == BRUFEN
 
 
 def test_multi_line_model_snippet_keeps_one_of_its_own_valid_lines():
@@ -74,6 +82,11 @@ def test_a_label_line_from_a_pasted_block_is_never_the_citation():
     pasted = "Common side effects:\nTremors.\nHypokalemia مع الجرعات العالية."
     hints = "What are the common side effects of salbutamol? Common side effects include tremors and hypokalemia."
     assert cite_in(SIDE_EFFECTS, pasted, hints) == "Hypokalemia مع الجرعات العالية."
+
+
+def test_a_pasted_block_whose_only_valid_line_is_a_label_is_repaired():
+    pasted = "Common side effects:\nan invented line that is not in the KB"
+    assert cite_in(SIDE_EFFECTS, pasted, "side effects tremors") == "Tremors."
 
 
 def test_a_bare_heading_word_loses_to_a_line_with_content():
