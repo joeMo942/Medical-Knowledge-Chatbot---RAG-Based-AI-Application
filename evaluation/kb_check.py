@@ -2,28 +2,21 @@
 
 - every expected KB ID of an answered turn must contain at least one of its `anchors`;
 - the documents that contain an anchor but are not listed are printed, so each omission is deliberate;
+- every `expected_sections` entry must be a Section of one of the expected Documents;
+- at least one `answer_must_mention` term must occur in one of the expected Documents;
 - every `absent_terms` entry of an out-of-scope trap must occur nowhere in the KB.
 
 Matching is case-insensitive and ignores Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants."""
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 from typing import Any
 
-from .scoring import Case, load_cases
+from .scoring import PATH_SEPARATOR, Case, load_cases, norm
 
 DEFAULT_CASES = Path(__file__).with_name("cases.json")
-_DIACRITICS = re.compile("[ً-ٰٟـ]")
-_ARABIC_FOLD = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه"})
-
-
-def norm(text: str) -> str:
-    return _DIACRITICS.sub("", text).translate(_ARABIC_FOLD).casefold()
-
-
 def doc_texts(documents: list[Any]) -> dict[str, str]:
     """kb_id -> the normalized text of all its Sections (heading lines, body lines, table rows)."""
     return {d.kb_id: norm("\n".join(s.render() for s in d.sections)) for d in documents}
@@ -61,6 +54,28 @@ def absent_problems(cases: list[Case], texts: dict[str, str]) -> list[str]:
     return errors
 
 
+def section_names(documents: list[Any]) -> dict[str, set[str]]:
+    """kb_id -> normalized Section names and "title › name" paths."""
+    return {d.kb_id: {x for s in d.sections for x in (norm(s.section), norm(f"{s.title}{PATH_SEPARATOR}{s.section}"))}
+            for d in documents}
+
+
+def relevance_problems(cases: list[Case], texts: dict[str, str], sections: dict[str, set[str]]) -> list[str]:
+    """Errors: an expected_sections entry that is no Section of any expected Document, or an
+    answer_must_mention list none of whose terms occurs in any expected Document."""
+    errors = []
+    for case in cases:
+        for i, t in enumerate(case.turns, 1):
+            where = f"{case.id}" + (f" turn {i}" if case.multi_turn else "")
+            for name in t.expected_sections:
+                if not any(norm(name) in sections.get(kb, set()) for kb in t.expected_kb_ids):
+                    errors.append(f"{where}: expected section {name!r} is in none of {list(t.expected_kb_ids)}")
+            if t.answer_must_mention and not any(norm(term) in texts.get(kb, "")
+                                                 for kb in t.expected_kb_ids for term in t.answer_must_mention):
+                errors.append(f"{where}: none of {list(t.answer_must_mention)} occurs in {list(t.expected_kb_ids)}")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     from medrag.ingest import kb_dir, load_knowledge_base  # only here: the checks above need no medrag
 
@@ -70,9 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     cases = load_cases(args.cases)
-    texts = doc_texts(load_knowledge_base(args.kb_dir or kb_dir()))
+    documents = load_knowledge_base(args.kb_dir or kb_dir())
+    texts = doc_texts(documents)
     errors, notes = anchor_problems(cases, texts)
     errors += absent_problems(cases, texts)
+    errors += relevance_problems(cases, texts, section_names(documents))
     for n in notes:
         print("note:", n)
     for e in errors:

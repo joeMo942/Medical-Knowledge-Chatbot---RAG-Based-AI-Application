@@ -17,11 +17,11 @@ def test_every_expected_kb_id_is_backed_by_the_real_kb_and_every_trap_is_a_real_
     texts = kb_check.doc_texts(list(real_kb.values()))
     errors, notes = kb_check.anchor_problems(cases, texts)
     errors += kb_check.absent_problems(cases, texts)
+    errors += kb_check.relevance_problems(cases, texts, kb_check.section_names(list(real_kb.values())))
     assert errors == []
     assert notes == []   # no Document with an anchor is left out of the expected IDs unexplained
 
 
-@pytest.mark.kb
 def test_normalisation_for_matching():
     assert kb_check.norm("يُتجنب") == kb_check.norm("يتجنب")
     assert kb_check.norm("أمي") == kb_check.norm("امي")

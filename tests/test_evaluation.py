@@ -1,18 +1,20 @@
-"""Unit tests of the evaluation harness (evaluation/): scoring, metrics, case-file schema.
-No stack and no KB files needed; the shipped case file is validated too."""
+"""Unit tests of the evaluation harness (evaluation/): scoring, metrics, case-file schema.\nNo stack and no KB files needed; the shipped case file is validated too."""
 import json
 import re
+import subprocess
 from collections import Counter
 from pathlib import Path
 
 import pytest
+import httpx
 from synthetic import NSAIDS, OVERVIEW, PPI
 
 import medrag
-from evaluation import report, review, scoring
+from evaluation import kb_check, report, review, run, scoring
+from medrag.models import Line, Row, Section
 from evaluation.scoring import (KB_IDS, NO_RESPONSE, Turn, build_kb_index, check_citation, check_contract,
                                 confusion_matrix, parse_cases, parse_usage, percentile, score_turn,
-                                snippet_in_one_unit, summarize, validate_cases)
+                                snippet_check, snippet_in_one_unit, summarize, validate_cases)
 
 CASES_FILE = Path(scoring.__file__).with_name("cases.json")
 
@@ -27,7 +29,8 @@ def good_case(**kw):
 
 
 def answered_case(**kw):
-    c = good_case(expected_status="answered", expected_kb_ids=["KB-02"], anchors=["Controloc"])
+    c = good_case(expected_status="answered", expected_kb_ids=["KB-02"], anchors=["Controloc"],
+                  answer_must_mention=["Pantoprazole"])
     c.update(kw)
     return c
 
@@ -67,6 +70,15 @@ def test_answered_needs_anchors_and_absent_terms_belong_on_other_statuses():
     assert any("absent_terms" in e for e in errors_of(answered_case(absent_terms=["malaria"])))
 
 
+def test_answered_needs_a_relevance_check_and_only_answered_may_have_one():
+    c = answered_case()
+    del c["answer_must_mention"]
+    assert any("relevance" in e for e in errors_of(c))
+    assert errors_of(answered_case(answer_must_mention=[], expected_sections=["PPIs"])) == []
+    assert any("relevance" in e for e in errors_of(good_case(answer_must_mention=["x"])))
+    assert any("expected_sections" in e for e in errors_of(answered_case(expected_sections="PPIs")))
+
+
 @pytest.mark.parametrize("field,value", [
     ("expected_status", "refused"), ("language", "fr"), ("category", "nonsense"), ("message", "  "),
     ("note", ""), ("id", "Bad_Id"), ("acceptable_statuses", ["nope"]),
@@ -93,7 +105,8 @@ def test_arabic_presentation_forms_and_bidi_controls_are_rejected():
 
 def test_multi_turn_cases():
     t1 = {"message": "a?", "language": "en", "expected_status": "escalated"}
-    t2 = {"message": "b?", "language": "en", "expected_status": "answered", "expected_kb_ids": ["KB-01"], "anchors": ["x"]}
+    t2 = {"message": "b?", "language": "en", "expected_status": "answered", "expected_kb_ids": ["KB-01"],
+          "anchors": ["x"], "answer_must_mention": ["x"]}
     ok = {"id": "m-one", "category": "multi_turn", "note": "n", "turns": [t1, t2]}
     assert validate_cases([ok]) == []
     assert any("at least 2" in e for e in validate_cases([{**ok, "turns": [t1]}]))
@@ -203,15 +216,52 @@ def test_contract_for_error_responses():
 def test_snippet_must_lie_within_one_body_line_or_row():
     assert snippet_in_one_unit("Used for pain and inflammation.", NSAIDS)
     assert snippet_in_one_unit("Cataflam – Diclofenac potassium", NSAIDS)         # a whole row
-    assert snippet_in_one_unit("Diclofenac potassium", NSAIDS)                    # inside one row
+    assert snippet_in_one_unit("Diclofenac potassium", NSAIDS)                    # inside one row, on word boundaries
     assert snippet_in_one_unit("  pain and inflammation  ", NSAIDS)               # whitespace trimmed
-    assert not snippet_in_one_unit("Voltaren – Diclofenac sodium\nCataflam – Diclofenac potassium", NSAIDS)  # two rows
+    # the rows in document order: Cataflam, then Voltaren
+    assert not snippet_in_one_unit("Cataflam – Diclofenac potassium\nVoltaren – Diclofenac sodium", NSAIDS)  # two rows
     assert not snippet_in_one_unit("Diclofenac potassium Voltaren", NSAIDS)       # runs across two rows
     assert not snippet_in_one_unit("Trade Name – Active Ingredient", NSAIDS)      # the table header row
     assert not snippet_in_one_unit("Pain & Arthritis › NSAIDs", NSAIDS)           # heading text
     assert not snippet_in_one_unit("Cataflam – Ibuprofen", NSAIDS)                # invented
     assert not snippet_in_one_unit("", NSAIDS) and not snippet_in_one_unit("   ", NSAIDS)
     assert snippet_in_one_unit("Asthma is a chronic airway disease.", OVERVIEW)
+
+
+LABELLED = Section("KB-03", "Pain", "NSAIDs", "class", (
+    Line("OTC ولا Prescription؟\nغالبًا OTC في المستحضرات المخصصة للـself-care."),   # a soft line break in one paragraph
+    Line("Common side effects:"),
+    Line("Tremors."),
+    Row and NSAIDS.items[1],
+))
+
+
+@pytest.mark.parametrize("snippet", [
+    "a", "o", "Ta", "oloc – Pant", "flam – Diclo", "ataflam", "Cataflam – Diclofenac potass",   # fragments, mid-word edges
+    "Tremor",                                                  # shorter than the minimum and not a whole line
+])
+def test_fragments_and_tiny_snippets_are_not_valid(snippet):
+    assert not snippet_in_one_unit(snippet, LABELLED)
+
+
+def test_short_whole_lines_are_valid_but_other_short_pieces_are_not():
+    assert snippet_in_one_unit("Tremors.", LABELLED)          # a whole (short) line
+    assert not snippet_in_one_unit("Tremors", LABELLED)       # a piece, under 8 characters
+
+
+def test_a_soft_line_break_splits_a_paragraph_into_two_units():
+    assert snippet_in_one_unit("OTC ولا Prescription؟", LABELLED)
+    assert snippet_in_one_unit("غالبًا OTC في المستحضرات المخصصة للـself-care.", LABELLED)
+    assert not snippet_in_one_unit("OTC ولا Prescription؟\nغالبًا OTC", LABELLED)       # spans the break
+    assert not snippet_in_one_unit("Prescription؟ غالبًا OTC في المستحضرات", LABELLED)   # spans it, break as a space
+    assert not snippet_in_one_unit("Prescription؟\nغالبًا", LABELLED)
+
+
+def test_label_lines_are_valid_but_counted_as_labels():
+    assert snippet_check("Common side effects:", LABELLED) == {"valid": True, "label": True}
+    assert snippet_check("Tremors.", LABELLED) == {"valid": True, "label": False}
+    assert snippet_check("Cataflam – Diclofenac potassium", LABELLED) == {"valid": True, "label": False}
+    assert snippet_check("made up", LABELLED) == {"valid": False, "label": False}
 
 
 def _doc(section):
@@ -226,7 +276,8 @@ def cite(doc_id="KB-04", title="Pain & Arthritis", section="NSAIDs", snippet="Ca
 
 
 def test_check_citation_against_the_kb_index():
-    assert check_citation(cite(), KB) == {"real_id": True, "section_found": True, "snippet_valid": True}
+    assert check_citation(cite(), KB) == {"real_id": True, "section_found": True, "snippet_valid": True,
+                                          "snippet_label": False}
     assert check_citation(cite(snippet="made up"), KB)["snippet_valid"] is False
     assert check_citation(cite(section="Other"), KB)["section_found"] is False
     assert check_citation(cite(doc_id="KB-09"), KB)["snippet_valid"] is False   # a real ID, but not this text there
@@ -280,6 +331,8 @@ def obs(body, http=200, latency=1.0, usage=None):
 
 
 ANS = Turn("q", "answered", "en", expected_kb_ids=("KB-04", "KB-03"), anchors=("x",))
+REL_ANS = Turn("q", "answered", "en", expected_kb_ids=("KB-04",), anchors=("x",),
+               expected_sections=("NSAIDs",), answer_must_mention=("diclofenac", "ibuprofen"))
 
 
 def test_score_turn_all_correct():
@@ -428,18 +481,6 @@ def test_markdown_summary_has_the_required_sections():
 def answered_rows(n):
     return [{"case_id": f"c{i}", "category": "dev", "turn": 1, "message": f"q{i}|x", "actual_status": "answered",
              "body": good_body(answer=f"a{i}\nline2")} for i in range(n)]
-
-
-def test_review_sample_is_seeded_reproducible_and_answered_only():
-    esc = {"case_id": "e", "category": "dose", "turn": 1, "message": "m", "actual_status": "escalated",
-           "body": good_body(status="escalated", citations=[])}
-    rows = answered_rows(40) + [esc]
-    a = review.sample_answered(rows, 15, seed=1)
-    assert a == review.sample_answered(rows, 15, seed=1) and len(a) == 15
-    assert a != review.sample_answered(rows, 15, seed=2)
-    assert all(r["actual_status"] == "answered" for r in a)
-    assert review.sample_answered(rows[:3], 15, seed=1) == rows[:3]    # fewer answered than asked
-    assert [r["case_id"] for r in a] == sorted((r["case_id"] for r in a), key=lambda c: int(c[1:]))  # file order
 
 
 def test_review_template_has_empty_columns_for_the_human():

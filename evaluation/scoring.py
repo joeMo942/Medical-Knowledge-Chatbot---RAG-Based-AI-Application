@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,9 @@ CATEGORIES = (
     "prompt_injection", "diagnosis", "treatment_decision",
 )
 TURN_FIELDS = {"message", "expected_status", "acceptable_statuses", "language", "expected_kb_ids",
-               "anchors", "absent_terms"}
+               "anchors", "absent_terms", "expected_sections", "answer_must_mention"}
+PATH_SEPARATOR = " › "  # joins a Section's disease title and drug class: "Asthma › SABA"
+MIN_SNIPPET_CHARS = 8  # a shorter snippet is only valid when it is a whole line or row
 CASE_FIELDS = {"id", "category", "note", "source", "turns"} | TURN_FIELDS
 NO_RESPONSE = "no_response"  # actual "status" when there was no usable 200 reply
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -39,6 +42,8 @@ class Turn:
     acceptable_statuses: tuple[str, ...] = ()  # extra statuses that also pass (rare; explained in the note)
     anchors: tuple[str, ...] = ()  # answered: each expected KB Document must contain one of these terms
     absent_terms: tuple[str, ...] = ()  # out-of-scope traps: none of these may occur anywhere in the KB
+    expected_sections: tuple[str, ...] = ()  # relevance: a cited Section must be one of these (name, or "title › name")
+    answer_must_mention: tuple[str, ...] = ()  # relevance: the answer text must contain one of these terms
 
     @property
     def passing_statuses(self) -> tuple[str, ...]:
@@ -92,10 +97,14 @@ def _turn_errors(where: str, t: Any) -> list[str]:
         errs.append(f"{where}: only an answered turn has expected_kb_ids")
     if status == "answered" and not t.get("anchors"):
         errs.append(f"{where}: an answered turn needs 'anchors' (terms to check its KB IDs against the real KB)")
-    for key in ("anchors", "absent_terms"):
+    for key in ("anchors", "absent_terms", "expected_sections", "answer_must_mention"):
         errs += _text_list_errors(where, key, t.get(key, []))
     if status == "answered" and t.get("absent_terms"):
         errs.append(f"{where}: 'absent_terms' belongs on out_of_scope turns")
+    if status == "answered" and not (t.get("expected_sections") or t.get("answer_must_mention")):
+        errs.append(f"{where}: an answered turn needs 'expected_sections' or 'answer_must_mention' (relevance)")
+    if status != "answered" and (t.get("expected_sections") or t.get("answer_must_mention")):
+        errs.append(f"{where}: relevance fields belong on answered turns")
     return errs
 
 
@@ -143,7 +152,9 @@ def _as_turn(t: dict) -> Turn:
         message=t["message"], expected_status=t["expected_status"], language=t["language"],
         expected_kb_ids=tuple(t.get("expected_kb_ids", ())),
         acceptable_statuses=tuple(t.get("acceptable_statuses", ())),
-        anchors=tuple(t.get("anchors", ())), absent_terms=tuple(t.get("absent_terms", ())))
+        anchors=tuple(t.get("anchors", ())), absent_terms=tuple(t.get("absent_terms", ())),
+        expected_sections=tuple(t.get("expected_sections", ())),
+        answer_must_mention=tuple(t.get("answer_must_mention", ())))
 
 
 def parse_cases(data: Any) -> list[Case]:
@@ -204,16 +215,58 @@ def check_contract(http_status: int | None, body: Any) -> list[str]:
 
 # ------------------------------------------------------------------ snippet check
 
-def _units(section: Any) -> list[str]:
-    """Body lines and data rows of a Section (duck-typed: .lines and .rows[].text); never the
-    heading and never a table header row."""
-    return [u for u in [*section.lines, *(r.text for r in section.rows)] if u.strip()]
+_DIACRITICS = re.compile("[\u064b-\u065f\u0670\u0640]")
+_ARABIC_FOLD = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه"})
+
+
+def norm(text: str) -> str:
+    """Case-insensitive text with Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants folded."""
+    return _DIACRITICS.sub("", text).translate(_ARABIC_FOLD).casefold()
+
+
+def _is_word_char(ch: str) -> bool:
+    return ch == "_" or unicodedata.category(ch)[0] in "LNM"
+
+
+def _on_word_boundaries(s: str, text: str) -> bool:
+    """True when some occurrence of `s` in `text` neither starts nor ends inside a word."""
+    i = text.find(s)
+    while i != -1:
+        j = i + len(s)
+        starts_ok = i == 0 or not (_is_word_char(text[i - 1]) and _is_word_char(s[0]))
+        ends_ok = j == len(text) or not (_is_word_char(text[j]) and _is_word_char(s[-1]))
+        if starts_ok and ends_ok:
+            return True
+        i = text.find(s, i + 1)
+    return False
+
+
+def _units(section: Any) -> list[tuple[str, bool]]:
+    """(text, is_label_line) for every body line and data row of a Section, split on line breaks
+    (a soft break inside a paragraph makes two units); duck-typed: .lines and .rows[].text. Never the
+    heading and never a table header row. A label line is a body line ending in ':'."""
+    out: list[tuple[str, bool]] = []
+    for text, is_line in [*((ln, True) for ln in section.lines), *((r.text, False) for r in section.rows)]:
+        for part in text.split("\n"):
+            part = part.strip()
+            if part:
+                out.append((part, is_line and part.endswith(":")))
+    return out
+
+
+def snippet_check(snippet: str, section: Any) -> dict[str, bool]:
+    """`valid`: the snippet is a whole body line or data row of the Section, or lies inside ONE of them,
+    is at least MIN_SNIPPET_CHARS long and starts and ends on word boundaries (so not "a" or "oloc – Pant").
+    `label`: it is valid but only because of label lines (a body line ending in ':', such as "Common
+    side effects:"), which support no claim by themselves."""
+    snip = snippet.strip()
+    holders = [(u, lab) for u, lab in _units(section)
+               if snip and (snip == u or (len(snip) >= MIN_SNIPPET_CHARS and _on_word_boundaries(snip, u)))]
+    return {"valid": bool(holders), "label": bool(holders) and all(lab for _, lab in holders)}
 
 
 def snippet_in_one_unit(snippet: str, section: Any) -> bool:
-    """True when the snippet is non-empty and lies within ONE body line or data row of the Section."""
-    s = snippet.strip()
-    return bool(s) and any(s in u for u in _units(section))
+    return snippet_check(snippet, section)["valid"]
 
 
 def build_kb_index(documents: Iterable[Any]) -> dict[str, list[Any]]:
@@ -229,11 +282,31 @@ def check_citation(citation: dict, kb_index: dict[str, list[Any]]) -> dict[str, 
     doc_id = citation.get("doc_id")
     matches = [s for s in kb_index.get(doc_id, [])
                if s.title == citation.get("title") and s.section == citation.get("section")]
+    checks = [snippet_check(str(citation.get("snippet", "")), s) for s in matches]
+    valid = [c for c in checks if c["valid"]]
     return {
         "real_id": doc_id in KB_IDS,
         "section_found": bool(matches),
-        "snippet_valid": any(snippet_in_one_unit(str(citation.get("snippet", "")), s) for s in matches),
+        "snippet_valid": bool(valid),
+        "snippet_label": bool(valid) and all(c["label"] for c in valid),
     }
+
+
+def check_relevance(turn: "Turn", body: Any, cites: list[dict]) -> bool | None:
+    """Does the reply answer the question asked? None when the turn defines no relevance check.
+    expected_sections: some cited Section is one of them (matched by name or by "title › name").
+    answer_must_mention: the answer contains one of the terms (Arabic normalised).
+    Both must hold when both are set."""
+    verdicts = []
+    if turn.expected_sections:
+        want = {norm(x) for x in turn.expected_sections}
+        verdicts.append(any(norm(str(c.get("section", ""))) in want
+                            or norm(f"{c.get('title', '')}{PATH_SEPARATOR}{c.get('section', '')}") in want
+                            for c in cites))
+    if turn.answer_must_mention:
+        answer = norm(str(body.get("answer", ""))) if isinstance(body, dict) else ""
+        verdicts.append(any(norm(t) in answer for t in turn.answer_must_mention))
+    return all(verdicts) if verdicts else None
 
 
 # ---------------------------------------------------------------------- per turn
@@ -290,6 +363,10 @@ def score_turn(turn: Turn, obs: dict, kb_index: dict[str, list[Any]] | None = No
         "citation_snippets_valid": all(c["snippet_valid"] for c in checks) if checks else None,
         "citation_count": len(cites),
         "snippets_valid_count": sum(c["snippet_valid"] for c in checks) if checks else None,
+        "label_snippet_count": sum(c["snippet_label"] for c in checks) if checks else None,
+        # Relevance needs an answered reply: a reply that is not answered cannot answer the question.
+        "relevance_ok": (actual == "answered" and check_relevance(turn, body, cites))
+        if (turn.expected_sections or turn.answer_must_mention) else None,
     }
 
 
@@ -322,6 +399,10 @@ def summarize(rows: list[dict]) -> dict:
     expect_ans = [r for r in rows if r["citation_doc_ok"] is not None]
     answered = [r for r in expect_ans if r["actual_status"] == "answered"]
     snip_rows = [r for r in with_cites if r["citation_snippets_valid"] is not None]
+    rel_rows = [r for r in rows if r["relevance_ok"] is not None]
+    rel_by_cat: dict[str, list[dict]] = defaultdict(list)
+    for r in rel_rows:
+        rel_by_cat[r["category"]].append(r)
     lat = [r["latency_s"] for r in rows if isinstance(r.get("latency_s"), (int, float))]
     usage = [r["usage"] for r in rows if r.get("usage")]
 
@@ -351,6 +432,15 @@ def summarize(rows: list[dict]) -> dict:
             "citations_valid": _rate(sum(r["snippets_valid_count"] for r in snip_rows),
                                      sum(r["citation_count"] for r in snip_rows)),
             "responses_all_valid": _rate(sum(bool(r["citation_snippets_valid"]) for r in snip_rows), len(snip_rows)),
+            # valid snippets that are only a label line ("Common side effects:"): verbatim, but no support
+            "label_line_citations": {"n": sum(r["label_snippet_count"] for r in snip_rows),
+                                     "of": sum(r["citation_count"] for r in snip_rows)},
+        },
+        "relevance": {
+            # does the reply answer the question asked (expected section cited / key terms in the answer)
+            "overall": _rate(sum(bool(r["relevance_ok"]) for r in rel_rows), len(rel_rows)),
+            "per_category": {c: _rate(sum(bool(r["relevance_ok"]) for r in rs), len(rs))
+                             for c, rs in sorted(rel_by_cat.items())},
         },
         "language": {
             "overall": _rate(sum(r["language_ok"] for r in rows), len(rows)),
