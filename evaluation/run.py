@@ -80,13 +80,28 @@ def run_case(client: httpx.Client, case: Case, kb_index: dict | None) -> list[di
     return rows
 
 
+def results_paths(stem: Path) -> tuple[Path, Path]:
+    """(<stem>.json, <stem>.md). Built by appending, never with Path.with_suffix: a label with a dot
+    ("qwen2.5-7b") would otherwise lose everything after the dot."""
+    return stem.parent / f"{stem.name}.json", stem.parent / f"{stem.name}.md"
+
+
 def unique_stem(out_dir: Path, name: str) -> Path:
     """<out-dir>/<name>, or <name>-2, -3, ... when a results file of that name exists: never overwrites."""
     stem, n = out_dir / name, 1
-    while stem.with_suffix(".json").exists() or stem.with_suffix(".md").exists():
+    while any(p.exists() for p in results_paths(stem)):
         n += 1
         stem = out_dir / f"{name}-{n}"
     return stem
+
+
+def write_results(out_dir: Path, name: str, results: dict) -> tuple[Path, Path]:
+    """Writes <name>.json and <name>.md (or <name>-2, ... when taken) into out_dir; returns both paths."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path, md_path = results_paths(unique_stem(out_dir, name))
+    json_path.write_text(json.dumps(results, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
+    md_path.write_text(render_markdown(results), encoding="utf-8", newline="\n")
+    return json_path, md_path
 
 
 def load_kb_index(kb_dir: Path | None) -> dict | None:
@@ -152,12 +167,9 @@ def main(argv: list[str] | None = None) -> int:
         "summary": summarize(rows),
         "rows": rows,
     }
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    stem = unique_stem(args.out_dir, f"{today}-{args.label}")
-    stem.with_suffix(".json").write_text(json.dumps(results, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
-    stem.with_suffix(".md").write_text(render_markdown(results), encoding="utf-8", newline="\n")
+    json_path, md_path = write_results(args.out_dir, f"{today}-{args.label}", results)
     s = results["summary"]
-    print(f"\nstatus accuracy {s['status']['overall']['ok']}/{s['status']['overall']['n']}; wrote {stem}.json and .md")
+    print(f"\nstatus accuracy {s['status']['overall']['ok']}/{s['status']['overall']['n']}; wrote {json_path} and {md_path.name}")
     return 0
 
 

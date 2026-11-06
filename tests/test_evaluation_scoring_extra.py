@@ -3,6 +3,7 @@ unprotected, the runner's Session handling (against a mock transport), the KB ch
 text, the stratified review sample, and the rule that results are never tracked by git."""
 import json
 import subprocess
+import threading
 from pathlib import Path
 
 import httpx
@@ -213,11 +214,45 @@ def test_post_chat_never_raises_on_transport_failure():
 def test_results_files_are_never_overwritten(tmp_path):
     first = run.unique_stem(tmp_path, "2026-01-01-baseline")
     assert first.name == "2026-01-01-baseline"
-    first.with_suffix(".json").write_text("{}")
+    run.results_paths(first)[0].write_text("{}")
     second = run.unique_stem(tmp_path, "2026-01-01-baseline")
     assert second.name == "2026-01-01-baseline-2"
-    second.with_suffix(".md").write_text("x")
+    run.results_paths(second)[1].write_text("x")
     assert run.unique_stem(tmp_path, "2026-01-01-baseline").name == "2026-01-01-baseline-3"
+
+
+def minimal_results():
+    rows = [row("a", "dose", Turn("q", "escalated", "en"), obs(body("escalated")))]
+    return {"meta": {"label": "qwen2.5-7b", "date": "2026-01-01", "commit": "abc", "dirty": False, "llm": "m",
+                     "embedding": "e", "base_url": "http://x", "cases_file": "c.json", "kb_checked": True, "notes": ""},
+            "summary": summarize(rows), "rows": rows}
+
+
+def write_within(seconds, out_dir, name):
+    """write_results in a thread: a regression to the old with_suffix loop fails the test instead of hanging it."""
+    done = {}
+    t = threading.Thread(target=lambda: done.setdefault("paths", run.write_results(out_dir, name, minimal_results())),
+                         daemon=True)
+    t.start()
+    t.join(seconds)
+    assert not t.is_alive(), f"write_results({name!r}) did not return within {seconds}s"
+    return done["paths"]
+
+
+def test_a_dotted_label_keeps_its_full_name_and_a_rerun_gets_a_suffix(tmp_path):
+    # Path.with_suffix would turn "...-qwen2.5-7b" into "...-qwen2.json" and, on a rerun, loop forever.
+    name = "2026-01-01-qwen2.5-7b"
+    assert [p.name for p in run.results_paths(tmp_path / name)] == [f"{name}.json", f"{name}.md"]
+    first = write_within(5, tmp_path, name)
+    assert [p.name for p in first] == [f"{name}.json", f"{name}.md"] and all(p.is_file() for p in first)
+    second = write_within(5, tmp_path, name)
+    assert [p.name for p in second] == [f"{name}-2.json", f"{name}-2.md"]
+    other = write_within(5, tmp_path, "2026-01-01-qwen2.5-14b")   # same text before the dot
+    assert other[0].name == "2026-01-01-qwen2.5-14b.json"
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        [f"{name}.json", f"{name}.md", f"{name}-2.json", f"{name}-2.md",
+         "2026-01-01-qwen2.5-14b.json", "2026-01-01-qwen2.5-14b.md"])
+    assert json.loads(first[0].read_text(encoding="utf-8"))["meta"]["label"] == "qwen2.5-7b"
 
 
 def test_markdown_warns_when_the_usage_header_was_missing():
