@@ -26,6 +26,7 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_MAX_MESSAGE_CHARS` | `2000` | longer messages get HTTP 400 |
 | `MEDRAG_LLM_CONCURRENCY` | `1` | simultaneous LLM calls; requests that cannot finish within the budget fail fast with 500 |
 | `MEDRAG_LLM_EST_S` | `5` | initial guess of one LLM call, used by that queue check |
+| `MEDRAG_MAX_OUTPUT_TOKENS` | `600` | cap on one model reply; a reply cut off at the cap is answered as out_of_scope |
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
 
 All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, with the defaults above.

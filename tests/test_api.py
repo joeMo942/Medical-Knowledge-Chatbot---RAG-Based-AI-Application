@@ -11,7 +11,7 @@ from synthetic import HEADER_ROW, NSAIDS, OVERVIEW, ROW, SECTIONS, FakeLLM, answ
 from medrag.answering import NOT_FOUND
 from medrag.app import create_app
 from medrag.config import EMBEDDING_PLACEHOLDER, Settings
-from medrag.llm import LLMError
+from medrag.llm import LLMError, LLMTruncated
 
 
 def make_app(llm, **settings):
@@ -114,6 +114,20 @@ def test_prompt_has_only_render_text_and_section_ids_not_path():
 def test_arabic_question_gets_language_ar():
     body = client(FakeLLM(answered())).post("/chat", json={"message": "ما هو Cataflam؟"}).json()
     assert body["language"] == "ar"
+
+
+def test_reply_cut_off_at_the_output_cap_is_out_of_scope_not_500():
+    for message, lang in (("Tell me everything about Cataflam", "en"), ("كل حاجة عن Cataflam", "ar")):
+        r = client(FakeLLM(exc=LLMTruncated("cut off"))).post("/chat", json={"message": message})
+        assert r.status_code == 200
+        assert r.json() == {"answer": NOT_FOUND[lang], "citations": [], "status": "out_of_scope", "language": lang}
+
+
+def test_prompt_asks_for_a_concise_answer():
+    llm = FakeLLM(answered())
+    client(llm).post("/chat", json=Q)
+    system, _ = llm.calls[0]
+    assert "120 words" in system and "only what was asked" in system
 
 
 def test_llm_exception_is_http_500_with_error():

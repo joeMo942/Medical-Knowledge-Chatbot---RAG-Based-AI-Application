@@ -24,6 +24,9 @@ class Settings:
     max_message_chars: int = 2000
     llm_concurrency: int = 1  # Ollama serves one request at a time
     llm_est_s: float = 5.0  # initial guess of one LLM call, for the fail-fast queue check
+    # Cap on one reply's tokens (Ollama num_predict / OpenAI max_tokens). About 55 tokens/s on the
+    # target GPU, so 600 tokens is ~11 s; a reply cut off at the cap becomes the not-found answer.
+    max_output_tokens: int = 600
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,4 +45,5 @@ class Settings:
             max_message_chars=int(e("MEDRAG_MAX_MESSAGE_CHARS") or d.max_message_chars),
             llm_concurrency=int(e("MEDRAG_LLM_CONCURRENCY") or d.llm_concurrency),
             llm_est_s=float(e("MEDRAG_LLM_EST_S") or d.llm_est_s),
+            max_output_tokens=int(e("MEDRAG_MAX_OUTPUT_TOKENS") or d.max_output_tokens),
         )

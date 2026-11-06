@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from .gate import LLMGate
+from .llm import LLMTruncated
 from .models import Line, Section
 from .retrieval import tokenize
 
@@ -46,6 +47,8 @@ SYSTEM_PROMPT = (
     "Answer ONLY from the knowledge base sections provided by the user message. "
     "Never use outside knowledge and never state doses. "
     "Reply in the language of the question (Arabic or English); keep drug names in English. "
+    "Be concise: answer only what was asked, in at most about 120 words; keep any list short "
+    "(the most relevant items only) and do not repeat the sections back. "
     "If the sections do not contain what was asked, set status to \"out_of_scope\" and cite nothing. "
     "Otherwise set status to \"answered\" and cite the sections you used: for each citation give "
     "the section_id exactly as shown and a snippet copied character for character from that "
@@ -152,7 +155,11 @@ async def answer_question(
     """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller)."""
     if not sections:  # nothing lexically related: no reason to ask the model
         return out_of_scope(language)
-    result = await llm.complete_json(SYSTEM_PROMPT, build_prompt(question, sections), ANSWER_SCHEMA, deadline)
+    try:
+        result = await llm.complete_json(SYSTEM_PROMPT, build_prompt(question, sections), ANSWER_SCHEMA, deadline)
+    except LLMTruncated:
+        # The reply hit the output cap: it is incomplete, so nothing of it is shown.
+        return out_of_scope(language)
     raw = result.data
     answer = raw.get("answer")
     answer = answer.strip() if isinstance(answer, str) else ""

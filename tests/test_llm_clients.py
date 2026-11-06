@@ -6,7 +6,8 @@ import httpx
 import pytest
 
 from medrag.answering import ANSWER_SCHEMA
-from medrag.llm import KEEP_ALIVE, LLMError, OllamaClient, OpenAICompatClient
+from medrag.config import Settings
+from medrag.llm import KEEP_ALIVE, LLMError, LLMTruncated, OllamaClient, OpenAICompatClient, build_llm
 
 REPLY = {"answer": "x", "status": "answered", "citations": []}
 
@@ -34,6 +35,7 @@ def test_ollama_request_shape_and_result():
     assert b["model"] == "qwen3.5:4b" and b["think"] is False and b["stream"] is False
     assert b["format"] == ANSWER_SCHEMA and b["keep_alive"] == KEEP_ALIVE
     assert b["options"]["num_ctx"] == 4321 and b["options"]["temperature"] == 0
+    assert b["options"]["num_predict"] == 600  # default output cap
     assert [m["role"] for m in b["messages"]] == ["system", "user"]
     assert c._http.timeout.read == 77 and c.timeout == 77
     assert res.data == REPLY
@@ -52,6 +54,41 @@ def test_ollama_warmup_uses_the_same_context_and_keep_alive():
     run(c.warm())
     assert seen["path"] == "/api/generate"
     assert seen["body"]["options"]["num_ctx"] == 4321 and seen["body"]["keep_alive"] == KEEP_ALIVE
+
+
+def test_ollama_reply_cut_off_at_the_cap_raises_truncated():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        # What Ollama returns when num_predict is reached mid-JSON.
+        return httpx.Response(200, json={"message": {"content": '{"answer": "NSAIDs are'},
+                                         "done_reason": "length", "eval_count": 50})
+
+    c = OllamaClient("http://o", "m:1", transport=httpx.MockTransport(handler), max_output_tokens=50)
+    with pytest.raises(LLMTruncated):
+        run(c.complete_json("s", "u", ANSWER_SCHEMA))
+    assert seen["body"]["options"]["num_predict"] == 50
+
+
+def test_openai_reply_cut_off_at_the_cap_raises_truncated():
+    def handler(request):
+        assert json.loads(request.content)["max_tokens"] == 40
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"answer": "x'},
+                                                      "finish_reason": "length"}]})
+
+    c = OpenAICompatClient("https://h/v1", "m", "", transport=httpx.MockTransport(handler), max_output_tokens=40)
+    with pytest.raises(LLMTruncated):
+        run(c.complete_json("s", "u", ANSWER_SCHEMA))
+
+
+def test_output_cap_comes_from_settings(monkeypatch):
+    monkeypatch.setenv("MEDRAG_MAX_OUTPUT_TOKENS", "321")
+    s = Settings.from_env()
+    assert s.max_output_tokens == 321
+    assert build_llm(s)._max_out == 321
+    assert build_llm(Settings(backend="openai", openai_base_url="https://h/v1", openai_model="m",
+                              max_output_tokens=77))._max_out == 77
 
 
 def test_ollama_bad_json_and_http_errors_raise_llm_error():
@@ -96,7 +133,7 @@ def test_openai_request_shape_and_result():
     res = run(c.complete_json("sys", "user", ANSWER_SCHEMA))
     b = seen["body"]
     assert seen["path"] == "/v1/chat/completions" and seen["auth"] == "Bearer sk-test"
-    assert b["model"] == "gpt-x" and b["temperature"] == 0
+    assert b["model"] == "gpt-x" and b["temperature"] == 0 and b["max_tokens"] == 600
     js = b["response_format"]["json_schema"]
     assert js["strict"] is True and js["schema"] == ANSWER_SCHEMA
     assert c._http.timeout.read == 33

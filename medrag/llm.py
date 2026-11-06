@@ -13,10 +13,16 @@ from .config import Settings
 
 KEEP_ALIVE = "24h"  # same value for warm-up and chat, so Ollama never reloads the model
 READY_TIMEOUT_S = 2.0  # /health must never be slow
+DEFAULT_MAX_OUTPUT_TOKENS = 600  # caps one reply, so a long answer cannot run past the time budget
 
 
 class LLMError(RuntimeError):
     """The model call failed or returned something unusable."""
+
+
+class LLMTruncated(LLMError):
+    """The reply hit the output-token cap, so it is incomplete (and usually not valid JSON).
+    The pipeline answers with the fixed not-found text instead of an error."""
 
 
 @dataclass(frozen=True)
@@ -56,10 +62,12 @@ def _secs(ns: Any) -> float | None:
 
 class OllamaClient:
     def __init__(self, base_url: str, model: str, num_ctx: int = 8192, timeout: float = 120.0,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None,
+                 max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS):
         self.model = model
         self.timeout = timeout
         self._num_ctx = num_ctx
+        self._max_out = max_output_tokens
         self._http = httpx.AsyncClient(base_url=base_url, timeout=timeout, transport=transport)
 
     async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
@@ -70,12 +78,14 @@ class OllamaClient:
                 "think": False,  # no reasoning tokens: keeps latency low
                 "format": schema,
                 "keep_alive": KEEP_ALIVE,
-                "options": {"temperature": 0, "num_ctx": self._num_ctx},
+                "options": {"temperature": 0, "num_ctx": self._num_ctx, "num_predict": self._max_out},
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
             })
             r.raise_for_status()
             body = r.json()
+            if body.get("done_reason") == "length":
+                raise LLMTruncated(f"reply cut off at {body.get('eval_count')} tokens (cap {self._max_out})")
             return LLMResult(
                 data=_parse_object(body["message"]["content"]),
                 prompt_tokens=body.get("prompt_eval_count"),
@@ -112,9 +122,11 @@ class OllamaClient:
 
 class OpenAICompatClient:
     def __init__(self, base_url: str, model: str, api_key: str, timeout: float = 60.0,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: httpx.AsyncBaseTransport | None = None,
+                 max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS):
         self.model = model
         self.timeout = timeout
+        self._max_out = max_output_tokens
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), headers=headers,
                                        timeout=timeout, transport=transport)
@@ -125,6 +137,7 @@ class OpenAICompatClient:
             r = await self._http.post("/chat/completions", json={
                 "model": self.model,
                 "temperature": 0,
+                "max_tokens": self._max_out,
                 "response_format": {"type": "json_schema",
                                     "json_schema": {"name": "answer", "schema": schema, "strict": True}},
                 "messages": [{"role": "system", "content": system},
@@ -132,6 +145,8 @@ class OpenAICompatClient:
             })
             r.raise_for_status()
             body = r.json()
+            if body["choices"][0].get("finish_reason") == "length":
+                raise LLMTruncated(f"reply cut off at the {self._max_out}-token cap")
             usage = body.get("usage") or {}
             return LLMResult(
                 data=_parse_object(body["choices"][0]["message"]["content"]),
@@ -157,7 +172,9 @@ def build_llm(s: Settings) -> LLMClient:
     if s.backend == "openai":
         if not (s.openai_base_url and s.openai_model):
             raise ValueError("MEDRAG_LLM_BACKEND=openai needs MEDRAG_OPENAI_BASE_URL and MEDRAG_OPENAI_MODEL")
-        return OpenAICompatClient(s.openai_base_url, s.openai_model, s.openai_api_key)
+        return OpenAICompatClient(s.openai_base_url, s.openai_model, s.openai_api_key,
+                                  max_output_tokens=s.max_output_tokens)
     if s.backend == "ollama":
-        return OllamaClient(s.ollama_url, s.ollama_model, s.ollama_num_ctx)
+        return OllamaClient(s.ollama_url, s.ollama_model, s.ollama_num_ctx,
+                            max_output_tokens=s.max_output_tokens)
     raise ValueError(f"unknown MEDRAG_LLM_BACKEND {s.backend!r} (use 'ollama' or 'openai')")
