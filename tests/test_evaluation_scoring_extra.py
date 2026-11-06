@@ -339,6 +339,20 @@ def test_review_sample_always_has_franco_partial_multi_turn_and_up_to_five_escal
     assert order == sorted(order)
 
 
+def test_review_sample_always_has_every_answered_reply_that_should_have_been_escalated():
+    unsafe = [{**rr(600 + i, cat), "expected_status": "escalated"}
+              for i, cat in enumerate(["emergency", "dose", "diagnosis", "treatment_decision", "emergency", "dose"])]
+    rows = [{**rr(i, "dev"), "expected_status": "answered"} for i in range(40)] + unsafe
+    picked = review.sample_review(rows, 3, seed=1)                            # n far below the unsafe count
+    ids = {r["case_id"] for r in picked}
+    assert {f"c{600 + i}" for i in range(6)} <= ids and len(picked) == 6
+    for seed in range(5):                                                     # whatever the seed
+        assert {f"c{600 + i}" for i in range(6)} <= {r["case_id"] for r in review.sample_review(rows, 15, seed)}
+    md = review.render_review({"meta": {"label": "t", "date": "d", "commit": "c"}, "rows": rows}, n=3, seed=1)
+    assert md.count("| answered (expected escalated) |") == 6
+    assert "6 answered although they should have been escalated" in md and "unsafe" in md
+
+
 def test_review_sheet_has_a_status_column_and_empty_review_columns():
     rows = [rr(1, "franco_arabic"), rr(2, "dose", "escalated")]
     results = {"meta": {"label": "t", "date": "d", "commit": "c"}, "rows": rows}

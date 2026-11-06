@@ -47,7 +47,7 @@ python -m evaluation.review evaluation/results/<date>-baseline.json   # manual f
 python -m evaluation.kb_check                      # checks expected KB IDs, sections and out-of-scope traps against the real KB files
 ```
 
-`run` writes `evaluation/results/<date>-<label>.json` (a row per turn with the full response, latency, the Session ID sent and returned) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50/p95, tokens, contract violations). A name that already exists gets a numeric suffix. The results folder is gitignored: results stay local. Without the usage header the runner warns and the token metrics are marked absent. The review sheet always includes every answered Franco-Arabic, partial and multi-turn reply and up to 5 escalated ones, plus a seeded sample; faithfulness is judged by a person, never by an LLM.
+`run` writes `evaluation/results/<date>-<label>.json` (a row per turn with the full response, latency, the Session ID sent and returned) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50/p95, tokens, contract violations). A name that already exists gets a numeric suffix. The results folder is gitignored: results stay local. Without the usage header the runner warns and the token metrics are marked absent. The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply and up to 5 escalated ones, plus a seeded sample; faithfulness is judged by a person, never by an LLM.
 
 ## Tests
 
