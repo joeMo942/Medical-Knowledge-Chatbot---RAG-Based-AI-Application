@@ -138,27 +138,46 @@ def is_valid_snippet(snippet: str, section: Section) -> bool:
     return False
 
 
-def _repair(section: Section, hints: str) -> str | None:
-    """Simple rule: the single line or row sharing the most terms with the
-    question, answer and the model's snippet. On a tie a table data row beats a
-    body line (a label such as "Trade Names في مصر:" supports nothing), then
-    the first in reading order."""
-    units = _units(section)
-    if not units:
-        return None
+def _is_label(text: str, is_row: bool) -> bool:
+    # A body line ending in ":" introduces what follows ("Trade Names في مصر:",
+    # "Common side effects:") and supports no claim by itself.
+    return not is_row and text.rstrip().endswith(":")
+
+
+def _best(units: list[tuple[str, bool]], hints: str) -> tuple[str, bool]:
+    """Best supporting unit: never a label line if anything else exists, then the
+    most terms shared with `hints`, then a table data row over a body line, then
+    the line with more content (a bare heading word like "Contraindications" loses
+    to "Pregnancy: ممنوعة أثناء الحمل."), then reading order (max keeps the first)."""
     want = set(tokenize(hints))
-    # max keeps the first on ties
-    return max(units, key=lambda u: (len(want & set(tokenize(u[0]))), u[1]))[0]
+
+    def key(u: tuple[str, bool]) -> tuple[bool, int, bool, int]:
+        toks = tokenize(u[0])
+        return (not _is_label(*u), len(want & set(toks)), u[1], len(toks))
+
+    return max(units, key=key)
+
+
+def _repair(section: Section, hints: str) -> str | None:
+    """The single line or row of the Section that best supports the answer."""
+    units = _units(section)
+    return _best(units, hints)[0] if units else None
 
 
 def _pick_snippet(given: str, section: Section, hints: str) -> str | None:
-    """The model's snippet if valid; else its first line that is valid on its own
-    (models often paste a header row plus several rows); else a repaired one."""
+    """The model's snippet if valid. Models often paste several lines (a header
+    row plus rows, or a label plus items): then the best of its own lines that
+    are valid on their own, unless that is only a label. Otherwise a repair from
+    the whole Section. `hints` is the question plus the answer."""
     if is_valid_snippet(given, section):
         return given.strip()
-    for line in given.splitlines():
-        if is_valid_snippet(line, section):
-            return line.strip()
+    rows = [t for t, is_row in _units(section) if is_row]
+    own = [(ln.strip(), any(ln.strip() in r for r in rows)) for ln in given.splitlines()
+           if is_valid_snippet(ln, section)]
+    if own:
+        text, is_row = _best(own, hints)
+        if not _is_label(text, is_row):
+            return text
     return _repair(section, f"{hints} {given}")
 
 

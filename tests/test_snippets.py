@@ -51,9 +51,35 @@ def test_arabic_and_mixed_whole_word_spans_are_accepted(words):
     assert is_valid_snippet(words, LABELLED)
 
 
-def test_multi_line_model_snippet_keeps_its_first_valid_line():
+def test_multi_line_model_snippet_keeps_one_of_its_own_valid_lines():
     pasted = f"Trade Name – Active Ingredient\n{NUROFEN}\n{BRUFEN}"
-    assert cite(pasted) == NUROFEN
+    assert cite(pasted) == NUROFEN  # no term overlap: the first of its rows
+    assert cite(pasted, hints="alternatives to brufen") == BRUFEN  # the line the answer is about
+
+
+# Shaped like KB-01 › SABA and KB-08 › ARBs: label lines followed by item lines.
+SIDE_EFFECTS = Section(
+    "KB-01", "Asthma", "SABA – Short-Acting Beta-2 Agonists", "class",
+    (Line("Common side effects:"), Line("Tremors."), Line("Hypokalemia مع الجرعات العالية."),
+     Line("Contraindications"), Line("Pregnancy: ممنوعة أثناء الحمل.")),
+)
+
+
+def cite_in(section, snippet, hints):
+    (c,) = build_citations([{"section_id": section.section_id, "snippet": snippet}], [section], hints)
+    return c.snippet
+
+
+def test_a_label_line_from_a_pasted_block_is_never_the_citation():
+    pasted = "Common side effects:\nTremors.\nHypokalemia مع الجرعات العالية."
+    hints = "What are the common side effects of salbutamol? Common side effects include tremors and hypokalemia."
+    assert cite_in(SIDE_EFFECTS, pasted, hints) == "Hypokalemia مع الجرعات العالية."
+
+
+def test_a_bare_heading_word_loses_to_a_line_with_content():
+    pasted = "Contraindications\nPregnancy: ممنوعة أثناء الحمل."
+    hints = "What are the contraindications? Contraindications include pregnancy."
+    assert cite_in(SIDE_EFFECTS, pasted, hints) == "Pregnancy: ممنوعة أثناء الحمل."
 
 
 def test_repair_tie_prefers_a_table_row_over_a_label_line():
