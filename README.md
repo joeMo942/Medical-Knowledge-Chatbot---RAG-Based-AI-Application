@@ -37,6 +37,18 @@ All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, 
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
 
+## Evaluation
+
+The test set (`evaluation/cases.json`: about 80 cases with expected status, expected KB IDs and a note each) and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them. With the stack up:
+
+```
+python -m evaluation.run --label baseline          # every case, one at a time, against http://localhost:8000
+python -m evaluation.review evaluation/results/<date>-baseline.json   # manual faithfulness-review sheet (15 seeded answered replies)
+python -m evaluation.kb_check                      # checks expected KB IDs and out-of-scope traps against the real KB files
+```
+
+`run` writes `evaluation/results/<date>-<label>.json` (a row per turn with the full response, latency and Session ID) and `.md` (status accuracy overall and per category, confusion matrix, Citation and snippet validity, language accuracy, latency p50/p95, tokens, contract violations). Tokens come from the optional `X-Medrag-Usage` response header (`MEDRAG_USAGE_HEADER=0` turns it off). Faithfulness is judged by a person on the review sheet, never by an LLM. Results files are committed; the first one is the baseline of the walking skeleton.
+
 ## Tests
 
 `pip install -e ".[dev]" && pytest`. No Ollama or KB files are needed; tests that need the real KB skip themselves.
