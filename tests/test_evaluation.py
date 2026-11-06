@@ -1,16 +1,15 @@
-"""Unit tests of the evaluation harness (evaluation/): scoring, metrics, case-file schema.\nNo stack and no KB files needed; the shipped case file is validated too."""
+"""Unit tests of the evaluation harness (evaluation/): scoring, metrics, case-file schema.
+No stack and no KB files needed; the shipped case file is validated too."""
 import json
 import re
-import subprocess
 from collections import Counter
 from pathlib import Path
 
 import pytest
-import httpx
 from synthetic import NSAIDS, OVERVIEW, PPI
 
 import medrag
-from evaluation import kb_check, report, review, run, scoring
+from evaluation import kb_check, report, review, scoring
 from medrag.models import Line, Row, Section
 from evaluation.scoring import (KB_IDS, NO_RESPONSE, Turn, build_kb_index, check_citation, check_contract,
                                 confusion_matrix, parse_cases, parse_usage, percentile, score_turn,

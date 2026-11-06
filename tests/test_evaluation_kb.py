@@ -1,7 +1,6 @@
 """The test set checked against the real KB (needs the .docx files; skipped without them), plus an
 end-to-end run of a few cases against the running stack (skipped unless it is up)."""
 import os
-from pathlib import Path
 
 import httpx
 import pytest
