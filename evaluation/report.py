@@ -39,6 +39,8 @@ def render_markdown(results: dict) -> str:
     L.append(f"- API: {m['base_url']}, case file: `{m['cases_file']}` ({s['n_cases']} cases, {s['n_turns']} turns)")
     if m.get("notes"):
         L.append(f"- Notes: {m['notes']}")
+    for w in m.get("warnings", []):
+        L.append(f"- **WARNING: {w}**")
     if not m.get("kb_checked"):
         L.append("- **The KB files were not available to the runner: Section and snippet checks were skipped.**")
     L.append("")
@@ -47,11 +49,11 @@ def render_markdown(results: dict) -> str:
     L.append("")
     L.append(f"Overall (per turn): **{pct(st['overall'])}**. Cases with every turn right: {pct(st['cases_all_turns_right'])}.")
     L.append("")
-    L.append("| category | cases | turns | status accuracy | language accuracy |")
-    L.append("|---|---:|---:|---:|---:|")
+    L.append("| category | cases | turns | status accuracy | relevance | language accuracy |")
+    L.append("|---|---:|---:|---:|---:|---:|")
     for cat, r in st["per_category"].items():
         L.append(f"| {cat} | {s['cases_per_category'].get(cat, 0)} | {s['turns_per_category'][cat]} | {pct(r)} | "
-                 f"{pct(s['language']['per_category'][cat])} |")
+                 f"{pct(s['relevance']['per_category'].get(cat))} | {pct(s['language']['per_category'][cat])} |")
     L.append("")
     L.append("### Confusion matrix (rows: expected, columns: actual)")
     L.append("")
@@ -66,6 +68,11 @@ def render_markdown(results: dict) -> str:
     L.append(f"- Replies whose citations all name a real (`title`, `section`) of that KB Document: {pct(c['sections_found'])}")
     L.append(f"- Citations whose snippet lies within ONE body line or data row of the cited Section (checked against the real KB, not via the API): **{pct(sn['citations_valid'])}**")
     L.append(f"- Replies where every snippet is valid: {pct(sn['responses_all_valid'])}")
+    L.append(f"- Citations whose snippet is only a label line (ends in ':', e.g. 'Common side effects:'): {sn['label_line_citations']['n']} of {sn['label_line_citations']['of']}")
+    L.append("")
+    L.append("## Relevance (does the reply answer the question asked?)")
+    L.append("")
+    L.append(f"A turn passes when it came back answered, a cited Section is one of the expected Sections (if set) and the answer mentions one of the expected terms (if set): **{pct(s['relevance']['overall'])}**. Status and `doc_id` alone cannot tell a reply that answers a different question.")
     L.append("")
     L.append("## Language label")
     L.append("")
@@ -80,7 +87,8 @@ def render_markdown(results: dict) -> str:
                  f"prompt mean {num(tk['prompt_mean'], 0)}, completion mean {num(tk['completion_mean'], 0)}, "
                  f"LLM calls mean {num(tk['llm_calls_mean'], 2)} (totals: {tk['prompt_total']} prompt, {tk['completion_total']} completion, {tk['llm_calls_total']} calls)")
     else:
-        L.append("- Tokens per question: not available (no `X-Medrag-Usage` header in any response)")
+        L.append("- Tokens per question: **absent** (no response carried the `X-Medrag-Usage` header; start the stack with `MEDRAG_USAGE_HEADER=1`)")
+    L.append(f"- Turns sent outside their Session (multi-turn): {sum(bool(r.get('session_problem')) for r in rows)}")
     L.append(f"- Contract violations: **{ct['violations']}** in {ct['turns_with_violations']} turns (exact fields and types, answered implies at least one Citation, else an empty list)")
     L.append(f"- Non-200 responses: {ht['non_200']} (no response at all: {ht['no_response']})")
     L.append("")
@@ -92,6 +100,17 @@ def render_markdown(results: dict) -> str:
         L.append("|---|---:|---|---|---|---|")
         for r in bad:
             L.append(f"| {r['case_id']} | {r['turn']} | {r['category']} | {r['expected_status']} | {r['actual_status']} | {cell(r['message'], 70)} |")
+    else:
+        L.append("None.")
+    L.append("")
+    off = [r for r in rows if r["relevance_ok"] is False and r["status_ok"]]
+    L.append(f"## Answered but not relevant ({len(off)})")
+    L.append("")
+    if off:
+        L.append("| case | turn | question | answer |")
+        L.append("|---|---:|---|---|")
+        for r in off:
+            L.append(f"| {r['case_id']} | {r['turn']} | {cell(r['message'], 60)} | {cell(r['body'].get('answer', ''), 110)} |")
     else:
         L.append("None.")
     L.append("")

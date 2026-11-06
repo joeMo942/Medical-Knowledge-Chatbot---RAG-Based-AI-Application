@@ -60,14 +60,33 @@ def post_chat(client: httpx.Client, message: str, session_id: str | None) -> dic
 
 
 def run_case(client: httpx.Client, case: Case, kb_index: dict | None) -> list[dict]:
-    rows, session_id = [], None
+    """Runs the turns of one case in order. A multi-turn case is one Session: the X-Session-Id the
+    first reply returned is sent as session_id on each later turn. Each row records the session ID
+    SENT (`sent_session_id`) and the one returned (`session_id`); `session_problem` says what went
+    wrong when a later turn could not be sent in the Session or the server switched Sessions."""
+    rows, carry = [], None
     for n, turn in enumerate(case.turns, 1):
-        obs = post_chat(client, turn.message, session_id if case.multi_turn else None)
+        sent = carry if case.multi_turn else None
+        obs = post_chat(client, turn.message, sent)
+        problem = None
         if case.multi_turn:
-            session_id = obs["session_id"] or session_id
-        row = score_turn(turn, {**obs, "message": turn.message, "sent_session_id": session_id if n > 1 else None}, kb_index)
+            if n > 1 and sent is None:
+                problem = "no X-Session-Id was returned earlier in this case, so this turn started a new Session"
+            elif sent and obs["session_id"] and obs["session_id"] != sent:
+                problem = f"the server answered in Session {obs['session_id']}, not the one sent ({sent})"
+            carry = obs["session_id"] or carry
+        row = score_turn(turn, {**obs, "message": turn.message, "sent_session_id": sent, "session_problem": problem}, kb_index)
         rows.append({"case_id": case.id, "category": case.category, "turn": n, **row})
     return rows
+
+
+def unique_stem(out_dir: Path, name: str) -> Path:
+    """<out-dir>/<name>, or <name>-2, -3, ... when a results file of that name exists: never overwrites."""
+    stem, n = out_dir / name, 1
+    while stem.with_suffix(".json").exists() or stem.with_suffix(".md").exists():
+        n += 1
+        stem = out_dir / f"{name}-{n}"
+    return stem
 
 
 def load_kb_index(kb_dir: Path | None) -> dict | None:
@@ -115,17 +134,26 @@ def main(argv: list[str] | None = None) -> int:
                 f"{r['actual_status']}{'' if r['status_ok'] else ' (expected ' + r['expected_status'] + ')'} {r['latency_s']:.1f}s"
                 for r in got), flush=True)
 
+    warnings = []
+    if not any(r.get("usage") for r in rows):
+        warnings.append("No response carried the X-Medrag-Usage header, so the token metrics are absent. "
+                        "Start the stack with MEDRAG_USAGE_HEADER=1 to measure tokens.")
+    if any(r.get("session_problem") for r in rows):
+        warnings.append("Some multi-turn turns were not sent in their Session (see session_problem in the rows).")
+    for w in warnings:
+        print(f"WARNING: {w}", file=sys.stderr)
     commit, dirty = git_info()
     today = dt.date.today().isoformat()
     results = {
         "meta": {"date": today, "label": args.label, "commit": commit, "dirty": dirty,
                  "llm": health.get("llm"), "embedding": health.get("embedding"), "base_url": args.base_url,
-                 "cases_file": str(args.cases.name), "kb_checked": kb_index is not None, "notes": args.notes},
+                 "cases_file": str(args.cases.name), "kb_checked": kb_index is not None, "notes": args.notes,
+                 "usage_header": any(r.get("usage") for r in rows), "warnings": warnings},
         "summary": summarize(rows),
         "rows": rows,
     }
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    stem = args.out_dir / f"{today}-{args.label}"
+    stem = unique_stem(args.out_dir, f"{today}-{args.label}")
     stem.with_suffix(".json").write_text(json.dumps(results, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
     stem.with_suffix(".md").write_text(render_markdown(results), encoding="utf-8", newline="\n")
     s = results["summary"]
