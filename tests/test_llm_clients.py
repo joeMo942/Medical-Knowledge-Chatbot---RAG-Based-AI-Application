@@ -35,7 +35,7 @@ def test_ollama_request_shape_and_result():
     assert b["model"] == "qwen3.5:4b" and b["think"] is False and b["stream"] is False
     assert b["format"] == ANSWER_SCHEMA and b["keep_alive"] == KEEP_ALIVE
     assert b["options"]["num_ctx"] == 4321 and b["options"]["temperature"] == 0
-    assert b["options"]["num_predict"] == 600  # default output cap
+    assert b["options"]["num_predict"] == 1200  # the hard maximum when no per-call cap is given
     assert [m["role"] for m in b["messages"]] == ["system", "user"]
     assert c._http.timeout.read == 77 and c.timeout == 77
     assert res.data == REPLY
@@ -80,6 +80,37 @@ def test_openai_reply_cut_off_at_the_cap_raises_truncated():
     c = OpenAICompatClient("https://h/v1", "m", "", transport=httpx.MockTransport(handler), max_output_tokens=40)
     with pytest.raises(LLMTruncated):
         run(c.complete_json("s", "u", ANSWER_SCHEMA))
+
+
+def test_per_call_cap_is_sent_but_never_above_the_hard_maximum():
+    sent = []
+
+    def ollama(request):
+        sent.append(json.loads(request.content)["options"]["num_predict"])
+        return httpx.Response(200, json={"message": {"content": json.dumps(REPLY)}, "done_reason": "stop"})
+
+    def openai(request):
+        sent.append(json.loads(request.content)["max_tokens"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(REPLY)},
+                                                      "finish_reason": "stop"}]})
+
+    o = OllamaClient("http://o", "m:1", transport=httpx.MockTransport(ollama), max_output_tokens=1000)
+    a = OpenAICompatClient("https://h/v1", "m", "", transport=httpx.MockTransport(openai), max_output_tokens=1000)
+    for c in (o, a):
+        run(c.complete_json("s", "u", ANSWER_SCHEMA, max_tokens=321))
+        run(c.complete_json("s", "u", ANSWER_SCHEMA, max_tokens=5000))
+    assert sent == [321, 1000, 321, 1000]
+
+
+def test_truncation_reports_tokens_used_and_cap():
+    def handler(request):
+        return httpx.Response(200, json={"message": {"content": '{"answer": "x'}, "done_reason": "length",
+                                         "eval_count": 321})
+
+    c = OllamaClient("http://o", "m:1", transport=httpx.MockTransport(handler))
+    with pytest.raises(LLMTruncated) as e:
+        run(c.complete_json("s", "u", ANSWER_SCHEMA, max_tokens=321))
+    assert (e.value.completion_tokens, e.value.cap) == (321, 321)
 
 
 def test_output_cap_comes_from_settings(monkeypatch):
@@ -133,7 +164,7 @@ def test_openai_request_shape_and_result():
     res = run(c.complete_json("sys", "user", ANSWER_SCHEMA))
     b = seen["body"]
     assert seen["path"] == "/v1/chat/completions" and seen["auth"] == "Bearer sk-test"
-    assert b["model"] == "gpt-x" and b["temperature"] == 0 and b["max_tokens"] == 600
+    assert b["model"] == "gpt-x" and b["temperature"] == 0 and b["max_tokens"] == 1200
     js = b["response_format"]["json_schema"]
     assert js["strict"] is True and js["schema"] == ANSWER_SCHEMA
     assert c._http.timeout.read == 33

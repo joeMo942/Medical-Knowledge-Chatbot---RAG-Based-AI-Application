@@ -98,7 +98,8 @@ def create_app(
     settings = settings or Settings()
     retriever = LexicalRetriever(sections)
     store = SessionStore()
-    gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s)
+    gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
+                   settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):

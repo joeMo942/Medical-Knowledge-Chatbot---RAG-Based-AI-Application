@@ -13,7 +13,7 @@ from .config import Settings
 
 KEEP_ALIVE = "24h"  # same value for warm-up and chat, so Ollama never reloads the model
 READY_TIMEOUT_S = 2.0  # /health must never be slow
-DEFAULT_MAX_OUTPUT_TOKENS = 600  # caps one reply, so a long answer cannot run past the time budget
+DEFAULT_MAX_OUTPUT_TOKENS = 1200  # hard cap on one reply; the gate passes a smaller one per call
 
 
 class LLMError(RuntimeError):
@@ -23,6 +23,11 @@ class LLMError(RuntimeError):
 class LLMTruncated(LLMError):
     """The reply hit the output-token cap, so it is incomplete (and usually not valid JSON).
     The pipeline answers with the fixed not-found text instead of an error."""
+
+    def __init__(self, completion_tokens: int | None, cap: int):
+        super().__init__(f"reply cut off at {completion_tokens} tokens (cap {cap})")
+        self.completion_tokens = completion_tokens
+        self.cap = cap
 
 
 @dataclass(frozen=True)
@@ -41,8 +46,10 @@ class LLMResult:
 class LLMClient(Protocol):
     model: str
 
-    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
-        """One chat completion constrained to `schema`."""
+    async def complete_json(self, system: str, user: str, schema: dict[str, Any],
+                            max_tokens: int | None = None) -> LLMResult:
+        """One chat completion constrained to `schema`, at most `max_tokens` output
+        tokens (the client's own maximum when None). Raises LLMTruncated at the cap."""
         ...
 
 
@@ -70,7 +77,9 @@ class OllamaClient:
         self._max_out = max_output_tokens
         self._http = httpx.AsyncClient(base_url=base_url, timeout=timeout, transport=transport)
 
-    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
+    async def complete_json(self, system: str, user: str, schema: dict[str, Any],
+                            max_tokens: int | None = None) -> LLMResult:
+        cap = min(max_tokens or self._max_out, self._max_out)
         try:
             r = await self._http.post("/api/chat", json={
                 "model": self.model,
@@ -78,14 +87,14 @@ class OllamaClient:
                 "think": False,  # no reasoning tokens: keeps latency low
                 "format": schema,
                 "keep_alive": KEEP_ALIVE,
-                "options": {"temperature": 0, "num_ctx": self._num_ctx, "num_predict": self._max_out},
+                "options": {"temperature": 0, "num_ctx": self._num_ctx, "num_predict": cap},
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
             })
             r.raise_for_status()
             body = r.json()
             if body.get("done_reason") == "length":
-                raise LLMTruncated(f"reply cut off at {body.get('eval_count')} tokens (cap {self._max_out})")
+                raise LLMTruncated(body.get("eval_count"), cap)
             return LLMResult(
                 data=_parse_object(body["message"]["content"]),
                 prompt_tokens=body.get("prompt_eval_count"),
@@ -131,13 +140,15 @@ class OpenAICompatClient:
         self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), headers=headers,
                                        timeout=timeout, transport=transport)
 
-    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
+    async def complete_json(self, system: str, user: str, schema: dict[str, Any],
+                            max_tokens: int | None = None) -> LLMResult:
+        cap = min(max_tokens or self._max_out, self._max_out)
         t0 = time.monotonic()
         try:
             r = await self._http.post("/chat/completions", json={
                 "model": self.model,
                 "temperature": 0,
-                "max_tokens": self._max_out,
+                "max_tokens": cap,
                 "response_format": {"type": "json_schema",
                                     "json_schema": {"name": "answer", "schema": schema, "strict": True}},
                 "messages": [{"role": "system", "content": system},
@@ -146,7 +157,7 @@ class OpenAICompatClient:
             r.raise_for_status()
             body = r.json()
             if body["choices"][0].get("finish_reason") == "length":
-                raise LLMTruncated(f"reply cut off at the {self._max_out}-token cap")
+                raise LLMTruncated((body.get("usage") or {}).get("completion_tokens"), cap)
             usage = body.get("usage") or {}
             return LLMResult(
                 data=_parse_object(body["choices"][0]["message"]["content"]),

@@ -28,9 +28,11 @@ class FakeLLM:
         self.reply, self.exc, self.delay = reply, exc, delay
         self.calls = []
         self.cancelled = False
+        self.caps = []  # max_tokens passed by the gate, per call
 
-    async def complete_json(self, system, user, schema):
+    async def complete_json(self, system, user, schema, max_tokens=None):
         self.calls.append((system, user))
+        self.caps.append(max_tokens)
         try:
             if self.delay:
                 await asyncio.sleep(self.delay)

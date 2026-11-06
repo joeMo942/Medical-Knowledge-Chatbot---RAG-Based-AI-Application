@@ -141,7 +141,7 @@ def test_arabic_question_gets_language_ar():
 
 def test_reply_cut_off_at_the_output_cap_is_out_of_scope_not_500():
     for message, lang in (("Tell me everything about Cataflam", "en"), ("كل حاجة عن Cataflam", "ar")):
-        r = client(FakeLLM(exc=LLMTruncated("cut off"))).post("/chat", json={"message": message})
+        r = client(FakeLLM(exc=LLMTruncated(990, 1000))).post("/chat", json={"message": message})
         assert r.status_code == 200
         assert r.json() == {"answer": NOT_FOUND[lang], "citations": [], "status": "out_of_scope", "language": lang}
 
@@ -160,8 +160,10 @@ def test_llm_exception_is_http_500_with_error():
 
 def test_slow_llm_is_500_within_budget():
     t0 = time.monotonic()
-    r = client(FakeLLM(answered(), delay=5), budget_s=0.2).post("/chat", json=Q)
-    assert r.status_code == 500 and "error" in r.json()
+    # Tiny budget, gate thresholds lowered so the call starts and the timeout fires.
+    r = client(FakeLLM(answered(), delay=5), budget_s=0.2, llm_est_s=0.05, llm_margin_s=0.0,
+               min_output_tokens=1).post("/chat", json=Q)
+    assert r.status_code == 500 and r.json() == {"error": "the request timed out"}
     assert time.monotonic() - t0 < 2
 
 
@@ -177,7 +179,8 @@ async def _burst(app, n):
 
 def test_queue_that_cannot_finish_in_budget_fails_fast():
     # One call takes ~1 s, budget 2.5 s: two requests fit, the rest must be refused at once.
-    app = make_app(FakeLLM(answered(), delay=1.0), budget_s=2.5, llm_est_s=1.0, llm_concurrency=1)
+    app = make_app(FakeLLM(answered(), delay=1.0), budget_s=2.5, llm_est_s=1.0, llm_concurrency=1,
+                   llm_margin_s=0.1, min_output_tokens=1)
     results = asyncio.run(_burst(app, 5))
     ok = [r for r, _ in results if r.status_code == 200]
     refused = [(r, t) for r, t in results if r.status_code == 500]

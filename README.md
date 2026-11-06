@@ -25,11 +25,15 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_OLLAMA_NUM_CTX` | `8192` | Ollama context size (warm-up and chat use the same) |
 | `MEDRAG_MAX_MESSAGE_CHARS` | `2000` | longer messages get HTTP 400 |
 | `MEDRAG_LLM_CONCURRENCY` | `1` | simultaneous LLM calls; requests that cannot finish within the budget fail fast with 500 |
-| `MEDRAG_LLM_EST_S` | `5` | initial guess of one LLM call, used by that queue check |
-| `MEDRAG_MAX_OUTPUT_TOKENS` | `600` | cap on one model reply; a reply cut off at the cap is answered as out_of_scope |
+| `MEDRAG_LLM_EST_S` | `5` | floor of the expected duration of one LLM call (the estimate is the slowest of the last 5 calls, never below this), used by that queue check; must be below `MEDRAG_BUDGET_S` |
+| `MEDRAG_MAX_OUTPUT_TOKENS` | `1200` | hard maximum of one model reply |
+| `MEDRAG_MIN_OUTPUT_TOKENS` | `150` | a request with time for fewer output tokens than this is refused (500 busy) instead of calling the model |
+| `MEDRAG_DECODE_TOK_S` | `53` | decode speed used to size each reply's cap to the time left: (time left - margin) x speed; the server may lower it from observed speeds, never raise it |
+| `MEDRAG_LLM_MARGIN_S` | `2.5` | time kept back for prompt evaluation and overhead when sizing that cap |
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
 
 All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, with the defaults above.
+A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
 
 ## Tests
