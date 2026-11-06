@@ -30,6 +30,7 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_MIN_OUTPUT_TOKENS` | `150` | a request with time for fewer output tokens than this is refused (500 busy) instead of calling the model |
 | `MEDRAG_DECODE_TOK_S` | `53` | decode speed used to size each reply's cap to the time left: (time left - margin) x speed; the server may lower it from observed speeds, never raise it |
 | `MEDRAG_LLM_MARGIN_S` | `2.5` | time kept back for prompt evaluation and overhead when sizing that cap |
+| `MEDRAG_USAGE_HEADER` | `1` | send the `X-Medrag-Usage` response header (JSON: `prompt_tokens`, `completion_tokens`, `llm_calls` of that request); `0` turns it off. The response body never changes |
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
 
 All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, with the defaults above.

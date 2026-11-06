@@ -21,6 +21,7 @@ from .llm import LLMClient, build_llm
 from .models import Section
 from .retrieval import LexicalRetriever
 from .sessions import SessionStore
+from .usage import USAGE_HEADER, start_meter
 
 log = logging.getLogger("medrag")
 STATIC = Path(__file__).parent / "static"
@@ -142,6 +143,7 @@ def create_app(
             return _error(400, str(exc))
         session_id = store.resolve(body.get("session_id") or request.headers.get("x-session-id"))
         deadline = time.monotonic() + settings.budget_s
+        meter = start_meter()  # before the pipeline task exists, so the gate adds to this meter
         try:
             result = await asyncio.wait_for(
                 _run_unless_disconnected(request, pipeline(message, deadline)),
@@ -159,7 +161,10 @@ def create_app(
         if result is None:  # client disconnected; nobody is listening
             return _error(499, "client closed the request", session_id)
         store.add_turn(session_id, message, result.answer)
-        return JSONResponse(result.model_dump(), headers={"X-Session-Id": session_id})
+        headers = {"X-Session-Id": session_id}
+        if settings.usage_header:
+            headers[USAGE_HEADER] = meter.header_value()
+        return JSONResponse(result.model_dump(), headers=headers)
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:

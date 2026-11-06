@@ -306,3 +306,47 @@ def test_chat_page_is_a_working_chat_ui():
     html = r.text
     assert 'dir="auto"' in html and "<form" in html
     assert 'fetch("/chat"' in html and "X-Session-Id" in html and "citations" in html
+
+
+# --- X-Medrag-Usage header (tokens and LLM calls); the body never changes ---
+
+def test_usage_header_reports_tokens_and_calls_without_touching_the_body():
+    r = client(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json=Q)
+    assert json.loads(r.headers["X-Medrag-Usage"]) == {"prompt_tokens": 321, "completion_tokens": 45, "llm_calls": 1}
+    assert set(r.json()) == {"answer", "citations", "status", "language"}
+
+
+def test_usage_header_counts_zero_when_the_model_is_not_called():
+    r = client(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json={"message": "zzzz qqqq"})
+    assert r.status_code == 200 and r.json()["status"] == "out_of_scope"
+    assert json.loads(r.headers["X-Medrag-Usage"]) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0}
+
+
+def test_usage_header_counts_a_truncated_call():
+    r = client(FakeLLM(exc=LLMTruncated(150, 150))).post("/chat", json=Q)
+    assert r.status_code == 200 and r.json()["status"] == "out_of_scope"
+    assert json.loads(r.headers["X-Medrag-Usage"]) == {"prompt_tokens": 0, "completion_tokens": 150, "llm_calls": 1}
+
+
+def test_usage_header_unreported_tokens_count_as_zero():
+    r = client(FakeLLM(answered())).post("/chat", json=Q)
+    assert json.loads(r.headers["X-Medrag-Usage"]) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 1}
+
+
+def test_usage_header_is_not_shared_between_requests():
+    c = client(FakeLLM(answered(), tokens=(10, 5)))
+    first = c.post("/chat", json=Q).headers["X-Medrag-Usage"]
+    assert c.post("/chat", json=Q).headers["X-Medrag-Usage"] == first
+
+
+def test_usage_header_can_be_turned_off():
+    r = client(FakeLLM(answered()), usage_header=False).post("/chat", json=Q)
+    assert r.status_code == 200 and "X-Medrag-Usage" not in r.headers
+
+
+def test_usage_header_setting_from_env(monkeypatch):
+    assert Settings.from_env().usage_header is True
+    monkeypatch.setenv("MEDRAG_USAGE_HEADER", "0")
+    assert Settings.from_env().usage_header is False
+    monkeypatch.setenv("MEDRAG_USAGE_HEADER", "1")
+    assert Settings.from_env().usage_header is True
