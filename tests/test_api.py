@@ -5,7 +5,6 @@ import time
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from synthetic import HEADER_ROW, NSAIDS, OVERVIEW, ROW, SECTIONS, FakeLLM, answered
 
 from medrag.answering import NOT_FOUND
@@ -18,8 +17,32 @@ def make_app(llm, **settings):
     return create_app(SECTIONS, llm, Settings(**settings))
 
 
+class SyncClient:
+    """Blocking calls into the app through httpx.ASGITransport.
+
+    Not Starlette's TestClient: with the pinned Starlette 1.10 + httpx 0.28 it warns
+    that its httpx support is deprecated (it wants the separate httpx2 package).
+    Lifespan (the Ollama warm-up) is not run, which these tests do not need."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def request(self, method, url, **kw):
+        async def go():
+            transport = httpx.ASGITransport(app=self.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+                return await c.request(method, url, **kw)
+        return asyncio.run(go())
+
+    def get(self, url, **kw):
+        return self.request("GET", url, **kw)
+
+    def post(self, url, **kw):
+        return self.request("POST", url, **kw)
+
+
 def client(llm, **settings):
-    return TestClient(make_app(llm, **settings))
+    return SyncClient(make_app(llm, **settings))
 
 
 Q = {"message": "What is the active ingredient in Cataflam?"}
