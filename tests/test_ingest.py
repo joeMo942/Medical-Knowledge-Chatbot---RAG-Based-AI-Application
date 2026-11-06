@@ -3,7 +3,7 @@ import json
 import pytest
 from docx import Document
 
-from medrag.ingest import load_knowledge_base, read_blocks
+from medrag.ingest import IngestError, load_knowledge_base, read_blocks
 from medrag.manifest import ManifestEntry, load_manifest, parse_manifest
 from medrag.splitter import ParagraphBlock, TableBlock
 
@@ -39,7 +39,7 @@ def test_kb_id_comes_from_manifest_not_filename(tmp_path):
     (sec,) = doc.sections
     assert sec.kb_id == "KB-02"
     assert sec.path == "Asthma › SABA"
-    assert [r.text for r in sec.rows] == ["Ventolin – Salbutamol", "Odd – "]
+    assert [r.text for r in sec.rows] == ["Ventolin – Salbutamol", "Odd"]
     assert sec.lines == ("Common side effects:",)
 
 
@@ -69,3 +69,25 @@ def test_manifest_rejects_bad_or_duplicate_ids():
         parse_manifest({"documents": [{**doc, "kb_id": "01"}]})
     with pytest.raises(ValueError):
         parse_manifest({"documents": [doc, {**doc, "file": "b.docx"}]})
+
+
+def test_non_docx_file_raises_ingest_error_naming_kb_and_file(tmp_path):
+    (tmp_path / "bad.docx").write_text("not a docx")
+    entries = (ManifestEntry("KB-04", "bad.docx", ("1. Asthma",)),)
+    with pytest.raises(IngestError, match=r"KB-04 \(bad\.docx\)"):
+        load_knowledge_base(tmp_path, entries)
+
+
+def test_split_problems_raise_ingest_error_naming_kb_and_file(tmp_path):
+    make_docx(tmp_path / "a.docx")
+    entries = (ManifestEntry("KB-05", "a.docx", ("1. Asthma", "2. COPD")),)
+    with pytest.raises(IngestError, match=r"KB-05 \(a\.docx\)"):
+        load_knowledge_base(tmp_path, entries)
+
+
+def test_default_kb_dir_is_relative_to_repo_root(monkeypatch):
+    from medrag.ingest import kb_dir
+
+    monkeypatch.delenv("MEDRAG_KB_DIR", raising=False)
+    monkeypatch.chdir("/")
+    assert kb_dir().name == "data" and (kb_dir().parent / "pyproject.toml").is_file()

@@ -10,15 +10,20 @@ from docx.text.paragraph import Paragraph
 
 from .manifest import ManifestEntry, load_manifest
 from .models import KBDocument
-from .splitter import Block, ParagraphBlock, TableBlock, split_sections
+from .splitter import Block, ParagraphBlock, SplitError, TableBlock, split_sections
 
 KB_DIR_ENV = "MEDRAG_KB_DIR"
-DEFAULT_KB_DIR = "data"
+# Relative to the repository root, not the working directory.
+DEFAULT_KB_DIR = Path(__file__).resolve().parents[1] / "data"
+
+
+class IngestError(ValueError):
+    """A KB file could not be read or split; the message names KB ID and file."""
 
 
 def kb_dir() -> Path:
     """Directory holding the KB .docx files (not committed to git)."""
-    return Path(os.environ.get(KB_DIR_ENV, DEFAULT_KB_DIR))
+    return Path(os.environ.get(KB_DIR_ENV) or DEFAULT_KB_DIR)
 
 
 def read_blocks(path: Path) -> list[Block]:
@@ -50,9 +55,13 @@ def missing_files(entries: tuple[ManifestEntry, ...], directory: Path) -> list[P
 
 def load_document(entry: ManifestEntry, directory: Path) -> KBDocument:
     """The KB ID comes from the manifest entry, never from the file name."""
-    diseases, sections = split_sections(
-        entry.kb_id, entry.diseases, read_blocks(directory / entry.file)
-    )
+    try:
+        blocks = read_blocks(directory / entry.file)
+        diseases, sections = split_sections(entry.kb_id, entry.diseases, blocks)
+    except Exception as exc:  # PackageNotFoundError, BadZipFile, KeyError, SplitError...
+        raise IngestError(
+            f"{entry.kb_id} ({entry.file}): {type(exc).__name__}: {exc}"
+        ) from exc
     return KBDocument(
         kb_id=entry.kb_id, file=entry.file, diseases=diseases, sections=sections
     )

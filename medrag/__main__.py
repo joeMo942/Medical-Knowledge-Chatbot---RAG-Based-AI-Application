@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "out", None):
         args.out.write_text(text, encoding="utf-8", newline="\n")
     else:
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", newline="\n")
         sys.stdout.write(text)
     return 0
 
