@@ -13,7 +13,8 @@ from .ingest import kb_dir, load_knowledge_base
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="medrag")
     parser.add_argument(
-        "--kb-dir", type=Path, help="KB .docx folder (default: $MEDRAG_KB_DIR or ./data)"
+        "--kb-dir", type=Path, help=("KB .docx folder (default: $MEDRAG_KB_DIR or <repo root>/data; "
+              "a non-editable install, e.g. Docker, must set MEDRAG_KB_DIR)")
     )
     sub = parser.add_subparsers(dest="command", required=True)
     d = sub.add_parser("dump", help="print the Section structure (headings and row counts)")

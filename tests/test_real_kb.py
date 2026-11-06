@@ -1,5 +1,6 @@
 """Checks against the real KB .docx files. Skipped when data/ is absent."""
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -7,8 +8,6 @@ from docx import Document
 
 from medrag.dump import render_dump
 from medrag.ingest import kb_dir, load_knowledge_base
-from collections import Counter
-
 from medrag.manifest import load_manifest
 from medrag.models import Line, Table
 from medrag.splitter import strip_numbering
@@ -184,16 +183,27 @@ def test_omega3_keeps_its_otc_note_inside_the_section(real_kb):
 def test_every_source_paragraph_is_accounted_for_exactly_once(real_kb):
     for entry in load_manifest():
         raw = Counter(
-            p.text.strip()
+            strip_numbering(p.text)
             for p in Document(str(kb_dir() / entry.file)).paragraphs
             if p.text.strip()
         )
         doc = real_kb[entry.kb_id]
-        lines = Counter(l.strip() for s in doc.sections for l in s.lines)
-        headings = Counter(s.section for s in doc.sections if s.heading_present)
-        headings.update(strip_numbering(h) for h in entry.diseases)
-        # Stored headings have their numbering stripped; compare on stripped text.
-        leftover = Counter()
-        for text, n in (raw - lines).items():
-            leftover[strip_numbering(text)] += n
-        assert leftover == headings, entry.kb_id
+        stored = Counter(strip_numbering(l) for s in doc.sections for l in s.lines)
+        stored.update(s.section for s in doc.sections if s.heading_present)
+        stored.update(strip_numbering(h) for h in entry.diseases)
+        assert stored == raw, entry.kb_id  # equality in both directions
+
+
+def test_render_and_section_id_contain_only_source_text(real_kb):
+    ids = []
+    for entry in load_manifest():
+        paragraphs = {
+            strip_numbering(p.text) for p in Document(str(kb_dir() / entry.file)).paragraphs
+        }
+        for s in real_kb[entry.kb_id].sections:
+            ids.append(s.section_id)
+            first = s.render().splitlines()[0]
+            assert "no heading in source" not in s.render()
+            assert all(part in paragraphs for part in first.split(" › ")), first
+            assert "no heading in source" not in s.section_id
+    assert len(set(ids)) == len(ids)

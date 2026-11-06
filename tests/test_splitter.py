@@ -221,3 +221,18 @@ def test_otc_heading_without_table_of_its_own_stays_a_line():
 def test_malformed_tables_raise_split_error_naming_the_kb(rows):
     with pytest.raises(SplitError, match="KB-XX"):
         split([P("1. Asthma"), P("1. SABA"), T(rows=rows)], ["1. Asthma"])
+
+
+def test_headingless_blocks_render_and_id_without_placeholder_labels():
+    _, secs = split([
+        P("1. Asthma"), P("overview line"), P("1. SABA"),
+        table(["Drug class", "x"], ["a", "b"]),
+    ], ["1. Asthma"])
+    overview, saba, otc = secs
+    assert overview.render().splitlines()[0] == "Asthma"
+    assert otc.render().splitlines()[0] == "Asthma"
+    assert saba.render().splitlines()[0] == "Asthma › SABA"
+    for s in secs:
+        assert "[" not in s.render() and "[" not in s.section_id
+    assert len({s.section_id for s in secs}) == 3
+    assert "[overview" in overview.path  # label stays internal (dump only)

@@ -131,7 +131,10 @@ class Section:
     @property
     def section_id(self) -> str:
         """Unique across the Knowledge Base."""
-        return f"{self.kb_id}{PATH_SEPARATOR}{self.path}"
+        if self.heading_present:
+            return f"{self.kb_id}{PATH_SEPARATOR}{self.path}"
+        # No bracketed label: only the kind, which keeps IDs unique.
+        return f"{self.kb_id}{PATH_SEPARATOR}{self.title}{PATH_SEPARATOR}#{self.kind}"
 
     @property
     def lines(self) -> tuple[str, ...]:
@@ -160,8 +163,11 @@ class Section:
 
     def render(self) -> str:
         """The Section as text in reading order: heading line, then each line
-        and each table (header row, then data rows) as it appears."""
-        out = [self.path]
+        and each table (header row, then data rows) as it appears. Only text
+        from the KB appears: a block without a heading of its own starts with
+        its disease title, never with the bracketed label."""
+        out = [PATH_SEPARATOR.join((self.title, self.section))
+               if self.heading_present else self.title]
         for item in self.items:
             if isinstance(item, Line):
                 out.append(item.text)
