@@ -7,6 +7,7 @@ logic is #5). Model free text is only ever shown for an `answered` reply.
 """
 from __future__ import annotations
 
+import unicodedata
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -87,37 +88,78 @@ def build_prompt(question: str, sections: list[Section]) -> str:
     return "KNOWLEDGE BASE SECTIONS\n\n" + "\n\n".join(blocks) + f"\n\nQUESTION\n{question}"
 
 
-def candidates(section: Section) -> list[str]:
-    """What a snippet may quote: each body line and each data row, verbatim.
-    Never the heading line and never a table header row."""
-    out: list[str] = []
+def _units(section: Section) -> list[tuple[str, bool]]:
+    """(text, is_table_row) for each body line and each data row, verbatim and in
+    reading order. Never the heading line and never a table header row."""
+    out: list[tuple[str, bool]] = []
     for item in section.items:
         if isinstance(item, Line):
-            out.append(item.text)
+            out.append((item.text, False))
         else:
-            out.extend(r.text for r in item.rows)
-    return [c for c in out if c.strip()]
+            out.extend((r.text, True) for r in item.rows)
+    return [(t, row) for t, row in out if t.strip()]
+
+
+def candidates(section: Section) -> list[str]:
+    """What a snippet may quote: each body line and each data row, verbatim."""
+    return [t for t, _ in _units(section)]
+
+
+def _is_word_char(ch: str) -> bool:
+    # Letters, digits and combining marks (Arabic harakat) all belong to a word.
+    return ch == "_" or unicodedata.category(ch)[0] in "LNM"
+
+
+def _on_word_boundaries(s: str, text: str) -> bool:
+    """True when some occurrence of `s` in `text` neither starts nor ends inside a word."""
+    i = text.find(s)
+    while i != -1:
+        j = i + len(s)
+        starts_ok = i == 0 or not (_is_word_char(text[i - 1]) and _is_word_char(s[0]))
+        ends_ok = j == len(text) or not (_is_word_char(text[j]) and _is_word_char(s[-1]))
+        if starts_ok and ends_ok:
+            return True
+        i = text.find(s, i + 1)
+    return False
 
 
 def is_valid_snippet(snippet: str, section: Section) -> bool:
-    """True when the snippet lies within ONE candidate and is not trivially short."""
+    """True when the snippet is a whole line or row of the Section, or lies within
+    ONE of them, is at least MIN_SNIPPET_CHARS long, and starts and ends on word
+    boundaries (no "fen – Ibupro" fragments)."""
     s = snippet.strip()
     if not s:
         return False
     for c in candidates(section):
-        if s in c and (len(s) >= MIN_SNIPPET_CHARS or s == c.strip()):
+        if s == c.strip():
+            return True
+        if len(s) >= MIN_SNIPPET_CHARS and _on_word_boundaries(s, c):
             return True
     return False
 
 
 def _repair(section: Section, hints: str) -> str | None:
     """Simple rule: the single line or row sharing the most terms with the
-    question, answer and the model's snippet (first one on ties)."""
-    cands = candidates(section)
-    if not cands:
+    question, answer and the model's snippet. On a tie a table data row beats a
+    body line (a label such as "Trade Names في مصر:" supports nothing), then
+    the first in reading order."""
+    units = _units(section)
+    if not units:
         return None
     want = set(tokenize(hints))
-    return max(cands, key=lambda c: len(want & set(tokenize(c))))  # max keeps the first on ties
+    # max keeps the first on ties
+    return max(units, key=lambda u: (len(want & set(tokenize(u[0]))), u[1]))[0]
+
+
+def _pick_snippet(given: str, section: Section, hints: str) -> str | None:
+    """The model's snippet if valid; else its first line that is valid on its own
+    (models often paste a header row plus several rows); else a repaired one."""
+    if is_valid_snippet(given, section):
+        return given.strip()
+    for line in given.splitlines():
+        if is_valid_snippet(line, section):
+            return line.strip()
+    return _repair(section, f"{hints} {given}")
 
 
 def build_citations(raw: Any, sections: list[Section], hints: str) -> list[Citation]:
@@ -132,7 +174,7 @@ def build_citations(raw: Any, sections: list[Section], hints: str) -> list[Citat
             continue  # not a retrieved Section: drop it
         given = c.get("snippet")
         given = given if isinstance(given, str) else ""
-        snippet = given.strip() if is_valid_snippet(given, sec) else _repair(sec, f"{hints} {given}")
+        snippet = _pick_snippet(given, sec, hints)
         if snippet is None or (sec.section_id, snippet) in seen:
             continue
         seen.add((sec.section_id, snippet))
