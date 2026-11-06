@@ -38,7 +38,10 @@ def _error(status: int, message: str, session_id: str | None = None) -> JSONResp
 
 async def _read_json(request: Request, max_chars: int) -> dict:
     """Body read with a hard size cap (so a huge upload cannot stall the server)."""
-    limit = max_chars * 6 + 1024  # worst case: every character escaped as \\uXXXX
+    # Worst legal case: every character outside the BMP (e.g. an emoji), sent
+    # ASCII-escaped as a surrogate pair "\\ud83d\\ude00" = 12 bytes; plus room for
+    # session_id and JSON punctuation. 2000 chars -> ~28 KB, still tiny.
+    limit = max_chars * 12 + 4096
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > limit:
         raise BadRequest("request body too large")

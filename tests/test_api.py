@@ -207,6 +207,21 @@ def test_over_long_message_is_400_and_llm_not_called():
     assert len(llm.calls) == 1
 
 
+def test_longest_legal_message_fits_the_body_cap_even_ascii_escaped():
+    # 2000 emoji sent with ensure_ascii are 12 bytes each ("\ud83d\ude00").
+    llm = FakeLLM(answered())
+    body = json.dumps({"message": "😀" * 1990 + " Cataflam", "session_id": "s" * 128})
+    assert len(body) > 2000 * 12
+    r = client(llm).post("/chat", content=body.encode(), headers={"content-type": "application/json"})
+    assert r.status_code == 200 and len(llm.calls) == 1
+
+
+def test_huge_body_is_rejected_without_reading_it_all():
+    r = client(FakeLLM(answered())).post(
+        "/chat", content=b'{"message": "' + b"a" * 5_000_000 + b'"}', headers={"content-type": "application/json"})
+    assert r.status_code == 400 and r.json() == {"error": "request body too large"}
+
+
 def test_lone_surrogate_is_400_not_500():
     raw = b'{"message": "Cataflam \\ud800"}'
     r = client(FakeLLM(answered())).post("/chat", content=raw, headers={"content-type": "application/json"})
