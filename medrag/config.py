@@ -21,6 +21,9 @@ class Settings:
     top_k: int = 4
     # Total time budget for the whole /chat pipeline; the contract allows 30 s.
     budget_s: float = 25.0
+    max_message_chars: int = 2000
+    llm_concurrency: int = 1  # Ollama serves one request at a time
+    llm_est_s: float = 5.0  # initial guess of one LLM call, for the fail-fast queue check
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -36,4 +39,7 @@ class Settings:
             openai_api_key=e("MEDRAG_OPENAI_API_KEY") or d.openai_api_key,
             top_k=int(e("MEDRAG_TOP_K") or d.top_k),
             budget_s=float(e("MEDRAG_BUDGET_S") or d.budget_s),
+            max_message_chars=int(e("MEDRAG_MAX_MESSAGE_CHARS") or d.max_message_chars),
+            llm_concurrency=int(e("MEDRAG_LLM_CONCURRENCY") or d.llm_concurrency),
+            llm_est_s=float(e("MEDRAG_LLM_EST_S") or d.llm_est_s),
         )

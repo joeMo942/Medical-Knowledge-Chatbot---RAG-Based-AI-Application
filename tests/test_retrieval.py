@@ -1,6 +1,7 @@
+from synthetic import NSAIDS, PPI, SECTIONS
+
 from medrag.language import detect_language
 from medrag.retrieval import LexicalRetriever
-from tests.test_api import NSAIDS, PPI, SECTIONS
 
 
 def test_bm25_ranks_the_matching_section_first():

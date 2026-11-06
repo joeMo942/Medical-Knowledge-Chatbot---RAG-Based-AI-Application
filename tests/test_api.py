@@ -1,54 +1,25 @@
 """API tests: fake LLM, small synthetic Sections; no Ollama and no KB files needed."""
 import asyncio
+import json
 import time
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from synthetic import HEADER_ROW, NSAIDS, OVERVIEW, ROW, SECTIONS, FakeLLM, answered
 
+from medrag.answering import NOT_FOUND
 from medrag.app import create_app
 from medrag.config import EMBEDDING_PLACEHOLDER, Settings
 from medrag.llm import LLMError
-from medrag.models import Line, Row, Section, Table
-
-PRODUCTS = Table(
-    header=Row.from_cells(["Trade Name", "Active Ingredient"]),
-    rows=(Row.from_cells(["Cataflam", "Diclofenac potassium"]), Row.from_cells(["Voltaren", "Diclofenac sodium"])),
-    kind="products", trade_name_col=0, active_ingredient_col=1,
-)
-NSAIDS = Section("KB-04", "Pain & Arthritis", "NSAIDs", "class",
-                 (Line("Used for pain and inflammation."), PRODUCTS))
-PPI = Section("KB-02", "Peptic Ulcer & GERD", "Proton Pump Inhibitors (PPIs)", "class",
-              (Table(Row.from_cells(["Trade Name", "Active Ingredient"]),
-                     (Row.from_cells(["Controloc", "Pantoprazole"]),), "products", 0, 1),))
-OVERVIEW = Section("KB-01", "Asthma", "Asthma", "overview", (Line("Asthma is a chronic airway disease."),),
-                   heading_present=False)
-SECTIONS = [NSAIDS, PPI, OVERVIEW]
-ROW = "Cataflam – Diclofenac potassium"
 
 
-class FakeLLM:
-    model = "fake-model"
-
-    def __init__(self, reply=None, exc=None, delay=0.0):
-        self.reply, self.exc, self.delay = reply, exc, delay
-        self.calls = []
-
-    async def complete_json(self, system, user, schema):
-        self.calls.append((system, user))
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        if self.exc:
-            raise self.exc
-        return self.reply
-
-
-def answered(snippet=ROW, section_id=NSAIDS.section_id):
-    return {"answer": "Diclofenac.", "status": "answered",
-            "citations": [{"section_id": section_id, "snippet": snippet}]}
+def make_app(llm, **settings):
+    return create_app(SECTIONS, llm, Settings(**settings))
 
 
 def client(llm, **settings):
-    return TestClient(create_app(SECTIONS, llm, Settings(**settings)))
+    return TestClient(make_app(llm, **settings))
 
 
 Q = {"message": "What is the active ingredient in Cataflam?"}
@@ -74,16 +45,32 @@ def test_session_id_generated_then_reused():
     assert c.post("/chat", json=Q).headers["X-Session-Id"] != sid
 
 
-def test_non_verbatim_snippet_is_replaced_with_a_section_row():
-    r = client(FakeLLM(answered(snippet="Cataflam contains diclofenac (made up)"))).post("/chat", json=Q)
+def test_session_id_from_request_header_is_reused():
+    r = client(FakeLLM(answered())).post("/chat", json=Q, headers={"X-Session-Id": "from-header-1"})
+    assert r.headers["X-Session-Id"] == "from-header-1"
+
+
+@pytest.mark.parametrize("bad", [
+    "Cataflam contains diclofenac (made up)",   # not in the Section
+    "KB-04 › Pain & Arthritis",                  # an invented path, not KB text
+    "Asthma",                                    # not in this Section
+    "NSAIDs",                                    # the heading, never a candidate
+    HEADER_ROW,                                  # a table header row
+    f"{HEADER_ROW}\n{ROW}",                      # multi-line with the header row
+    f"{ROW}\nVoltaren – Diclofenac sodium",      # several rows
+    "C",                                         # one character
+    "",                                          # empty
+])
+def test_invalid_snippet_is_repaired_to_one_row(bad):
+    r = client(FakeLLM(answered(snippet=bad))).post("/chat", json=Q)
     (cit,) = r.json()["citations"]
     assert cit["snippet"] == ROW
-    assert cit["snippet"] in NSAIDS.render()
 
 
-def test_verbatim_snippet_is_kept():
-    r = client(FakeLLM(answered(snippet="Used for pain and inflammation."))).post("/chat", json=Q)
-    assert r.json()["citations"][0]["snippet"] == "Used for pain and inflammation."
+@pytest.mark.parametrize("good", ["Used for pain and inflammation.", "Diclofenac potassium", ROW])
+def test_valid_snippet_within_one_line_or_row_is_kept(good):
+    r = client(FakeLLM(answered(snippet=f" {good} "))).post("/chat", json=Q)
+    assert r.json()["citations"][0]["snippet"] == good
 
 
 def test_citation_text_comes_from_the_section_not_the_model():
@@ -98,13 +85,16 @@ def test_answered_without_valid_citation_is_downgraded():
         reply = {"answer": "Diclofenac.", "status": "answered", "citations": bad}
         body = client(FakeLLM(reply)).post("/chat", json=Q).json()
         assert body["status"] == "out_of_scope" and body["citations"] == []
+        assert body["answer"] == NOT_FOUND["en"]
 
 
-def test_out_of_scope_has_no_citations_even_if_model_cites():
-    reply = {"answer": "Not covered.", "status": "out_of_scope",
+def test_out_of_scope_uses_fixed_message_never_model_text():
+    reply = {"answer": "Take 500 mg every 6 hours.", "status": "out_of_scope",
              "citations": [{"section_id": NSAIDS.section_id, "snippet": ROW}]}
     body = client(FakeLLM(reply)).post("/chat", json=Q).json()
-    assert body == {"answer": "Not covered.", "citations": [], "status": "out_of_scope", "language": "en"}
+    assert body == {"answer": NOT_FOUND["en"], "citations": [], "status": "out_of_scope", "language": "en"}
+    ar = client(FakeLLM(reply)).post("/chat", json={"message": "كم جرعة Cataflam"}).json()
+    assert ar["answer"] == NOT_FOUND["ar"] and ar["language"] == "ar"
 
 
 def test_no_lexical_match_skips_the_llm():
@@ -138,6 +128,51 @@ def test_slow_llm_is_500_within_budget():
     assert time.monotonic() - t0 < 2
 
 
+async def _burst(app, n):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        async def one():
+            t0 = time.monotonic()
+            r = await c.post("/chat", json=Q)
+            return r, time.monotonic() - t0
+        return await asyncio.gather(*(one() for _ in range(n)))
+
+
+def test_queue_that_cannot_finish_in_budget_fails_fast():
+    # One call takes ~1 s, budget 2.5 s: two requests fit, the rest must be refused at once.
+    app = make_app(FakeLLM(answered(), delay=1.0), budget_s=2.5, llm_est_s=1.0, llm_concurrency=1)
+    results = asyncio.run(_burst(app, 5))
+    ok = [r for r, _ in results if r.status_code == 200]
+    refused = [(r, t) for r, t in results if r.status_code == 500]
+    assert len(ok) == 2 and len(refused) == 3
+    for r, t in refused:
+        assert set(r.json()) == {"error"} and "busy" in r.json()["error"]
+        assert t < 0.5
+
+
+def test_client_disconnect_cancels_the_llm_call():
+    llm = FakeLLM(answered(), delay=10)
+    app = make_app(llm, budget_s=20)
+
+    async def run():
+        inbox: asyncio.Queue = asyncio.Queue()
+        await inbox.put({"type": "http.request", "body": json.dumps(Q).encode(), "more_body": False})
+        scope = {"type": "http", "method": "POST", "path": "/chat", "query_string": b"", "root_path": "",
+                 "headers": [(b"content-type", b"application/json")], "http_version": "1.1",
+                 "scheme": "http", "server": ("t", 80), "client": ("c", 1)}
+
+        async def send(_):
+            pass
+
+        task = asyncio.create_task(app(scope, inbox.get, send))
+        await asyncio.sleep(0.5)
+        await inbox.put({"type": "http.disconnect"})
+        await asyncio.wait_for(task, 3)
+
+    asyncio.run(run())
+    assert llm.cancelled
+
+
 @pytest.mark.parametrize("payload", [{}, {"message": ""}, {"message": "   "}, {"message": 5}, {"session_id": "a"}])
 def test_missing_or_empty_message_is_400(payload):
     r = client(FakeLLM(answered())).post("/chat", json=payload)
@@ -149,12 +184,48 @@ def test_non_json_body_is_400():
     assert r.status_code == 400 and set(r.json()) == {"error"}
 
 
+def test_over_long_message_is_400_and_llm_not_called():
+    llm = FakeLLM(answered())
+    c = client(llm, max_message_chars=50)
+    assert c.post("/chat", json={"message": "a" * 51}).status_code == 400
+    assert c.post("/chat", json={"message": "Cataflam " * 5000}).status_code == 400  # body-size cap
+    assert c.post("/chat", json={"message": "Cataflam"}).status_code == 200
+    assert len(llm.calls) == 1
+
+
+def test_lone_surrogate_is_400_not_500():
+    raw = b'{"message": "Cataflam \\ud800"}'
+    r = client(FakeLLM(answered())).post("/chat", content=raw, headers={"content-type": "application/json"})
+    assert r.status_code == 400 and set(r.json()) == {"error"}
+
+
+def test_unknown_route_and_wrong_method_return_json_error():
+    c = client(FakeLLM())
+    r = c.get("/nope")
+    assert r.status_code == 404 and set(r.json()) == {"error"}
+    r = c.get("/chat")
+    assert r.status_code == 405 and set(r.json()) == {"error"}
+
+
 def test_health_reports_real_names():
     r = client(FakeLLM()).get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok", "llm": "fake-model", "embedding": EMBEDDING_PLACEHOLDER}
 
 
-def test_chat_page_is_served():
+def test_health_is_503_when_the_backend_is_not_ready():
+    class Down(FakeLLM):
+        async def ready(self):
+            return False
+
+    r = client(Down()).get("/health")
+    assert r.status_code == 503
+    assert r.json() == {"status": "error", "llm": "fake-model", "embedding": EMBEDDING_PLACEHOLDER}
+
+
+def test_chat_page_is_a_working_chat_ui():
     r = client(FakeLLM()).get("/")
-    assert r.status_code == 200 and 'dir="auto"' in r.text
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    html = r.text
+    assert 'dir="auto"' in html and "<form" in html
+    assert 'fetch("/chat"' in html and "X-Session-Id" in html and "citations" in html

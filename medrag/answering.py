@@ -2,18 +2,26 @@
 
 The model only chooses a `section_id` and a snippet. `doc_id`, `title` and
 `section` always come from the Section itself, and a snippet that is not
-verbatim text of that Section is replaced (full repair logic is #5).
+verbatim text of one line or row of that Section is replaced (full repair
+logic is #5). Model free text is only ever shown for an `answered` reply.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from .llm import LLMClient
+from .gate import LLMGate
 from .models import Line, Section
-from .retrieval import LexicalRetriever, tokenize
+from .retrieval import tokenize
 
+Status = Literal["answered", "out_of_scope", "escalated"]
+Language = Literal["ar", "en", "mixed"]
+
+MIN_SNIPPET_CHARS = 8  # shorter text is only valid when it is a whole line or row
+
+# Strict-mode compatible (OpenAI-style): every object forbids extra properties
+# and lists all of its properties as required. Ollama accepts it as well.
 ANSWER_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -25,10 +33,12 @@ ANSWER_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "properties": {"section_id": {"type": "string"}, "snippet": {"type": "string"}},
                 "required": ["section_id", "snippet"],
+                "additionalProperties": False,
             },
         },
     },
     "required": ["answer", "status", "citations"],
+    "additionalProperties": False,
 }
 
 SYSTEM_PROMPT = (
@@ -39,12 +49,14 @@ SYSTEM_PROMPT = (
     "If the sections do not contain what was asked, set status to \"out_of_scope\" and cite nothing. "
     "Otherwise set status to \"answered\" and cite the sections you used: for each citation give "
     "the section_id exactly as shown and a snippet copied character for character from that "
-    "section (one line or one table row). Respond with JSON only."
+    "section: ONE line or ONE table row only (never a table header row, never several rows). "
+    "Respond with JSON only."
 )
 
-NOT_FOUND = {
+NOT_FOUND: dict[str, str] = {
     "en": "I could not find this in the approved knowledge base.",
     "ar": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "mixed": "I could not find this in the approved knowledge base.",
 }
 
 
@@ -62,8 +74,8 @@ class ChatResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     answer: str
     citations: list[Citation]
-    status: str
-    language: str
+    status: Status
+    language: Language
 
 
 def build_prompt(question: str, sections: list[Section]) -> str:
@@ -72,28 +84,36 @@ def build_prompt(question: str, sections: list[Section]) -> str:
     return "KNOWLEDGE BASE SECTIONS\n\n" + "\n\n".join(blocks) + f"\n\nQUESTION\n{question}"
 
 
-def _candidates(section: Section) -> list[str]:
-    """Verbatim lines and data rows of the Section, in reading order."""
+def candidates(section: Section) -> list[str]:
+    """What a snippet may quote: each body line and each data row, verbatim.
+    Never the heading line and never a table header row."""
     out: list[str] = []
     for item in section.items:
         if isinstance(item, Line):
             out.append(item.text)
         else:
             out.extend(r.text for r in item.rows)
-    out = [c for c in out if c.strip()]
-    return out or [section.render().split("\n", 1)[0]]
+    return [c for c in out if c.strip()]
 
 
-def _verbatim(snippet: str, section: Section) -> str | None:
+def is_valid_snippet(snippet: str, section: Section) -> bool:
+    """True when the snippet lies within ONE candidate and is not trivially short."""
     s = snippet.strip()
-    return s if s and s in section.render() else None
+    if not s:
+        return False
+    for c in candidates(section):
+        if s in c and (len(s) >= MIN_SNIPPET_CHARS or s == c.strip()):
+            return True
+    return False
 
 
-def _repair(section: Section, hints: str) -> str:
-    """Simple rule: the Section line or row sharing the most terms with the
+def _repair(section: Section, hints: str) -> str | None:
+    """Simple rule: the single line or row sharing the most terms with the
     question, answer and the model's snippet (first one on ties)."""
+    cands = candidates(section)
+    if not cands:
+        return None
     want = set(tokenize(hints))
-    cands = _candidates(section)
     return max(cands, key=lambda c: len(want & set(tokenize(c))))  # max keeps the first on ties
 
 
@@ -109,29 +129,36 @@ def build_citations(raw: Any, sections: list[Section], hints: str) -> list[Citat
             continue  # not a retrieved Section: drop it
         given = c.get("snippet")
         given = given if isinstance(given, str) else ""
-        snippet = _verbatim(given, sec) or _repair(sec, f"{hints} {given}")
-        if (sec.section_id, snippet) in seen:
+        snippet = given.strip() if is_valid_snippet(given, sec) else _repair(sec, f"{hints} {given}")
+        if snippet is None or (sec.section_id, snippet) in seen:
             continue
         seen.add((sec.section_id, snippet))
         out.append(Citation(doc_id=sec.kb_id, title=sec.title, section=sec.section, snippet=snippet))
     return out
 
 
+def out_of_scope(language: str) -> ChatResponse:
+    # Fixed server text: model free text never reaches the user on out_of_scope.
+    return ChatResponse(answer=NOT_FOUND[language], citations=[], status="out_of_scope", language=language)
+
+
 async def answer_question(
-    question: str, language: str, retriever: LexicalRetriever, llm: LLMClient, top_k: int
+    question: str,
+    language: str,
+    sections: list[Section],
+    llm: LLMGate,
+    deadline: float | None = None,
 ) -> ChatResponse:
-    sections = retriever.search(question, top_k)
+    """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller)."""
     if not sections:  # nothing lexically related: no reason to ask the model
-        return ChatResponse(answer=NOT_FOUND[language], citations=[], status="out_of_scope", language=language)
-    raw = await llm.complete_json(SYSTEM_PROMPT, build_prompt(question, sections), ANSWER_SCHEMA)
+        return out_of_scope(language)
+    result = await llm.complete_json(SYSTEM_PROMPT, build_prompt(question, sections), ANSWER_SCHEMA, deadline)
+    raw = result.data
     answer = raw.get("answer")
     answer = answer.strip() if isinstance(answer, str) else ""
-    citations: list[Citation] = []
     if raw.get("status") == "answered" and answer:
         citations = build_citations(raw.get("citations"), sections, f"{question} {answer}")
-    if citations:
-        return ChatResponse(answer=answer, citations=citations, status="answered", language=language)
-    # Contract invariant: answered needs a valid Citation; otherwise out_of_scope with none.
-    if raw.get("status") == "out_of_scope" and answer:
-        return ChatResponse(answer=answer, citations=[], status="out_of_scope", language=language)
-    return ChatResponse(answer=NOT_FOUND[language], citations=[], status="out_of_scope", language=language)
+        if citations:
+            return ChatResponse(answer=answer, citations=citations, status="answered", language=language)
+    # out_of_scope, or answered without a valid Citation (contract invariant).
+    return out_of_scope(language)

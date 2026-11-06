@@ -3,22 +3,40 @@ OpenAI-compatible endpoint (off unless configured through env vars)."""
 from __future__ import annotations
 
 import json
+import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
 
 from .config import Settings
 
+KEEP_ALIVE = "24h"  # same value for warm-up and chat, so Ollama never reloads the model
+READY_TIMEOUT_S = 2.0  # /health must never be slow
+
 
 class LLMError(RuntimeError):
     """The model call failed or returned something unusable."""
 
 
+@dataclass(frozen=True)
+class LLMResult:
+    """Parsed JSON plus what the backend reported about the call (for #9; not logged yet).
+    Durations are in seconds; None where the backend does not report them."""
+
+    data: dict[str, Any]
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_s: float | None = None
+    prompt_eval_s: float | None = None
+    eval_s: float | None = None
+
+
 class LLMClient(Protocol):
     model: str
 
-    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
-        """One chat completion constrained to `schema`; returns the parsed JSON object."""
+    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
+        """One chat completion constrained to `schema`."""
         ...
 
 
@@ -32,45 +50,77 @@ def _parse_object(text: str) -> dict[str, Any]:
     return obj
 
 
-class OllamaClient:
-    def __init__(self, base_url: str, model: str, num_ctx: int = 8192, timeout: float = 120.0):
-        self.model = model
-        self._num_ctx = num_ctx
-        self._http = httpx.AsyncClient(base_url=base_url, timeout=timeout)
+def _secs(ns: Any) -> float | None:
+    return ns / 1e9 if isinstance(ns, (int, float)) else None
 
-    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
+
+class OllamaClient:
+    def __init__(self, base_url: str, model: str, num_ctx: int = 8192, timeout: float = 120.0,
+                 transport: httpx.AsyncBaseTransport | None = None):
+        self.model = model
+        self.timeout = timeout
+        self._num_ctx = num_ctx
+        self._http = httpx.AsyncClient(base_url=base_url, timeout=timeout, transport=transport)
+
+    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
         try:
             r = await self._http.post("/api/chat", json={
                 "model": self.model,
                 "stream": False,
                 "think": False,  # no reasoning tokens: keeps latency low
                 "format": schema,
+                "keep_alive": KEEP_ALIVE,
                 "options": {"temperature": 0, "num_ctx": self._num_ctx},
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
             })
             r.raise_for_status()
-            return _parse_object(r.json()["message"]["content"])
+            body = r.json()
+            return LLMResult(
+                data=_parse_object(body["message"]["content"]),
+                prompt_tokens=body.get("prompt_eval_count"),
+                completion_tokens=body.get("eval_count"),
+                total_s=_secs(body.get("total_duration")),
+                prompt_eval_s=_secs(body.get("prompt_eval_duration")),
+                eval_s=_secs(body.get("eval_duration")),
+            )
         except LLMError:
             raise
         except Exception as exc:
             raise LLMError(f"ollama call failed: {type(exc).__name__}: {exc}") from exc
 
     async def warm(self) -> None:
-        """Load the model into memory so the first real question is not slow."""
+        """Load the model with the same context size as chat, so the first real
+        question does not trigger a reload."""
         try:
-            await self._http.post("/api/generate", json={"model": self.model, "keep_alive": "24h"})
+            await self._http.post("/api/generate", json={
+                "model": self.model, "keep_alive": KEEP_ALIVE, "options": {"num_ctx": self._num_ctx}})
         except Exception:
             pass  # best effort
 
+    async def ready(self) -> bool:
+        """True when Ollama answers and the configured model is present."""
+        try:
+            r = await self._http.get("/api/tags", timeout=READY_TIMEOUT_S)
+            r.raise_for_status()
+            names = {m.get("name") for m in r.json().get("models", [])}
+            want = self.model if ":" in self.model else self.model + ":latest"
+            return want in names
+        except Exception:
+            return False
+
 
 class OpenAICompatClient:
-    def __init__(self, base_url: str, model: str, api_key: str, timeout: float = 60.0):
+    def __init__(self, base_url: str, model: str, api_key: str, timeout: float = 60.0,
+                 transport: httpx.AsyncBaseTransport | None = None):
         self.model = model
+        self.timeout = timeout
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), headers=headers, timeout=timeout)
+        self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), headers=headers,
+                                       timeout=timeout, transport=transport)
 
-    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
+    async def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
+        t0 = time.monotonic()
         try:
             r = await self._http.post("/chat/completions", json={
                 "model": self.model,
@@ -81,11 +131,26 @@ class OpenAICompatClient:
                              {"role": "user", "content": user}],
             })
             r.raise_for_status()
-            return _parse_object(r.json()["choices"][0]["message"]["content"])
+            body = r.json()
+            usage = body.get("usage") or {}
+            return LLMResult(
+                data=_parse_object(body["choices"][0]["message"]["content"]),
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+                total_s=time.monotonic() - t0,
+            )
         except LLMError:
             raise
         except Exception as exc:
             raise LLMError(f"openai-compatible call failed: {type(exc).__name__}: {exc}") from exc
+
+    async def ready(self) -> bool:
+        """True when the endpoint answers GET /models with a success status."""
+        try:
+            r = await self._http.get("/models", timeout=READY_TIMEOUT_S)
+            return r.status_code < 400
+        except Exception:
+            return False
 
 
 def build_llm(s: Settings) -> LLMClient:

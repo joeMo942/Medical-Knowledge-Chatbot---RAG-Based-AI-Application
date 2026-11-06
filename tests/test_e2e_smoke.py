@@ -7,6 +7,7 @@ import os
 import httpx
 import pytest
 
+from medrag.answering import is_valid_snippet
 from medrag.ingest import kb_dir, load_knowledge_base, missing_files
 from medrag.manifest import load_manifest
 
@@ -39,4 +40,4 @@ def test_dev_question_1_cataflam(api):
     sections = {(s.kb_id, s.title, s.section): s for d in load_knowledge_base(directory) for s in d.sections}
     for c in body["citations"]:
         sec = sections[(c["doc_id"], c["title"], c["section"])]
-        assert c["snippet"] in sec.render()
+        assert is_valid_snippet(c["snippet"], sec)  # inside ONE body line or data row
