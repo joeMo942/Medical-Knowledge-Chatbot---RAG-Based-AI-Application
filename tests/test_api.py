@@ -248,6 +248,28 @@ def test_huge_body_is_rejected_without_reading_it_all():
     assert r.status_code == 400 and r.json() == {"error": "request body too large"}
 
 
+def test_huge_chunked_body_without_content_length_is_cut_off_while_streaming():
+    sent = {"chunks": 0}
+    total = 100  # 100 x 64 KB = 6.4 MB if it were read to the end
+
+    async def body():
+        yield b'{"message": "'
+        for _ in range(total):
+            sent["chunks"] += 1
+            yield b"a" * 65536
+        yield b'"}'
+
+    async def go():
+        transport = httpx.ASGITransport(app=make_app(FakeLLM(answered())))
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            return await c.post("/chat", content=body(), headers={"content-type": "application/json"})
+
+    r = asyncio.run(go())
+    assert "content-length" not in {k.lower() for k in r.request.headers}  # really chunked
+    assert r.status_code == 400 and r.json() == {"error": "request body too large"}
+    assert sent["chunks"] < 5  # stopped at the cap (~28 KB), not after 6.4 MB
+
+
 def test_lone_surrogate_is_400_not_500():
     raw = b'{"message": "Cataflam \\ud800"}'
     r = client(FakeLLM(answered())).post("/chat", content=raw, headers={"content-type": "application/json"})
