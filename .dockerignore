@@ -4,7 +4,10 @@ data/
 .github/
 .claude/
 .pytest_cache/
-__pycache__/
+**/__pycache__/
+build/
+.env
+.env.*
 *.egg-info/
 tests/
 docs/

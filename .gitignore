@@ -1,6 +1,9 @@
 .claude
 data
 .venv/
+.env
+.env.*
+build/
 __pycache__/
 *.egg-info/
 .pytest_cache/

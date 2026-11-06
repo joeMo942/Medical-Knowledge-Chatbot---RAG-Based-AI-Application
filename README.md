@@ -21,7 +21,15 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_LLM_BACKEND` | `ollama` | `openai` selects any OpenAI-compatible endpoint |
 | `MEDRAG_OPENAI_BASE_URL`, `MEDRAG_OPENAI_MODEL`, `MEDRAG_OPENAI_API_KEY` | empty | only used when the backend is `openai`; keep the key in your shell or an untracked `.env` |
 | `MEDRAG_BUDGET_S` | `25` | total time budget for one `/chat` request |
-| `MEDRAG_KB_DIR` | `./data` (`/kb` in Docker) | KB `.docx` folder |
+| `MEDRAG_TOP_K` | `4` | Sections given to the model |
+| `MEDRAG_OLLAMA_NUM_CTX` | `8192` | Ollama context size (warm-up and chat use the same) |
+| `MEDRAG_MAX_MESSAGE_CHARS` | `2000` | longer messages get HTTP 400 |
+| `MEDRAG_LLM_CONCURRENCY` | `1` | simultaneous LLM calls; requests that cannot finish within the budget fail fast with 500 |
+| `MEDRAG_LLM_EST_S` | `5` | initial guess of one LLM call, used by that queue check |
+| `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
+
+All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, with the defaults above.
+`GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
 
 ## Tests
 
