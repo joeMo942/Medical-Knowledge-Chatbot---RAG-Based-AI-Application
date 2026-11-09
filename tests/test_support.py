@@ -225,3 +225,11 @@ def test_server_label_rule_agrees_with_the_evaluation_label_rule_on_every_real_b
     disagree = [ln for d in real_kb.values() for s in d.sections for ln in s.lines
                 if _is_label_line(ln, False) != is_label_line(ln)]
     assert disagree == []
+
+
+def test_schema_has_the_model_cite_before_it_chooses_the_status():
+    from medrag.answering import ANSWER_SCHEMA, answer_schema
+
+    assert list(ANSWER_SCHEMA["properties"]) == ["answer", "citations", "status"]
+    assert ANSWER_SCHEMA["required"] == ["answer", "citations", "status"]
+    assert list(answer_schema(True)["properties"])[-3:] == ["answer", "citations", "status"]  # backstop fields first

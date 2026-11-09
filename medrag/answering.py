@@ -32,11 +32,13 @@ MIN_SNIPPET_CHARS = 8  # shorter text is only valid when it is a whole line or r
 
 # Strict-mode compatible (OpenAI-style): every object forbids extra properties
 # and lists all of its properties as required. Ollama accepts it as well.
+# The model writes the answer and its Citations BEFORE it picks the status (Ollama generates the
+# properties in this order): decided first, "out_of_scope" made it drop the covered half of a partly
+# covered question; written last, it follows from what was cited.
 ANSWER_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "answer": {"type": "string"},
-        "status": {"type": "string", "enum": ["answered", "out_of_scope"]},
         "citations": {
             "type": "array",
             "items": {
@@ -46,8 +48,9 @@ ANSWER_SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
             },
         },
+        "status": {"type": "string", "enum": ["answered", "out_of_scope"]},
     },
-    "required": ["answer", "status", "citations"],
+    "required": ["answer", "citations", "status"],
     "additionalProperties": False,
 }
 
