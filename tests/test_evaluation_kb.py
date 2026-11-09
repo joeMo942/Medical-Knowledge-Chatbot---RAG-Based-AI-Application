@@ -75,5 +75,9 @@ def test_runner_scores_real_cases_against_the_stack(real_kb):
     for r in rows:
         assert r["http_status"] == 200 and r["session_id"] and r["latency_s"] > 0
         assert r["contract_violations"] == []
-        assert r["usage"] is not None and r["usage"]["llm_calls"] >= 0
     assert rows[2]["sent_session_id"] == rows[1]["session_id"]   # the Session was carried into turn 2
+    # The usage header is opt-in (MEDRAG_USAGE_HEADER=1): a stack started with the default sends none.
+    if all(r["usage"] is None for r in rows):
+        pytest.skip("usage header not checked: the stack runs without MEDRAG_USAGE_HEADER=1 (the default); "
+                    "start it with MEDRAG_USAGE_HEADER=1 docker compose up -d to check it")
+    assert all(r["usage"] is not None and r["usage"]["llm_calls"] >= 0 for r in rows)
