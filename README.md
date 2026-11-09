@@ -47,9 +47,18 @@ Every message is checked before retrieval and before the answer call (`medrag/pi
 - `/health` is `ok` only after the model has been loaded, so the first request does not pay for the load.
 - A rule-flagged emergency makes no LLM call; every other request makes one short extra call, counted in `X-Medrag-Usage`.
 
+## Out of Scope and Citations
+
+After the model answers, the server checks the Citations (`medrag/answering.py`, `medrag/support.py`). Model text is never shown on `out_of_scope`; that reply is a fixed message in the reply language.
+
+- A Citation must point to a Section that was retrieved for this question (others are dropped); `doc_id`, `title` and `section` come from the Section. A snippet must be one body line or data row of it, word for word; a paraphrase is replaced by the closest real line (most words in common with what the model wrote, never a heading, table header or label line such as "Common side effects:").
+- Support check (deterministic, no extra LLM call): the question's topic words (the question minus frame words like "which drugs are used to treat", numbers and KB drug names) must be found in the cited Sections' text, with Arabic folding, stemming and a few English/Arabic pairs. "Which drugs treat malaria?" cites real Plaquenil/Doxycycline rows but the KB never says malaria, so it becomes Out of Scope with `citations: []`. A word the whole KB lacks also fails the check unless the question asks an aspect of a covered drug (ingredient, class, alternatives, side effects, contraindications), which is a partly covered question and stays Answered.
+- Partly covered questions are Answered: the prompt asks for the covered part with Citations plus one sentence naming what the knowledge base does not contain. Out of Scope only when nothing asked is covered. The prompt forbids outside knowledge.
+- Known limits: a question whose only unsupported topic is a generic word the cited text happens to contain (for example "children" in a question about a drug the KB lists, but not for that use) is left to the model; arabic transliterated brand names are not matched until hybrid search (#6).
+
 ## Evaluation
 
-The test set (`evaluation/cases.json`: 85 cases, 90 turns, each with expected status, expected KB IDs, relevance terms and a note) and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them. Start the stack with the usage header on, so tokens are measured (`MEDRAG_USAGE_HEADER=1 docker compose up -d --wait`), then:
+The test set (`evaluation/cases.json`: 85 cases, 90 turns; `evaluation/cases_issue5.json` adds 11 out-of-KB drug traps and partly covered cases, run with `--cases`, each with expected status, expected KB IDs, relevance terms and a note) and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them. Start the stack with the usage header on, so tokens are measured (`MEDRAG_USAGE_HEADER=1 docker compose up -d --wait`), then:
 
 ```
 python -m evaluation.run --label baseline          # every case, one at a time, against http://localhost:8000

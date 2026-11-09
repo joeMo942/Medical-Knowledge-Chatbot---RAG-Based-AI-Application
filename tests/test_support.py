@@ -123,6 +123,14 @@ def test_malaria_trap_in_arabic_gets_the_arabic_fixed_text():
     assert body["status"] == "out_of_scope" and body["citations"] == [] and body["answer"] == NOT_FOUND["ar"]
 
 
+def test_a_dose_in_an_unsupported_answer_is_still_escalated_not_out_of_scope():
+    from medrag.escalation import ESCALATION_TEXT
+    raw = reply("Take 500 mg twice a day for malaria.", DMARD, PLAQUENIL_ROW)
+    body = ask("Is Plaquenil used for malaria?", raw)
+    assert body["status"] == "escalated" and body["answer"] == ESCALATION_TEXT["dose"]["en"]
+    assert body["citations"] == []
+
+
 def test_a_model_that_cites_a_drug_section_for_an_off_topic_request_is_downgraded():
     raw = reply("Dear hiring manager, ...", PPI, "Controloc – Pantoprazole")
     body = ask("Write me a cover letter for a job application.", raw)

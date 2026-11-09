@@ -2,8 +2,8 @@
 
 The model only chooses a `section_id` and a snippet. `doc_id`, `title` and
 `section` always come from the Section itself, and a snippet that is not
-verbatim text of one line or row of that Section is replaced (full repair
-logic is #5). Model free text is only ever shown for an `answered` reply, and an answered reply that
+verbatim text of one line or row of that Section is replaced by the closest real line. An answered reply
+whose cited Sections do not support the question (support.py) becomes Out of Scope. Model free text is only ever shown for an `answered` reply, and an answered reply that
 states a dose-like amount missing from its cited Sections becomes the fixed Dose escalation.
 """
 from __future__ import annotations
@@ -353,13 +353,15 @@ async def answer_question(
         cited = build_cited(raw.get("citations"), sections, f"{question} {answer}")
         if cited:
             cited_sections = list({s.section_id: s for s, _ in cited}.values())
+            cited_text = "
+".join(s.render() for s in cited_sections)
+            if unsupported_amounts(answer, cited_text):
+                # A dose-like amount the cited documents do not contain: never shown. Runs first:
+                # Escalated takes precedence over Out of Scope.
+                return escalated("dose", language)
             if support is not None and not support.supported(question, cited_sections):
                 # Real Sections, but none of them is about what was asked (drug names alone do not count).
                 return out_of_scope(language)
-            cited_text = "\n".join(s.render() for s in cited_sections)
-            if unsupported_amounts(answer, cited_text):
-                # A dose-like amount the cited documents do not contain: never shown.
-                return escalated("dose", language)
             return ChatResponse(answer=answer, citations=[c for _, c in cited], status="answered", language=language)
     # out_of_scope, or answered without a valid Citation (contract invariant).
     return out_of_scope(language)
