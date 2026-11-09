@@ -94,6 +94,13 @@ def test_relevance_is_a_separate_metric_from_status_and_doc_hit():
     assert "dose" not in s["relevance"]["per_category"]
 
 
+def test_a_turn_with_only_answer_must_mention_all_is_scored_for_relevance():
+    # strength-panadol-extra, strength-novomix-30 and group-statins-breastfeeding set nothing else
+    every = Turn("q", "answered", "en", ("KB-04",), anchors=("x",), answer_must_mention_all=(("500 mg",), ("65 mg",)))
+    assert row("a", "strength", every, obs(body(answer="Paracetamol 500 mg + Caffeine 65 mg")))["relevance_ok"] is True
+    assert row("b", "strength", every, obs(body(answer="Paracetamol + Caffeine")))["relevance_ok"] is False
+
+
 # ------------------------------------------- metrics that mutation testing found unprotected
 
 def test_citation_doc_ok_needs_an_answered_status():
