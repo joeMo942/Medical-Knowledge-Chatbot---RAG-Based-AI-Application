@@ -353,8 +353,7 @@ async def answer_question(
         cited = build_cited(raw.get("citations"), sections, f"{question} {answer}")
         if cited:
             cited_sections = list({s.section_id: s for s, _ in cited}.values())
-            cited_text = "
-".join(s.render() for s in cited_sections)
+            cited_text = "\n".join(s.render() for s in cited_sections)
             if unsupported_amounts(answer, cited_text):
                 # A dose-like amount the cited documents do not contain: never shown. Runs first:
                 # Escalated takes precedence over Out of Scope.

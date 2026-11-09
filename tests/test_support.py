@@ -215,3 +215,13 @@ def test_real_kb_no_expected_answer_is_downgraded_and_every_trap_is_caught(real_
                     missed.append(case["id"])
     assert wrongly_downgraded == []
     assert missed == []
+
+
+@pytest.mark.kb
+def test_server_label_rule_agrees_with_the_evaluation_label_rule_on_every_real_body_line(real_kb):
+    from evaluation.scoring import is_label_line
+    from medrag.answering import _is_label_line
+
+    disagree = [ln for d in real_kb.values() for s in d.sections for ln in s.lines
+                if _is_label_line(ln, False) != is_label_line(ln)]
+    assert disagree == []
