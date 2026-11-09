@@ -98,7 +98,7 @@ services:
       MEDRAG_USAGE_HEADER: ${MEDRAG_USAGE_HEADER:-0}
       MEDRAG_RETRIEVER: ${MEDRAG_RETRIEVER:-hybrid}
       MEDRAG_MIN_DENSE: ${MEDRAG_MIN_DENSE:-0.5}
-      MEDRAG_EMBED_THREADS: ${MEDRAG_EMBED_THREADS:-0}
+      MEDRAG_EMBED_THREADS: ${MEDRAG_EMBED_THREADS:-4}
     volumes:
       - ./data:/kb:ro
       - sessions:/var/lib/medrag  # Sessions (SQLite) survive restarts and rebuilds of the api

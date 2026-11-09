@@ -44,17 +44,25 @@ def sparse_score(a: dict[int, float], b: dict[int, float]) -> float:
     return sum(w * b[t] for t, w in a.items() if t in b)
 
 
+BULK_TEXTS = 4  # more texts than this is a bulk job (the index), fewer is a question
+
+
 class BGEM3Embedder:
     model_id = MODEL_ID
     revision = REVISION
 
     def __init__(self, model_dir: str | Path, threads: int | None = None, batch_size: int = 8):
+        """`threads`: CPU threads for a question (a few short texts). The index build (many long texts) uses all
+        cores: measured in the container, a one-question forward pass is about 4x slower on 24 threads than on 4
+        (the work is too small to share out), while the index build gains from every core."""
+        import os
+
         import torch
         from transformers import AutoModel, AutoTokenizer
 
         self._torch = torch
-        if threads:
-            torch.set_num_threads(threads)
+        self._bulk_threads = os.cpu_count() or 1
+        self._query_threads = threads or self._bulk_threads
         directory = str(model_dir)
         self._tok = AutoTokenizer.from_pretrained(directory, local_files_only=True)
         self._model = AutoModel.from_pretrained(directory, local_files_only=True).eval()
@@ -70,6 +78,7 @@ class BGEM3Embedder:
         order = sorted(range(len(texts)), key=lambda i: len(texts[i]))  # similar lengths share a batch: less padding
         out: list[Encoded | None] = [None] * len(texts)
         with self._lock, torch.inference_mode():
+            torch.set_num_threads(self._bulk_threads if len(texts) > BULK_TEXTS else self._query_threads)
             for start in range(0, len(order), self._batch):
                 idx = order[start:start + self._batch]
                 enc = self._tok([texts[i] for i in idx], padding=True, truncation=True, max_length=max_length,

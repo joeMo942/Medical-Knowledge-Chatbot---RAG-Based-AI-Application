@@ -47,7 +47,7 @@ class Settings:
     embed_path: str = "/models/bge-m3"  # the model's files (modelstore.py fetches them when absent)
     embed_seed: str = ""  # optional folder with the files already (a local download); copied instead of downloaded
     index_dir: str = ""  # the index cache; empty = no cache, the index is rebuilt at every start
-    embed_threads: int = 0  # torch CPU threads; 0 = torch's default (all cores)
+    embed_threads: int = 4  # torch CPU threads for one question (the index build uses all cores); 0 = all cores
     # With no query term in any Section, a best dense similarity below this means "nothing matches" (no LLM call).
     # The gate only applies where BM25 finds nothing, so it can never retrieve less than BM25 alone did. On the test set the
     # five such questions (all not answerable: off-topic, an injection, a malaria trap) reach 0.36-0.49; no answerable
