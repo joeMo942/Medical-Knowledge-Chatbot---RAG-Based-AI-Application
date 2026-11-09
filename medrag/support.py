@@ -32,10 +32,10 @@ from __future__ import annotations
 
 import re
 
+from .drugs import product_cells, tokens
 from .models import Section
 from .rules import normalize
 
-_WORD = re.compile(r"[^\W_]+", re.UNICODE)
 _ARABIC = re.compile(r"[؀-ۿ]")
 _NUMBERISH = re.compile(r"^\d+[a-z]*$")
 
@@ -153,10 +153,6 @@ def stem(word: str) -> str:
 INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج لعلاج يعالج بيعالج تعالج علاجات مرض امراض".split()}
 
 
-def tokens(text: str) -> list[str]:
-    return _WORD.findall(normalize(text))
-
-
 _ALIAS_GROUPS = [{normalize(w) for w in g} for g in _ALIASES]
 _ALIAS_STEMS = [{stem(w) for w in g} for g in _ALIAS_GROUPS]
 
@@ -194,15 +190,9 @@ class SupportCheck:
 
     def __init__(self, sections: list[Section] | tuple[Section, ...]):
         names: set[str] = set()
-        for sec in sections:
-            for table in sec.tables:
-                if table.kind != "products":
-                    continue
-                cols = [c for c in (table.trade_name_col, table.active_ingredient_col) if c is not None]
-                for row in table.rows:
-                    for c in cols:
-                        if c < len(row.cells):
-                            names.update(t for t in tokens(row.cells[c]) if len(t) >= 3)
+        for _sec, _table, _cells, trade, active in product_cells(sections):
+            for cell in (trade, active):
+                names.update(t for t in tokens(cell) if len(t) >= 3)
         self.drug_names = names
         # Drug Class names (the headings of the class Sections): "Which drug class is it in?" is rewritten
         # to name the class or the drug, so both are words a rewrite may bring in from the history.
