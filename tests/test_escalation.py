@@ -53,6 +53,16 @@ def test_parse_route_rejects_what_is_not_a_routing_reply(data):
     assert parse_route(data) is None
 
 
+def test_parse_route_drops_a_person_trigger_for_a_general_question():
+    # The small model over-triggers on "Is X used for Y?"; its own specific_person=false overrules it.
+    for trigger in ("diagnosis", "treatment_decision"):
+        assert parse_route({"specific_person": False, "trigger": trigger}).trigger is None
+        assert parse_route({"specific_person": True, "trigger": trigger}).trigger == trigger
+    # emergency and dose never depend on it
+    assert parse_route({"specific_person": False, "trigger": "dose"}).trigger == "dose"
+    assert parse_route({"specific_person": False, "trigger": "emergency"}).trigger == "emergency"
+
+
 def test_parse_route_tolerates_bad_optional_fields():
     r = parse_route({"trigger": "emergency", "language": "fr", "is_drug_question": "yes", "question": 5})
     assert r.trigger == "emergency" and r.language is None and r.is_drug_question is None and r.question is None

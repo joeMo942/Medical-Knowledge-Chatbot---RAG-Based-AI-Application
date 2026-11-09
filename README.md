@@ -37,6 +37,10 @@ All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, 
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
 
+## Escalation
+
+Every message is checked before retrieval and before the answer call (`medrag/pipeline.py`): fixed rules for Emergency and Dose wording in English, Arabic, dialect and Franco-Arabic (`medrag/rules.py`; they can only raise a status, and never treat "how much X is in product Y" as a Dose), then one short LLM routing call (`medrag/routing.py`) that also detects Diagnosis and Treatment Decision, and rewrites the question. A flagged message gets a fixed server-written reply (`medrag/escalation.py`: no drug facts, no Citations, Arabic for `ar` and `mixed`). If the routing call fails or the server is busy, the rules decide alone. A rule-flagged message makes no LLM call; otherwise a request makes one extra (short) call, counted in `X-Medrag-Usage`.
+
 ## Evaluation
 
 The test set (`evaluation/cases.json`: 85 cases, 90 turns, each with expected status, expected KB IDs, relevance terms and a note) and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them. Start the stack with the usage header on, so tokens are measured (`MEDRAG_USAGE_HEADER=1 docker compose up -d --wait`), then:
