@@ -341,8 +341,8 @@ def test_usage_header_counts_only_the_routing_call_when_the_answer_call_is_skipp
     assert usage_of(r) == {"prompt_tokens": 321, "completion_tokens": 45, "llm_calls": 1}
 
 
-def test_usage_header_counts_zero_when_a_rule_escalates_without_any_model_call():
-    r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json={"message": "What is the dose of Brufen?"})
+def test_usage_header_counts_zero_when_an_emergency_rule_escalates_without_any_model_call():
+    r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json={"message": "He is unconscious and not breathing"})
     assert r.status_code == 200 and r.json()["status"] == "escalated"
     assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0}
 

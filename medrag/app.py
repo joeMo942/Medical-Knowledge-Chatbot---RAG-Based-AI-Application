@@ -105,10 +105,17 @@ def create_app(
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
+    warmed = {"done": getattr(gate, "warm", None) is None}  # nothing to warm: ready at once
+
+    async def warm_up() -> None:
+        try:
+            await gate.warm()
+        finally:
+            warmed["done"] = True  # warm() is best effort: a failure must not keep /health red for ever
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        warm = getattr(gate, "warm", None)
-        task = asyncio.create_task(warm()) if warm else None
+        task = asyncio.create_task(warm_up()) if not warmed["done"] else None
         yield
         if task:
             task.cancel()
@@ -127,7 +134,9 @@ def create_app(
     @app.get("/health")
     async def health() -> JSONResponse:
         ready = getattr(gate, "ready", None)
-        ok = (await ready()) if ready else True
+        # Not "ok" until the model is loaded: the first request must not pay for the load (it would
+        # run into the routing timeout and the request budget).
+        ok = warmed["done"] and ((await ready()) if ready else True)
         return JSONResponse(
             {"status": "ok" if ok else "error", "llm": gate.model, "embedding": embedding_name},
             status_code=200 if ok else 503,

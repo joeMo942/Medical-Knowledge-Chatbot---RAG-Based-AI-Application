@@ -12,8 +12,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from .answering import ChatResponse, answer_question
-from .escalation import escalated
+from .answering import ChatResponse, answer_question, escalated
 from .gate import LLMGate
 from .models import Section
 from .routing import Route, route_message
@@ -29,12 +28,22 @@ class Decision:
 
 
 async def decide(message: str, llm: LLMGate, deadline: float | None = None) -> Decision:
-    """The rules first: a message they flag is Escalated at once, without a routing call (it could
-    only confirm or, wrongly, not). Otherwise the routing call; if it fails the rules' "no" stands."""
+    """Rules first, then the routing call; the two are combined so that nothing is ever lowered.
+
+    - Emergency wording: Escalated at once (no routing call needed).
+    - Dose wording: still routed, because the router may UPGRADE it to an emergency ("what dose is
+      toxic" after a child swallowed pills needs the emergency text); it can never downgrade it.
+    - Nothing flagged: the router's trigger, if any. If the router failed or was skipped, the
+      answer call carries a backstop classification (see answering.answer_question).
+    """
     flagged = check(message)
-    if flagged:
-        return Decision(flagged, None)
+    if flagged == "emergency":
+        return Decision("emergency", None)
     route = await route_message(message, llm, deadline)
+    if route and route.trigger == "emergency":
+        return Decision("emergency", route)
+    if flagged:
+        return Decision(flagged, route)
     return Decision(route.trigger if route else None, route)
 
 
@@ -44,4 +53,4 @@ async def respond(message: str, language: str, search: Search, llm: LLMGate,
     if decision.trigger:
         return escalated(decision.trigger, language)
     sections = await search(message)
-    return await answer_question(message, language, sections, llm, deadline)
+    return await answer_question(message, language, sections, llm, deadline, backstop=decision.route is None)

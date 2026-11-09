@@ -1,8 +1,7 @@
 """Escalated replies: fixed server-written text per trigger, in the user's language. No drug
-facts, no Citations, never model text. Arabic for `ar` and `mixed`, English for `en`."""
+facts, no Citations, never model text. Arabic for `ar` and `mixed`, English for `en`.
+(`answering.escalated` builds the ChatResponse from these texts.)"""
 from __future__ import annotations
-
-from .answering import ChatResponse
 
 ESCALATION_TEXT: dict[str, dict[str, str]] = {
     "emergency": {
@@ -30,8 +29,3 @@ ESCALATION_TEXT: dict[str, dict[str, str]] = {
                "من فضلك اسأل الطبيب."),
     },
 }
-
-
-def escalated(trigger: str, language: str) -> ChatResponse:
-    text = ESCALATION_TEXT[trigger]["en" if language == "en" else "ar"]
-    return ChatResponse(answer=text, citations=[], status="escalated", language=language)

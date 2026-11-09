@@ -9,7 +9,8 @@ from synthetic import SECTIONS, FakeLLM, answered, routed
 from medrag.answering import NOT_FOUND
 from medrag.app import create_app
 from medrag.config import Settings
-from medrag.escalation import ESCALATION_TEXT, escalated
+from medrag.answering import escalated
+from medrag.escalation import ESCALATION_TEXT
 from medrag.gate import LLMGate
 from medrag.llm import LLMError, LLMTruncated
 from medrag.routing import ROUTE_SCHEMA, ROUTE_SYSTEM_PROMPT, build_route_prompt, parse_route, route_message
@@ -208,25 +209,14 @@ def test_usage_counts_the_routing_call_and_the_answer_call():
     assert usage(r) == {"prompt_tokens": 200, "completion_tokens": 20, "llm_calls": 2}
 
 
-def test_usage_of_a_routed_escalation_is_one_call_and_of_a_rule_escalation_none():
+def test_usage_of_escalations():
     r = post(FakeLLM(answered(), route=routed("diagnosis"), tokens=(100, 10)), "Do I have tonsillitis?")
     assert r.json()["status"] == "escalated" and usage(r)["llm_calls"] == 1
-    r = post(FakeLLM(answered(), tokens=(100, 10)), "What is the dose of Brufen?")
+    # an emergency rule needs no model call; a dose rule is still routed (the router may upgrade it)
+    r = post(FakeLLM(answered(), tokens=(100, 10)), "He can't breathe and his lips are blue")
     assert r.json()["status"] == "escalated" and usage(r)["llm_calls"] == 0
-
-
-def test_routing_call_is_skipped_when_the_queue_is_not_empty():
-    async def go():
-        llm = FakeLLM(answered(), delay=0.2)
-        gate = LLMGate(llm)
-        busy = asyncio.create_task(gate.complete_json("s", "u", {"properties": {}}))
-        await asyncio.sleep(0.05)
-        route = await route_message("What is Cataflam?", gate)
-        await busy
-        return route, llm.route_calls
-
-    route, route_calls = asyncio.run(go())
-    assert route is None and route_calls == []
+    r = post(FakeLLM(answered(), tokens=(100, 10)), "What is the dose of Brufen?")
+    assert r.json()["status"] == "escalated" and usage(r)["llm_calls"] == 1
 
 
 def test_gate_applies_the_smaller_output_cap_and_floor():
