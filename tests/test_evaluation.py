@@ -585,5 +585,6 @@ def test_review_template_has_empty_columns_for_the_human():
     header = next(line for line in md.splitlines() if line.startswith("| #"))
     assert "faithful?" in header and "invented facts?" in header and "notes" in header
     body_rows = [line for line in md.splitlines() if line.startswith("| ") and line.split("|")[1].strip().isdigit()]
-    assert len(body_rows) == 3 and all(line.endswith("|  |  |  |") for line in body_rows)
+    # --n 3 asks for 3, but at least MIN_RANDOM (5) random rows are always added: all 5 answered rows
+    assert len(body_rows) == 5 and all(line.endswith("|  |  |  |") for line in body_rows)
     assert "KB-02" in md and "\\|" in md

@@ -419,7 +419,7 @@ def test_review_sample_always_has_franco_partial_multi_turn_and_up_to_five_escal
     assert len(picked) == 30
     assert picked == review.sample_review(rows, 30, seed=1) and picked != review.sample_review(rows, 30, seed=2)
     mandatory = review.sample_review(rows, 1, seed=1)                         # n smaller than the mandatory rows
-    assert len(mandatory) == 5 + 4 + 6 + 5
+    assert len(mandatory) == 5 + 4 + 6 + 5 + review.MIN_RANDOM          # fixed groups plus the random minimum
     order = [rows.index(r) for r in picked]
     assert order == sorted(order)
 
@@ -430,12 +430,44 @@ def test_review_sample_always_has_every_answered_reply_that_should_have_been_esc
     rows = [{**rr(i, "dev"), "expected_status": "answered"} for i in range(40)] + unsafe
     picked = review.sample_review(rows, 3, seed=1)                            # n far below the unsafe count
     ids = {r["case_id"] for r in picked}
-    assert {f"c{600 + i}" for i in range(6)} <= ids and len(picked) == 6
+    assert {f"c{600 + i}" for i in range(6)} <= ids and len(picked) == 6 + review.MIN_RANDOM
     for seed in range(5):                                                     # whatever the seed
         assert {f"c{600 + i}" for i in range(6)} <= {r["case_id"] for r in review.sample_review(rows, 15, seed)}
     md = review.render_review({"meta": {"label": "t", "date": "d", "commit": "c"}, "rows": rows}, n=3, seed=1)
     assert md.count("| answered (expected escalated) |") == 6
     assert "6 answered although they should have been escalated" in md and "unsafe" in md
+
+
+def test_random_rows_are_added_even_when_the_fixed_groups_exceed_n():
+    # The r4 situation: 22 fixed rows against --n 15 left the seeded sample empty.
+    unsafe = [{**rr(600 + i, "emergency"), "expected_status": "escalated"} for i in range(11)]
+    rows = [{**rr(i, "dev"), "expected_status": "answered"} for i in range(30)] + unsafe + [
+        {**rr(700 + i, "franco_arabic"), "expected_status": "answered"} for i in range(11)]
+    g = review.review_groups(rows, 15, seed=1)
+    assert len(g["unsafe"]) == 11 and len(g["always"]) == 11 and len(g["random"]) == review.MIN_RANDOM
+    assert all(rows[i]["category"] == "dev" for i in g["random"])
+    md = review.render_review({"meta": {"label": "t", "date": "d", "commit": "c"}, "rows": rows}, n=15, seed=1)
+    assert (f"Sample: {22 + review.MIN_RANDOM} replies: 11 answered although they should have been escalated, "
+            f"11 other answered Franco-Arabic, partial and multi-turn replies, 0 escalated replies, and "
+            f"{review.MIN_RANDOM} chosen at random (seed 1) from the other 30 answered replies") in md
+    # with room left under --n, the random sample fills it up
+    assert len(review.review_groups(rows, 40, seed=1)["random"]) == 40 - 22
+
+
+def test_the_review_command_never_overwrites_an_existing_sheet(tmp_path):
+    results = {"meta": {"label": "qwen2.5-7b", "date": "d", "commit": "c"},
+               "rows": [{**rr(i, "dev"), "expected_status": "answered"} for i in range(3)]}
+    src = tmp_path / "2026-01-01-qwen2.5-7b.json"
+    src.write_text(json.dumps(results), encoding="utf-8")
+    review.main([str(src)])
+    review.main([str(src)])
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert names == ["2026-01-01-qwen2.5-7b-faithfulness-review-2.md", "2026-01-01-qwen2.5-7b-faithfulness-review.md",
+                     "2026-01-01-qwen2.5-7b.json"]
+    filled = tmp_path / "mine.md"
+    filled.write_text("my filled-in review", encoding="utf-8")
+    review.main([str(src), "--out", str(filled)])
+    assert filled.read_text(encoding="utf-8") == "my filled-in review" and (tmp_path / "mine-2.md").is_file()
 
 
 def test_review_sheet_has_a_status_column_and_empty_review_columns():
