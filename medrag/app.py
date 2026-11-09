@@ -21,6 +21,7 @@ from .llm import LLMClient, build_llm
 from .models import Section
 from .pipeline import respond
 from .retrieval import LexicalRetriever
+from .support import SupportCheck
 from .sessions import SessionStore
 from .usage import USAGE_HEADER, start_meter
 
@@ -101,6 +102,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()
     retriever = LexicalRetriever(sections)
+    support = SupportCheck(sections)
     store = SessionStore()
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
@@ -146,7 +148,7 @@ def create_app(
         async def search(text: str) -> list[Section]:
             return await asyncio.to_thread(retriever.search, text, settings.top_k)
 
-        return await respond(message, detect_language(message), search, gate, deadline)
+        return await respond(message, detect_language(message), search, gate, deadline, support)
 
     @app.post("/chat")
     async def chat(request: Request) -> JSONResponse:

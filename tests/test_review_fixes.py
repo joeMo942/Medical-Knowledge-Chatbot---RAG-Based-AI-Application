@@ -232,7 +232,7 @@ def test_backstop_none_answers_normally_and_a_routed_request_has_no_backstop_fie
 
 def test_backstop_general_question_trigger_is_ignored_for_the_person_triggers():
     reply = {**answered(), "trigger": "diagnosis", "specific_person": False}
-    body = post(FakeLLM(reply), "Is Cataflam used for acne?", budget_s=6.0, llm_est_s=5.0).json()
+    body = post(FakeLLM(reply), "What is the active ingredient in Cataflam?", budget_s=6.0, llm_est_s=5.0).json()
     assert body["status"] == "answered"
     assert "trigger" in answer_schema(True)["required"] and "trigger" not in answer_schema(False)["properties"]
 
