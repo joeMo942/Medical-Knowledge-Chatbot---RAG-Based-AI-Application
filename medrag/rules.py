@@ -144,6 +144,7 @@ _DOSE_EN = _rx(
     r"\b(maximum|max|recommended|usual|normal|safe|total) (daily |single )?(amount|quantity|intake)\b",
     r"\bhow (many|much) (should|can|do|could|may|would)\b",
     r"\bwhat (amount|quantity)\b[^.?!]{0,30}\b(take|give|use|safe|daily)\b",
+    r"\b(right|correct|proper|appropriate|suitable|recommended|safe|maximum|max|usual|normal) (amount|quantity|volume)\b[^.?!]{0,40}\b(of|for)\b",
     r"\bregimen\b[^.?!]{0,10}\bfor (a |an |my |his |her )?(child|adult|patient|baby|infant)\b",
 )
 
