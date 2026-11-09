@@ -167,10 +167,10 @@
     ]
   },
   {
-    "id": "partial5-salbutamol-onset",
+    "id": "partial5-salbutamol-discovery",
     "category": "partial",
     "language": "en",
-    "message": "What are the common side effects of salbutamol and how long does it take to start working?",
+    "message": "What are the common side effects of salbutamol and in what year was it discovered?",
     "expected_status": "answered",
     "expected_kb_ids": [
       "KB-01"
@@ -178,7 +178,7 @@
     "anchors": [
       "Salbutamol"
     ],
-    "note": "Side effects are covered; the onset time is not stated in the KB.",
+    "note": "Side effects are covered; the year of discovery is not in the KB.",
     "expected_sections": [
       "SABA – Short-Acting Beta-2 Agonists"
     ],
