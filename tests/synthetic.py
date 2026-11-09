@@ -32,13 +32,14 @@ class FakeLLM:
     model = "fake-model"
 
     def __init__(self, reply=None, exc=None, delay=0.0, tokens=(None, None), route=None, route_exc=None, route_fn=None,
-                 route_delay=0.0):
+                 route_delay=0.0, answer_fn=None):
         self.reply, self.exc, self.delay = reply, exc, delay
         # The routing call (before retrieval) is told apart by its schema; `calls` holds answer calls only.
         self.route = route if route is not None else NO_TRIGGER
         self.route_exc = route_exc
         self.route_fn = route_fn  # user prompt -> route reply (a router that can be fooled)
         self.route_delay = route_delay
+        self.answer_fn = answer_fn  # user prompt -> answer reply (a model that would use anything it is shown)
         self.answer_schemas = []  # the schema of each answer call
         self.order = []  # "route" / "answer" in the order the calls started
         self.route_calls = []
@@ -70,7 +71,8 @@ class FakeLLM:
             return LLMResult(data=self.route, prompt_tokens=self.usage[0], completion_tokens=self.usage[1])
         if self.exc:
             raise self.exc
-        return LLMResult(data=self.reply, prompt_tokens=self.usage[0], completion_tokens=self.usage[1])
+        data = self.answer_fn(user) if self.answer_fn else self.reply
+        return LLMResult(data=data, prompt_tokens=self.usage[0], completion_tokens=self.usage[1])
 
 
 def answered(snippet=ROW, section_id=NSAIDS.section_id):

@@ -22,7 +22,8 @@ from .models import Section
 from .pipeline import respond
 from .retrieval import LexicalRetriever
 from .support import SupportCheck
-from .sessions import SessionStore
+from .routing import HISTORY_TURNS
+from .sessions import SessionStore, Turn
 from .usage import USAGE_HEADER, start_meter
 
 log = logging.getLogger("medrag")
@@ -103,7 +104,7 @@ def create_app(
     settings = settings or Settings()
     retriever = LexicalRetriever(sections)
     support = SupportCheck(sections)
-    store = SessionStore()
+    store = SessionStore(settings.sessions_db)
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
@@ -144,11 +145,25 @@ def create_app(
             status_code=200 if ok else 503,
         )
 
-    async def pipeline(message: str, deadline: float) -> ChatResponse:
+    async def pipeline(message: str, deadline: float, history: list[Turn]) -> ChatResponse:
         async def search(text: str) -> list[Section]:
             return await asyncio.to_thread(retriever.search, text, settings.top_k)
 
-        return await respond(message, detect_language(message), search, gate, deadline, support)
+        return await respond(message, detect_language(message), search, gate, deadline, support, history)
+
+    async def load_history(session_id: str) -> list[Turn]:
+        """The last few turns, or none: a store problem never blocks a reply."""
+        try:
+            return await asyncio.to_thread(store.turns, session_id, HISTORY_TURNS)
+        except Exception:
+            log.exception("could not read the Session history; answering without it")
+            return []
+
+    async def save_turn(session_id: str, message: str, result: ChatResponse) -> None:
+        try:
+            await asyncio.to_thread(store.add_turn, session_id, message, result.answer, result.status)
+        except Exception:
+            log.exception("could not store the turn; the reply is sent anyway")
 
     @app.post("/chat")
     async def chat(request: Request) -> JSONResponse:
@@ -159,11 +174,12 @@ def create_app(
             return _error(400, str(exc))
         session_id = store.resolve(body.get("session_id") or request.headers.get("x-session-id"))
         deadline = time.monotonic() + settings.budget_s
+        history = await load_history(session_id)
         meter = start_meter()  # before the pipeline task exists, so the gate adds to this meter
         usage = lambda: {USAGE_HEADER: meter.header_value()} if settings.usage_header else None  # noqa: E731
         try:
             result = await asyncio.wait_for(
-                _run_unless_disconnected(request, pipeline(message, deadline)),
+                _run_unless_disconnected(request, pipeline(message, deadline, history)),
                 timeout=settings.budget_s,
             )
         except asyncio.TimeoutError:
@@ -177,7 +193,7 @@ def create_app(
             return _error(500, f"internal error: {type(exc).__name__}", session_id, usage())
         if result is None:  # client disconnected; nobody is listening
             return _error(499, "client closed the request", session_id, usage())
-        store.add_turn(session_id, message, result.answer)
+        await save_turn(session_id, message, result)
         return JSONResponse(result.model_dump(), headers={"X-Session-Id": session_id, **(usage() or {})})
 
     @app.get("/", include_in_schema=False)
