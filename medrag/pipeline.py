@@ -1,7 +1,7 @@
 """The order of decisions for one message:
 
     rules (+ routing call) -> Escalated? return it
-                           -> else retrieval (+ no-match shortcut) -> answer call -> Citations -> support check -> dose check -> invariants
+                           -> else retrieval (+ no-match shortcut) -> answer call -> Citations -> dose check -> support check -> invariants
 
 Escalation is decided BEFORE retrieval and before the answer call, so an emergency or a Dose
 request is never dismissed as out_of_scope by the no-match shortcut and never reaches the model

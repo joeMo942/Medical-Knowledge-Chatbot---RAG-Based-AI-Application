@@ -115,6 +115,13 @@ _ALIASES = [
 ]
 
 
+# Attributes the KB never carries: asking one makes a question partly covered, not out of scope.
+ABSENT = {normalize(w) for w in """price prices pricing cost costs cheaper expensive manufacturer manufacturers manufacture
+manufactures company companies maker producer discovered discover invented invent affect affects
+سعر اسعار سعره سعرها بكام ثمن بيتباع تكلفه تكلفته شركه الشركه المصنعه مصنع اكتشف اكتشاف اخترع""".split()}
+_CLAUSES = re.compile(r"\s+(?:and|but|also|و|وكمان|كمان)\s+|[,،;؛؟?]+", re.IGNORECASE)
+
+
 def _words(block: str) -> set[str]:
     return {w for w in normalize(block).split() if w}
 
@@ -140,6 +147,10 @@ def stem(word: str) -> str:
         if w.endswith(s) and len(w) - len(s) >= 4:
             return w[: -len(s)]
     return w
+
+
+# Words that introduce the condition a drug is for: the word after one is a disease, not a brand.
+INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج لعلاج يعالج بيعالج تعالج علاجات مرض امراض".split()}
 
 
 def tokens(text: str) -> list[str]:
@@ -196,27 +207,49 @@ class SupportCheck:
         self._kb = _Text("\n".join(s.render() for s in sections))
 
     def topic_terms(self, question: str) -> list[str]:
-        out = []
-        for t in tokens(question):
-            if t in FRAME or t in self.drug_names or len(t) < 3 or _NUMBERISH.match(t):
-                continue
-            out.append(t)
-        return out
+        return self._topic(tokens(question))
+
+    def _topic(self, toks: list[str]) -> list[str]:
+        return [t for t in toks
+                if not (t in FRAME or t in ABSENT or t in self.drug_names or len(t) < 3 or _NUMBERISH.match(t))]
+
+    def _brand_like(self, toks: list[str], i: int) -> bool:
+        """An unknown Arabic word that may be a brand written in Arabic letters (بروفين, لكتافلام):
+        not a definite noun (ال..., لل...) and not the object of an indication frame
+        (دواء / علاج / يعالج + X), which is how a disease is named."""
+        w = toks[i]
+        if not _ARABIC.search(w) or w.startswith(("ال", "لل", "بال", "وال")):
+            return False
+        return not any(stem(p) in INDICATION for p in toks[max(0, i - 2):i])
 
     def supported(self, question: str, cited: list[Section]) -> bool:
-        """True when the cited Sections cover (part of) what the question asks."""
+        """True when the cited Sections cover (part of) what the question asks. Out of Scope only when
+        nothing asked is covered: a covered half keeps the reply Answered, whatever the other half is."""
         text = _Text("\n".join(s.render() for s in cited))
         qtokens = tokens(question)
-        topic = self.topic_terms(question)
-        if not topic:
-            return True
-        unknown = [t for t in topic if not self._kb.has(t)]
-        if any(text.has(t) for t in topic) and not unknown:
+        drugs = [t for t in qtokens if t in self.drug_names and t not in FRAME]
+        if drugs and not any(text.has(d) for d in drugs):
+            return False  # the Sections cited say nothing about the drug that was asked about
+        if not self._topic(qtokens):
             return True
         # A partly covered question: an aspect the KB answers by structure, asked of a drug
-        # (or a brand written in Arabic) the cited Sections cover.
+        # (or a brand written in Arabic letters) the cited Sections cover.
         asks_aspect = any(t in ASPECT for t in qtokens)
-        drugs = [t for t in qtokens if t in self.drug_names and t not in FRAME]
-        drug_covered = any(text.has(d) for d in drugs)
-        arabic_only_unknown = bool(unknown) and all(_ARABIC.search(t) for t in unknown)
-        return asks_aspect and (drug_covered or arabic_only_unknown)
+        if asks_aspect and drugs:
+            return True
+        # Otherwise some part (clause) of the question must be covered by itself: it has topic terms,
+        # none is unknown to the whole KB (unless it may be an Arabic brand), and one is in the cited text.
+        for clause in _CLAUSES.split(question):
+            toks = tokens(clause)
+            topic = self._topic(toks)
+            if not topic or not any(text.has(w) for w in topic):
+                continue
+            unknown = [w for w in topic if not self._kb.has(w)]
+            if all(self._brand_like(toks, toks.index(w)) for w in unknown):
+                return True
+        # Only Arabic brand-like unknown words next to an aspect word: a brand the KB lists under its Latin name.
+        if asks_aspect:
+            toks = qtokens
+            unknown = [w for w in self._topic(toks) if not self._kb.has(w)]
+            return bool(unknown) and all(self._brand_like(toks, toks.index(w)) for w in unknown) and not drugs
+        return False

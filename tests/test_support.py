@@ -194,7 +194,8 @@ def test_prompt_forbids_outside_knowledge_and_asks_for_partial_answers():
 
 # ------------------------------------------------------------------ real KB (skipped without the .docx files)
 
-CASES = json.loads((Path(__file__).resolve().parents[1] / "evaluation" / "cases.json").read_text(encoding="utf-8"))
+CASES = [c for name in ("cases.json", "cases_issue5.json")
+         for c in json.loads((Path(__file__).resolve().parents[1] / "evaluation" / name).read_text(encoding="utf-8"))]
 
 
 @pytest.mark.kb
@@ -233,3 +234,46 @@ def test_schema_has_the_model_cite_before_it_chooses_the_status():
     assert list(ANSWER_SCHEMA["properties"]) == ["answer", "citations", "status"]
     assert ANSWER_SCHEMA["required"] == ["answer", "citations", "status"]
     assert list(answer_schema(True)["properties"])[-3:] == ["answer", "citations", "status"]  # backstop fields first
+
+
+# ------------------------------------------------------------------ review fixes (B1, M2, M3)
+
+@pytest.mark.parametrize("question", [
+    "إيه موانع استعمال دواء الملاريا؟",
+    "إيه الأعراض الجانبية لأدوية الملاريا؟",
+    "إيه بدائل علاج الملاريا؟",
+])
+def test_arabic_malaria_questions_with_an_aspect_word_are_out_of_scope(question):
+    # An aspect word plus an unknown Arabic disease name must not look like a transliterated brand.
+    for section, snippet in ((PPI, "Controloc – Pantoprazole"), (SABA, "Tremors."), (DMARD, PLAQUENIL_ROW)):
+        body = ask(question, reply("x", section, snippet), language="ar")
+        assert body["status"] == "out_of_scope" and body["citations"] == [], (question, section.kb_id)
+
+
+def test_an_unknown_arabic_brand_next_to_an_aspect_word_is_still_not_held_against_the_question():
+    body = ask("إيه الأعراض الجانبية لكتافلام؟", reply("رعشة.", SABA, "Tremors."), language="ar")
+    assert body["status"] == "answered"
+
+
+@pytest.mark.parametrize("question, section, snippet", [
+    ("What is Controloc used for and how much does it cost?", PPI, "Controloc – Pantoprazole"),
+    ("Which drugs are used for asthma and malaria?", SABA, "Ventolin – Salbutamol"),
+    ("Is Doxycycline safe in pregnancy and what does it cost?", TETRA, PREGNANCY_LINE),
+    ("What are the side effects of salbutamol and who manufactures it?", SABA, "Tremors."),
+])
+def test_a_covered_half_keeps_the_reply_answered(question, section, snippet):
+    body = ask(question, reply("Covered part. The rest is not in the knowledge base.", section, snippet))
+    assert body["status"] == "answered" and body["citations"], question
+
+
+def test_malaria_with_a_covered_half_but_an_uncovered_ask_is_still_out_of_scope():
+    assert ask("Is Plaquenil used for malaria?", reply("x", DMARD, PLAQUENIL_ROW))["status"] == "out_of_scope"
+    assert ask("Does Metformin affect fertility?", reply("x", SABA, "Tremors."))["status"] == "out_of_scope"
+
+
+def test_a_citation_must_contain_the_drug_the_question_names():
+    for section, snippet in ((TETRA, "Vibramycin – Doxycycline"), (SABA, "Ventolin – Salbutamol")):
+        body = ask("What is the active ingredient of Controloc?", reply("Controloc contains X.", section, snippet))
+        assert body["status"] == "out_of_scope" and body["citations"] == []
+    # no drug name in the question (a follow-up), or none from the KB: nothing to hold against it
+    assert ask("What are its side effects?", reply("Tremors.", SABA, "Tremors."))["status"] == "answered"

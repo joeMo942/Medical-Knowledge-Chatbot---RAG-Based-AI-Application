@@ -190,5 +190,117 @@
       "رعشة",
       "خفقان"
     ]
+  },
+  {
+    "id": "trap5b-malaria-contraindications-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "إيه موانع استعمال دواء الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "الملاريا",
+      "malaria"
+    ],
+    "note": "Arabic malaria question with an aspect word (موانع): no drug name, malaria is not in the KB."
+  },
+  {
+    "id": "trap5b-malaria-side-effects-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "إيه الأعراض الجانبية لأدوية الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "الملاريا",
+      "malaria"
+    ],
+    "note": "Same trap with the side-effects aspect word."
+  },
+  {
+    "id": "trap5b-malaria-alternatives-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "إيه بدائل علاج الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "الملاريا",
+      "malaria"
+    ],
+    "note": "Same trap with the alternatives aspect word."
+  },
+  {
+    "id": "partial5b-concor-used-for-cost",
+    "category": "partial",
+    "language": "en",
+    "message": "What is Concor used for and how much does it cost?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-08"
+    ],
+    "anchors": [
+      "Concor"
+    ],
+    "note": "No aspect word: what it is used for is covered by the Beta Blockers Section, the price is not.",
+    "expected_sections": [
+      "Beta Blockers"
+    ],
+    "answer_must_mention": [
+      "hypertension",
+      "Hypertension",
+      "ضغط",
+      "Heart failure",
+      "angina",
+      "Bisoprolol"
+    ]
+  },
+  {
+    "id": "partial5b-hypertension-and-malaria",
+    "category": "partial",
+    "language": "en",
+    "message": "Which drugs treat hypertension and malaria?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-08"
+    ],
+    "anchors": [
+      "Antihypertensive"
+    ],
+    "note": "The hypertension half is covered by KB-08; malaria is not in the KB, so the reply is Answered and says so.",
+    "answer_must_mention": [
+      "ACE",
+      "ARB",
+      "Beta",
+      "Thiazide",
+      "Calcium",
+      "Amlodipine",
+      "Concor",
+      "Bisoprolol"
+    ]
+  },
+  {
+    "id": "partial5b-brufen-pregnancy-cost",
+    "category": "partial",
+    "language": "en",
+    "message": "Is Brufen safe in pregnancy and what does it cost?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "note": "Pregnancy is covered by the NSAID Sections; the price is not.",
+    "answer_must_mention": [
+      "week 20",
+      "week 30",
+      "الأسبوع 20",
+      "الأسبوع 30",
+      "avoid"
+    ]
   }
 ]
