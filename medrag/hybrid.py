@@ -207,6 +207,12 @@ class HybridRetriever:
         if not lexical_hit and best_dense < self.min_dense:
             return []
         fused = self._fuse(rankings)
+        if mentions.ingredients:
+            # The question names a drug: the Sections that list it are the likeliest units, so they get one more
+            # list in the fusion (in the order they already have), which keeps "OTC" or "class" noise from crowding them out.
+            listing = self.drugs.sections_with(mentions.ingredients)
+            rankings.append([i for i in fused if self.sections[i].section_id in listing])
+            fused = self._fuse(rankings)
         alt = self._alternative_views(query, mentions, fused)
         if alt:
             more = self._asks_more(query)

@@ -8,8 +8,15 @@ RAG chatbot answering pharmacy staff and doctors strictly from the approved Know
 2. `docker compose up -d --build` (add `--wait` to block until healthy). Needs Docker with an NVIDIA GPU (ADR 0001).
    The first start downloads the model (about 3.3 GB) into the `ollama-models` volume; watch it with
    `docker compose logs -f model-pull`. Later starts skip the download. The API reports healthy only after the model is present.
+   The first start also fetches the search model, BGE-M3 (about 2.3 GB, pinned revision, verified by SHA-256), into the `embed-models` volume
+   (`docker compose logs -f embedder-pull`), then loads it and builds the search index (about 40 s on 24 CPU threads; see Search). `/health` is 503 until then.
 3. Open http://localhost:8000 (chat page), or `curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"What is the active ingredient in Cataflam?"}'`.
 4. `docker compose down` stops it and keeps the model and Sessions volumes (never add `-v` unless you want them gone).
+
+Slow or offline network (optional; both default to an empty folder, which means "download"):
+`MEDRAG_WHEELS_DIR=<folder of wheels>` makes the image build install torch (CPU), transformers and their dependencies from there instead of downloading
+(the pins of `constraints.txt` found in the folder are installed first with no network access), and `MEDRAG_EMBED_SRC=<folder with the BGE-M3 files>` makes
+`embedder-pull` copy (and verify) them into the volume instead of downloading. Example: `MEDRAG_WHEELS_DIR=~/.cache/medrag/wheelhouse/linux-py312 MEDRAG_EMBED_SRC=~/.cache/medrag/bge-m3 docker compose up -d --build --wait`.
 
 No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up` (far slower; answers will exceed the 30 s limit).
 
@@ -32,11 +39,15 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_LLM_MARGIN_S` | `2.5` | time kept back for prompt evaluation and overhead when sizing that cap |
 | `MEDRAG_USAGE_HEADER` | `0` | `1` sends the `X-Medrag-Usage` response header (JSON: `prompt_tokens`, `completion_tokens`, `llm_calls` of that request, also on 500s); needed for the token metrics of the evaluation runs. The response body never changes |
 | `MEDRAG_SESSIONS_DB` | `:memory:` (`/var/lib/medrag/sessions.db` in Docker, on the `sessions` volume) | SQLite file of the Sessions; with `:memory:` they last only until the process ends |
+| `MEDRAG_RETRIEVER` | `hybrid` | `bm25` searches without the embedding model (a quick start, or a baseline); `hybrid` is BGE-M3 + BM25, see Search |
+| `MEDRAG_MIN_DENSE` | `0.5` | with no query word in any Section (BM25 finds nothing), a best dense similarity below this means nothing matches (Out of Scope without an LLM call). On the test set the 5 such questions, all not answerable, reach 0.36-0.49 |
+| `MEDRAG_EMBED_THREADS` | `0` | CPU threads of the embedding model; `0` is the torch default (all cores) |
+| `MEDRAG_EMBED_PATH`, `MEDRAG_INDEX_DIR`, `MEDRAG_EMBED_SEED` | `/models/bge-m3`, `/index`, empty (set by the Dockerfile and compose) | where the model files and the search index cache live, and an optional folder to copy the model files from |
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
 
 All of these except `MEDRAG_KB_DIR` and `MEDRAG_SESSIONS_DB` are passed through by `docker-compose.yml`, with the defaults above (the KB folder is the fixed `./data` mount, and the Sessions path is set by the Dockerfile to the `sessions` volume).
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
-`GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
+`GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing, or the embedding model and index are not loaded yet; when ready it reports `"embedding":"BAAI/bge-m3"` and `embedding_revision`. `/chat` answers 500 `{"error": ...}` until then.
 
 ## Escalation
 
@@ -55,7 +66,22 @@ After the model answers, the server checks the Citations (`medrag/answering.py`,
 - A Citation must point to a Section that was retrieved for this question (others are dropped); `doc_id`, `title` and `section` come from the Section. A snippet must be one body line or data row of it, word for word; a paraphrase is replaced by the closest real line (most words in common with what the model wrote, never a heading, table header or label line such as "Common side effects:").
 - Support check (deterministic, no extra LLM call): the question's topic words (the question minus frame words like "which drugs are used to treat", numbers and KB drug names) must be found in the cited Sections' text, with Arabic folding, stemming and a few English/Arabic pairs. "Which drugs treat malaria?" cites real Plaquenil/Doxycycline rows but the KB never says malaria, so it becomes Out of Scope with `citations: []`. A word the whole KB lacks also fails the check unless the question asks an aspect of a covered drug (ingredient, class, alternatives, side effects, contraindications), which is a partly covered question and stays Answered.
 - Partly covered questions are Answered: the prompt asks for the covered part with Citations plus one sentence naming what the knowledge base does not contain. Out of Scope only when nothing asked is covered. The prompt forbids outside knowledge, and the model writes its Citations before it picks the status (a status chosen first made it call a partly covered question out of scope).
-- Known limits: a question whose only unsupported topic is a generic word the cited text happens to contain (for example "children" in a question about a drug the KB lists, but not for that use) is left to the model; arabic transliterated brand names are not matched until hybrid search (#6).
+- Known limits: a question whose only unsupported topic is a generic word the cited text happens to contain (for example "children" in a question about a drug the KB lists, but not for that use) is left to the model; a brand written in Arabic letters is only found when the embedding happens to match it (see Search, known limits).
+
+## Search
+
+Hybrid search over whole Sections (`medrag/hybrid.py`; the pipeline only needs `search(query, k)`, the `Retriever` protocol of `medrag/retrieval.py`, and runs it, with the embedding, in a worker thread so the event loop stays free).
+
+- **Scorers and fusion:** BGE-M3 (`BAAI/bge-m3`, on the CPU inside the API container: the GPU belongs to the LLM, ADR 0001) gives a dense vector and a sparse token-weight vector per Section and per question; BM25 is kept as a third scorer. Each ranks every Section and the ranks are fused by reciprocal rank (`sum 1/(60+rank)`), which needs no calibration between cosine, token weights and BM25. The Section is the search unit: a Citation needs the whole Section.
+- **Index:** one dense and one sparse vector per Section, built in the API process at start (about 35 s for the 113 Sections), cached as JSON in the `index` volume under a key made of the SHA-256 of the KB `.docx` files and of the Sections' text, the model ID and revision and a format version. A changed Document or model rebuilds it; an unchanged restart loads it (a restart is healthy in about 8 s).
+- **Model weights:** not in git, not in the image. `embedder-pull` (`python -m medrag.modelstore`) puts the files of one pinned revision into the `embed-models` volume on the first start, each file checked against its size and SHA-256; a failed download is retried with a growing pause and resumed. First-start download rather than build-time: the image stays small, a flaky 2 GB download does not fail the build, a rebuild never repeats it, and the volume survives rebuilds. `MEDRAG_EMBED_SRC` seeds the volume from a local folder instead.
+- **Trade Name <-> Active Ingredient index** (`medrag/drugs.py`, also the drug-name source of the support check): derived from the products tables, nothing hard-coded. A question that names a Trade Name is also searched with its Active Ingredient(s), and one that names an Active Ingredient with its Trade Names (separate lists in the fusion). A Trade Name cell with several brands is split; strengths and parentheticals are dropped from ingredients; a brand in Arabic letters or equal to its ingredient is not indexed; a combination is its own Active Ingredient set, so it is never an Alternative of a part, and "Diclofenac sodium" and "Diclofenac potassium" are different ingredients.
+- **Alternatives:** an Alternative is another Trade Name with the same Active Ingredient. A question with an alternatives word ("alternatives", "بدائل", "bedail", ...) that names a drug (or "trade names of <ingredient>") gets, ahead of anything else, the fewest Sections that between them list every such Trade Name, each cut down to those product rows (rows verbatim, same Section ID, so snippet and support checks are unchanged); the prompt says to list every one and never another drug. If the question also asks something the Section lines answer (side effects, pregnancy), the whole Sections and the best other Sections with that ingredient are given instead. Plain top-k cannot do this: Flabu and Spididol are only in KB-03's headache Section.
+- **Thinning:** the KB repeats tables across Documents (the NSAID products are in KB-03, 04, 06 and 09). Walking down the fused list, a Section whose lines and rows are at least 60% already in the chosen ones is passed over; passed-over Sections only fill free slots.
+- **No match:** with no query word in any Section and a best dense similarity under `MEDRAG_MIN_DENSE`, nothing is retrieved and the reply is Out of Scope with no LLM call, as with BM25 alone.
+- **Cost:** a question is embedded on the CPU in about 40-110 ms (one or two short texts), the whole search is under 0.2 s. The model needs about 2.5 GB of memory.
+- **Offline recall:** `python -m evaluation.recall` runs BM25 and hybrid in-process over the test set (no stack, no LLM; needs the model files and torch, see the script docstring) and reports, per category, how often an expected KB ID / Section / answer term is in the retrieved Sections.
+- Known limits: a Trade Name written in Arabic letters is not matched by the embedding either; that needs the transliteration of #7. Alternatives compare the ingredient as the KB spells it, so a drug whose salt is spelled differently is not listed.
 
 ## Sessions
 
@@ -77,5 +103,5 @@ python -m evaluation.kb_check                      # checks expected KB IDs, sec
 
 ## Tests
 
-`pip install -e ".[dev]" && pytest`. No Ollama or KB files are needed; tests that need the real KB skip themselves.
+`pip install -e ".[dev]" && pytest`. No Ollama, KB files, torch or model are needed (the search tests use a fake embedder); tests that need the real KB skip themselves, and `tests/test_embedding_real.py` runs only where torch (`pip install -e ".[embed]"`) and the BGE-M3 files (`MEDRAG_EMBED_PATH`) exist.
 `tests/test_e2e_smoke.py` runs against a started stack and skips otherwise.

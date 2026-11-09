@@ -193,7 +193,7 @@ def test_health_and_chat_are_503_until_the_retriever_is_loaded_then_report_the_m
                 assert h.status_code == 503 and h.json()["status"] == "error"
                 assert h.json()["embedding"] == "fake/bge-m3"
                 chat = await c.post("/chat", json={"message": "What is the active ingredient in Cataflam?"})
-                assert chat.status_code == 503 and set(chat.json()) == {"error"}
+                assert chat.status_code == 500 and set(chat.json()) == {"error"}  # the contract's error status
                 slow.gate.set()
                 for _ in range(50):
                     await asyncio.sleep(0.05)
@@ -227,3 +227,33 @@ def test_the_cache_file_holds_no_pickle(tmp_path):
     make(cache_dir=tmp_path)
     data = json.loads(next(tmp_path.glob("index-*.json")).read_text())
     assert data["model"] == "fake/bge-m3" and len(data["docs"]) == len(ALL)
+
+
+# ------------------------------------------------------------------ citations naming only the start of a section_id
+
+def test_a_citation_naming_only_the_kb_id_is_resolved_when_one_retrieved_section_fits():
+    from medrag.answering import build_citations
+
+    one, other = PAIN, PPI  # KB-03 and KB-02: one retrieved Section each
+    got = build_citations([{"section_id": "KB-03", "snippet": "Brufen – Ibuprofen"}], [one, other], "q")
+    assert [(c.doc_id, c.snippet) for c in got] == [("KB-03", "Brufen – Ibuprofen")]
+
+
+def test_an_ambiguous_prefix_needs_the_snippet_to_settle_it_and_an_invented_id_is_still_dropped():
+    from medrag.answering import build_citations
+
+    only_head = section("KB-03", "Headache", "NSAIDs", [("Flabu", "Ibuprofen")])
+    secs = [PAIN, only_head]  # two KB-03 Sections
+    assert [c.section for c in build_citations([{"section_id": "KB-03", "snippet": "Flabu – Ibuprofen"}], secs, "q")] == ["NSAIDs"]
+    assert build_citations([{"section_id": "KB-03", "snippet": "Brufen – Ibuprofen"}], [PAIN, THROAT_LIKE_PAIN], "q") == []
+    assert build_citations([{"section_id": "KB-77", "snippet": "Brufen – Ibuprofen"}], secs, "q") == []
+    assert build_citations([{"section_id": "KB-0", "snippet": "Brufen – Ibuprofen"}], secs, "q") == []  # not a prefix at a boundary
+
+
+THROAT_LIKE_PAIN = section("KB-03", "Fever", "NSAIDs", [("Brufen", "Ibuprofen")])
+
+
+def test_a_named_drug_keeps_its_sections_ahead_of_noise_words():
+    otc = [Section("KB-0%d" % n, "T%d" % n, "OTC vs Prescription", "otc", (Line("OTC or prescription: some OTC products."),)) for n in range(1, 5)]
+    r, _ = make([*otc, PPI])
+    assert r.search("OTC Controloc", 2)[0] is PPI  # the Section that lists Controloc, though four others repeat "OTC"

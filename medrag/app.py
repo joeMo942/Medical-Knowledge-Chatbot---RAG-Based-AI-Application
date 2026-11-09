@@ -104,7 +104,7 @@ def create_app(
 ) -> FastAPI:
     """`retriever` is anything with `search(query, k)`; without one the Sections are searched by BM25 alone.
     A retriever that has to load (a model, an index) also has `ready`, `load()` and `model_id`: /health is 503
-    and /chat refuses until `ready`, and `load()` runs in a worker thread at startup."""
+    and /chat answers 500 until `ready`, and `load()` runs in a worker thread at startup."""
     settings = settings or Settings()
     retriever = retriever or LexicalRetriever(sections)
     support = SupportCheck(sections)
@@ -194,7 +194,7 @@ def create_app(
         except BadRequest as exc:
             return _error(400, str(exc))
         if not search_ready():
-            return _error(503, "the search index is still loading, try again shortly")
+            return _error(500, "the search index is still loading, try again shortly")  # 500: the contract has no 503
         session_id = store.resolve(body.get("session_id") or request.headers.get("x-session-id"))
         deadline = time.monotonic() + settings.budget_s
         history = await load_history(session_id)

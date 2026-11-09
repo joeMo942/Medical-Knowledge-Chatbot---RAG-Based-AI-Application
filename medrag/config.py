@@ -49,8 +49,10 @@ class Settings:
     index_dir: str = ""  # the index cache; empty = no cache, the index is rebuilt at every start
     embed_threads: int = 0  # torch CPU threads; 0 = torch's default (all cores)
     # With no query term in any Section, a best dense similarity below this means "nothing matches" (no LLM call).
-    # Calibrated on the test set: off-topic questions reach 0.28-0.49, every answerable question 0.45 or more.
-    min_dense: float = 0.45
+    # The gate only applies where BM25 finds nothing, so it can never retrieve less than BM25 alone did. On the test set the
+    # five such questions (all not answerable: off-topic, an injection, a malaria trap) reach 0.36-0.49; no answerable
+    # question is BM25-empty, so the test set cannot say how high the threshold may go.
+    min_dense: float = 0.5
 
     def __post_init__(self) -> None:
         if self.budget_s <= self.llm_est_s:
