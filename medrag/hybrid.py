@@ -52,6 +52,7 @@ log = logging.getLogger("medrag")
 
 FORMAT_VERSION = 1
 RRF_K = 60
+WEIGHTS = (3.0, 1.0, 1.0)  # fusion weights of the dense, sparse and BM25 rankings: the meaning (dense) outvotes either lexical list alone but not both together, so a name the embedding cannot read (Arabic "فلاجيل" next to "الكحول") is still found lexically; chosen on the recall grid, see README Search
 DOC_MAX_LENGTH = 1024  # tokens; the longest Section of the KB is about 600
 QUERY_MAX_LENGTH = 512
 CANDIDATES = 12  # fused Sections considered for thinning
@@ -100,6 +101,7 @@ class HybridRetriever:
         cache_dir: str | Path | None = None,
         files_hash: str = "",
         min_dense: float = 0.0,
+        weights: tuple[float, float, float] = WEIGHTS,
         drugs: DrugIndex | None = None,
     ):
         self.sections = tuple(sections)
@@ -108,6 +110,7 @@ class HybridRetriever:
         self._cache_dir = Path(cache_dir) if cache_dir else None
         self._files_hash = files_hash
         self.min_dense = min_dense
+        self.weights = weights
         self.drugs = drugs or DrugIndex(self.sections)
         self._bm25 = LexicalRetriever(self.sections)
         self._units = [_units(s) for s in self.sections]
@@ -189,7 +192,7 @@ class HybridRetriever:
         enc = self._embedder.encode(variants, max_length=QUERY_MAX_LENGTH)
         self.last_embed_ms = (time.monotonic() - t0) * 1000
         n = len(self.sections)
-        rankings: list[list[int]] = []
+        rankings: list[tuple[float, list[int]]] = []
         best_dense = 0.0
         lexical_hit = False
         for text, e in zip(variants, enc):
@@ -198,9 +201,10 @@ class HybridRetriever:
             bm25 = self._bm25.scores(text)
             best_dense = max(best_dense, max(dense, default=0.0))
             lexical_hit = lexical_hit or any(x > 0 for x in bm25)
-            rankings.append(sorted(range(n), key=lambda i: (-dense[i], i)))
-            rankings.append([i for i in sorted(range(n), key=lambda i: (-sparse[i], i)) if sparse[i] > 0])
-            rankings.append([i for i in sorted(range(n), key=lambda i: (-bm25[i], i)) if bm25[i] > 0])
+            w_dense, w_sparse, w_bm25 = self.weights
+            rankings.append((w_dense, sorted(range(n), key=lambda i: (-dense[i], i))))
+            rankings.append((w_sparse, [i for i in sorted(range(n), key=lambda i: (-sparse[i], i)) if sparse[i] > 0]))
+            rankings.append((w_bm25, [i for i in sorted(range(n), key=lambda i: (-bm25[i], i)) if bm25[i] > 0]))
         self.last_best_dense = best_dense
         if not lexical_hit and best_dense < self.min_dense:
             return []
@@ -209,7 +213,7 @@ class HybridRetriever:
             # The question names a drug: the Sections that list it are the likeliest units, so they get one more
             # list in the fusion (in the order they already have), which keeps "OTC" or "class" noise from crowding them out.
             listing = self.drugs.sections_with(mentions.ingredients)
-            rankings.append([i for i in fused if self.sections[i].section_id in listing])
+            rankings.append((1.0, [i for i in fused if self.sections[i].section_id in listing]))
             fused = self._fuse(rankings)
         alt = self._alternative_views(query, mentions, fused)
         if alt:
@@ -236,11 +240,11 @@ class HybridRetriever:
                 extra.extend(self.drugs.display(t) for t in self.drugs.trade_names_of(ing)[:MAX_EXPANSION_NAMES])
         return f"{query} {' '.join(dict.fromkeys(extra))}".strip() if extra else query
 
-    def _fuse(self, rankings: list[list[int]]) -> list[int]:
+    def _fuse(self, rankings: list[tuple[float, list[int]]]) -> list[int]:
         score: dict[int, float] = {}
-        for ranking in rankings:
+        for weight, ranking in rankings:
             for rank, i in enumerate(ranking):
-                score[i] = score.get(i, 0.0) + 1.0 / (RRF_K + rank + 1)
+                score[i] = score.get(i, 0.0) + weight / (RRF_K + rank + 1)
         return sorted(score, key=lambda i: (-score[i], i))
 
     def _thin(self, order: list[int]) -> list[int]:

@@ -79,6 +79,7 @@ _FRAME_AR = """
 مانع موانع ممنوع ممنوعه تحذير تحذيرات تحذيره تداخل تداخلات
 روشته وصفه
 سنه سنين سنوات شهر شهور اسبوع اسابيع يوم ايام عمر عمره سن
+انا انت انتي احنا هو اخد اخذ ياخد خد بخد عايز عاوز عايزه عاوزه محتاج محتاجه ينفع لازم ممكن
 """
 _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
