@@ -34,7 +34,7 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_SESSIONS_DB` | `:memory:` (`/var/lib/medrag/sessions.db` in Docker, on the `sessions` volume) | SQLite file of the Sessions; with `:memory:` they last only until the process ends |
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
 
-All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, with the defaults above.
+All of these except `MEDRAG_KB_DIR` and `MEDRAG_SESSIONS_DB` are passed through by `docker-compose.yml`, with the defaults above (the KB folder is the fixed `./data` mount, and the Sessions path is set by the Dockerfile to the `sessions` volume).
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
 
@@ -61,7 +61,7 @@ After the model answers, the server checks the Citations (`medrag/answering.py`,
 
 `POST /chat` takes an optional `session_id`; the reply carries the Session in the `X-Session-Id` header (the chat page sends it back). No `session_id` starts a new Session, an unknown valid one starts a Session under that ID, and an unusable one (not 1-128 characters of `A-Za-z0-9._:-`) gets a fresh Session whose ID is in the header (no 400). Sessions and their turns are stored in SQLite (WAL) on the `sessions` volume, so they survive `docker compose restart api`; a Session keeps its last 20 turns and the store its 10,000 most recently used Sessions.
 
-The last 3 turns are given to the routing call only, fenced and trimmed, to rewrite a follow-up ("and its side effects?") into a standalone question; retrieval, the answer call and the support check use that question. Earlier turns are never given to the answer call, so they are never a source of facts: a follow-up whose answer is only in an earlier reply is Out of Scope. Every turn is checked for escalation on its own, on the new message and on its rewrite; history can only raise a status. If the routing call is skipped or fails, the raw message is used. `evaluation/cases_issue8.json` adds multi-turn cases (a fact only in an earlier reply, a Dose request in turn 3, an injection in an earlier turn, an Emergency that only the earlier turn reveals).
+The last 3 turns are given to the routing call only, fenced and trimmed, to rewrite a follow-up ("and its side effects?") into a standalone question; retrieval, the answer call and the support check use that question, but only if it passes a deterministic check: every number in it is in the new message, and every other word it adds is a KB drug name or Drug Class (a price or symptom from an earlier reply would be refused and the raw message used instead). Earlier turns are never given to the answer call, so they are never a source of facts: a follow-up whose answer is only in an earlier reply is Out of Scope. Every turn is checked for escalation on its own, on the new message and on its rewrite; history can only raise a status. If the routing call is skipped or fails, the raw message is used. `evaluation/cases_issue8.json` adds multi-turn cases (a fact only in an earlier reply, a Dose request in turn 3, an injection in an earlier turn, an Emergency that only the earlier turn reveals).
 
 ## Evaluation
 
