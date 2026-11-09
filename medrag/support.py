@@ -167,8 +167,11 @@ class _Text:
     def has(self, word: str) -> bool:
         for alias in _aliases_of(word):
             s = stem(alias)
-            if len(s) >= 4:
+            if len(s) >= 7:
                 if any(s in t for t in self.stems):  # "hypertens" inside "antihypertens"
+                    return True
+            elif len(s) >= 4:
+                if any(t.startswith(s) for t in self.stems):  # not "cost" inside "corticosteroid"
                     return True
             elif s in self.stems:
                 return True
