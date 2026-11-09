@@ -3,7 +3,8 @@
 The model only chooses a `section_id` and a snippet. `doc_id`, `title` and
 `section` always come from the Section itself, and a snippet that is not
 verbatim text of one line or row of that Section is replaced (full repair
-logic is #5). Model free text is only ever shown for an `answered` reply.
+logic is #5). Model free text is only ever shown for an `answered` reply, and an answered reply that
+states a dose-like amount missing from its cited Sections becomes the fixed Dose escalation.
 """
 from __future__ import annotations
 
@@ -12,10 +13,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from .dosecheck import unsupported_amounts
+from .escalation import ESCALATION_TEXT
 from .gate import LLMGate
 from .llm import LLMTruncated
 from .models import Line, Section
 from .retrieval import tokenize
+from .routing import TRIGGERS, effective_trigger
 
 Status = Literal["answered", "out_of_scope", "escalated"]
 Language = Literal["ar", "en", "mixed"]
@@ -42,6 +46,29 @@ ANSWER_SCHEMA: dict[str, Any] = {
     "required": ["answer", "status", "citations"],
     "additionalProperties": False,
 }
+
+# Backstop for a request whose routing call was skipped or failed and that the rules did not flag:
+# the answer call also says whether the message is an Escalated trigger. Same fields as the router.
+BACKSTOP_PROPERTIES: dict[str, Any] = {
+    "specific_person": {"type": "boolean"},
+    "trigger": {"type": "string", "enum": [*TRIGGERS, "none"]},
+}
+BACKSTOP_PROMPT = (
+    " Before answering, classify the QUESTION: specific_person is true only if it is about one particular "
+    "person; trigger is \"emergency\" (a person acutely unwell now, or who swallowed many pills or someone "
+    "else's medicine), \"dose\" (asks an amount, frequency or duration to take or give; NOT how much of an "
+    "ingredient a product contains), \"diagnosis\" (what condition a specific person has) or "
+    "\"treatment_decision\" (choose, switch, start or stop a drug for a specific person), else \"none\". "
+    "General questions about a drug, a class or a group of patients are always \"none\"."
+)
+
+
+def answer_schema(backstop: bool) -> dict[str, Any]:
+    if not backstop:
+        return ANSWER_SCHEMA
+    props = {**BACKSTOP_PROPERTIES, **ANSWER_SCHEMA["properties"]}
+    return {**ANSWER_SCHEMA, "properties": props, "required": [*BACKSTOP_PROPERTIES, *ANSWER_SCHEMA["required"]]}
+
 
 SYSTEM_PROMPT = (
     "You are a drug-information assistant for pharmacists and doctors in Egypt. "
@@ -220,6 +247,12 @@ def build_citations(raw: Any, sections: list[Section], hints: str) -> list[Citat
     return out
 
 
+def escalated(trigger: str, language: str) -> ChatResponse:
+    # Fixed server text per trigger: model text never reaches an Escalated reply.
+    text = ESCALATION_TEXT[trigger]["en" if language == "en" else "ar"]
+    return ChatResponse(answer=text, citations=[], status="escalated", language=language)
+
+
 def out_of_scope(language: str) -> ChatResponse:
     # Fixed server text: model free text never reaches the user on out_of_scope.
     return ChatResponse(answer=NOT_FOUND[language], citations=[], status="out_of_scope", language=language)
@@ -231,21 +264,33 @@ async def answer_question(
     sections: list[Section],
     llm: LLMGate,
     deadline: float | None = None,
+    backstop: bool = False,
 ) -> ChatResponse:
-    """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller)."""
+    """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller).
+    `backstop`: the routing call did not run, so the answer call also classifies the message."""
     if not sections:  # nothing lexically related: no reason to ask the model
         return out_of_scope(language)
+    system = SYSTEM_PROMPT + BACKSTOP_PROMPT if backstop else SYSTEM_PROMPT
     try:
-        result = await llm.complete_json(SYSTEM_PROMPT, build_prompt(question, sections), ANSWER_SCHEMA, deadline)
+        result = await llm.complete_json(system, build_prompt(question, sections), answer_schema(backstop), deadline)
     except LLMTruncated:
         # The reply hit the output cap: it is incomplete, so nothing of it is shown.
         return out_of_scope(language)
     raw = result.data
+    if backstop:
+        trigger = effective_trigger(raw)
+        if trigger:
+            return escalated(trigger, language)
     answer = raw.get("answer")
     answer = answer.strip() if isinstance(answer, str) else ""
     if raw.get("status") == "answered" and answer:
         citations = build_citations(raw.get("citations"), sections, f"{question} {answer}")
         if citations:
+            cited = {(c.doc_id, c.section) for c in citations}
+            cited_text = "\n".join(sec.render() for sec in sections if (sec.kb_id, sec.section) in cited)
+            if unsupported_amounts(answer, cited_text):
+                # A dose-like amount the cited documents do not contain: never shown.
+                return escalated("dose", language)
             return ChatResponse(answer=answer, citations=citations, status="answered", language=language)
     # out_of_scope, or answered without a valid Citation (contract invariant).
     return out_of_scope(language)

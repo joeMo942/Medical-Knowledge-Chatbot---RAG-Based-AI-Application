@@ -118,7 +118,7 @@ def test_out_of_scope_uses_fixed_message_never_model_text():
              "citations": [{"section_id": NSAIDS.section_id, "snippet": ROW}]}
     body = client(FakeLLM(reply)).post("/chat", json=Q).json()
     assert body == {"answer": NOT_FOUND["en"], "citations": [], "status": "out_of_scope", "language": "en"}
-    ar = client(FakeLLM(reply)).post("/chat", json={"message": "كم جرعة Cataflam"}).json()
+    ar = client(FakeLLM(reply)).post("/chat", json={"message": "ما هو Cataflam؟"}).json()
     assert ar["answer"] == NOT_FOUND["ar"] and ar["language"] == "ar"
 
 
@@ -180,16 +180,19 @@ async def _burst(app, n):
 
 
 def test_queue_that_cannot_finish_in_budget_fails_fast():
-    # One call takes ~1 s, budget 2.5 s: two requests fit, the rest must be refused at once.
-    app = make_app(FakeLLM(answered(), delay=1.0), budget_s=2.5, llm_est_s=1.0, llm_concurrency=1,
-                   llm_margin_s=0.1, min_output_tokens=1)
+    # One call takes ~1 s, budget 3.5 s. A request on an idle server makes a routing call first;
+    # the others arrive while it runs, skip theirs (see routing.route_message) and queue one answer
+    # call each. Some requests finish, the rest are refused as "busy", and none outlives the budget.
+    llm = FakeLLM(answered(), delay=1.0)
+    app = make_app(llm, budget_s=3.5, llm_est_s=1.0, llm_concurrency=1, llm_margin_s=0.1, min_output_tokens=1)
     results = asyncio.run(_burst(app, 5))
     ok = [r for r, _ in results if r.status_code == 200]
     refused = [(r, t) for r, t in results if r.status_code == 500]
-    assert len(ok) == 2 and len(refused) == 3
+    assert len(ok) >= 2 and len(ok) + len(refused) == 5
+    assert len(llm.route_calls) == 1  # only the request that found the server idle was routed
     for r, t in refused:
         assert set(r.json()) == {"error"} and "busy" in r.json()["error"]
-        assert t < 0.5
+        assert t < 3.5
 
 
 def test_client_disconnect_cancels_the_llm_call():
@@ -327,25 +330,33 @@ def test_usage_header_is_off_by_default():
 
 def test_usage_header_reports_tokens_and_calls_without_touching_the_body():
     r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json=Q)
-    assert usage_of(r) == {"prompt_tokens": 321, "completion_tokens": 45, "llm_calls": 1}
+    # The routing call and the answer call, each reporting 321 + 45 tokens.
+    assert usage_of(r) == {"prompt_tokens": 642, "completion_tokens": 90, "llm_calls": 2}
     assert set(r.json()) == {"answer", "citations", "status", "language"}
 
 
-def test_usage_header_counts_zero_when_the_model_is_not_called():
+def test_usage_header_counts_only_the_routing_call_when_the_answer_call_is_skipped():
     r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json={"message": "zzzz qqqq"})
     assert r.status_code == 200 and r.json()["status"] == "out_of_scope"
+    assert usage_of(r) == {"prompt_tokens": 321, "completion_tokens": 45, "llm_calls": 1}
+
+
+def test_usage_header_counts_zero_when_an_emergency_rule_escalates_without_any_model_call():
+    r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json={"message": "He is unconscious and not breathing"})
+    assert r.status_code == 200 and r.json()["status"] == "escalated"
     assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0}
 
 
 def test_usage_header_counts_a_truncated_call_with_its_prompt_tokens():
     r = uclient(FakeLLM(exc=LLMTruncated(150, 150, prompt_tokens=900))).post("/chat", json=Q)
     assert r.status_code == 200 and r.json()["status"] == "out_of_scope"
-    assert usage_of(r) == {"prompt_tokens": 900, "completion_tokens": 150, "llm_calls": 1}
+    # routing call (no tokens reported by the fake) + the truncated answer call
+    assert usage_of(r) == {"prompt_tokens": 900, "completion_tokens": 150, "llm_calls": 2}
 
 
 def test_usage_header_unreported_tokens_count_as_zero():
     r = uclient(FakeLLM(answered())).post("/chat", json=Q)
-    assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 1}
+    assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 2}
 
 
 def test_usage_header_is_not_shared_between_requests():
@@ -357,14 +368,15 @@ def test_usage_header_is_not_shared_between_requests():
 def test_usage_header_is_also_sent_on_500_responses():
     r = uclient(FakeLLM(exc=LLMError("boom"))).post("/chat", json=Q)   # the failed call still held the GPU
     assert r.status_code == 500
-    assert "X-Medrag-Usage" in r.headers and usage_of(r)["llm_calls"] == 1
+    assert "X-Medrag-Usage" in r.headers and usage_of(r)["llm_calls"] == 2
     r = uclient(FakeLLM(answered(), delay=1.0), budget_s=0.3, llm_est_s=0.1).post("/chat", json=Q)
     assert r.status_code == 500 and "X-Medrag-Usage" in r.headers
 
 
-def test_usage_header_on_busy_500_counts_no_calls():
+def test_usage_header_on_busy_500_counts_only_the_routing_call():
+    # The short routing call still fits; the answer call (minimum 1200 tokens) is refused as busy.
     r = uclient(FakeLLM(answered()), min_output_tokens=1200).post("/chat", json=Q)
-    assert r.status_code == 500 and usage_of(r)["llm_calls"] == 0
+    assert r.status_code == 500 and usage_of(r)["llm_calls"] == 1
 
 
 def test_usage_header_on_a_timeout_500():

@@ -12,13 +12,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .answering import ChatResponse, answer_question
+from .answering import ChatResponse
 from .config import EMBEDDING_PLACEHOLDER, Settings
 from .gate import Busy, LLMGate
 from .ingest import kb_dir, load_knowledge_base
 from .language import detect_language
 from .llm import LLMClient, build_llm
 from .models import Section
+from .pipeline import respond
 from .retrieval import LexicalRetriever
 from .sessions import SessionStore
 from .usage import USAGE_HEADER, start_meter
@@ -104,10 +105,17 @@ def create_app(
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
+    warmed = {"done": getattr(gate, "warm", None) is None}  # nothing to warm: ready at once
+
+    async def warm_up() -> None:
+        try:
+            await gate.warm()
+        finally:
+            warmed["done"] = True  # warm() is best effort: a failure must not keep /health red for ever
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        warm = getattr(gate, "warm", None)
-        task = asyncio.create_task(warm()) if warm else None
+        task = asyncio.create_task(warm_up()) if not warmed["done"] else None
         yield
         if task:
             task.cancel()
@@ -126,15 +134,19 @@ def create_app(
     @app.get("/health")
     async def health() -> JSONResponse:
         ready = getattr(gate, "ready", None)
-        ok = (await ready()) if ready else True
+        # Not "ok" until the model is loaded: the first request must not pay for the load (it would
+        # run into the routing timeout and the request budget).
+        ok = warmed["done"] and ((await ready()) if ready else True)
         return JSONResponse(
             {"status": "ok" if ok else "error", "llm": gate.model, "embedding": embedding_name},
             status_code=200 if ok else 503,
         )
 
     async def pipeline(message: str, deadline: float) -> ChatResponse:
-        found = await asyncio.to_thread(retriever.search, message, settings.top_k)
-        return await answer_question(message, detect_language(message), found, gate, deadline)
+        async def search(text: str) -> list[Section]:
+            return await asyncio.to_thread(retriever.search, text, settings.top_k)
+
+        return await respond(message, detect_language(message), search, gate, deadline)
 
     @app.post("/chat")
     async def chat(request: Request) -> JSONResponse:
