@@ -83,7 +83,7 @@ _FRAME_AR = """
 """
 _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
-beta3 beta3t beta3to bta3to bta3ty ba2a ba2 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
+beta3 beta3t beta3to bta3to bta3ty ba2a ba2 bta3et beta3et bta3at beta3at bet3a bta3 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
 bedail bedayel tegareya tegarya mamnoo3 mamno3 momken mawad3 mawane3 3ayez 3ayza 3ayzen ana enta
 """
 # Aspect words: what the KB answers by structure (a table column, a heading, a list), so a drug's

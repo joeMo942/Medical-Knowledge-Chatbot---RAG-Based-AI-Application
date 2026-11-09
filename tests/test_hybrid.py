@@ -325,3 +325,9 @@ def test_an_emergency_or_dose_message_is_escalated_even_while_the_index_loads():
     needs_search = asyncio.run(post("What is the active ingredient in Cataflam?"))
     assert needs_search.status_code == 500 and "loading" in needs_search.json()["error"]
     assert slow.search_threads == []  # nothing was searched
+
+
+def test_a_franco_alternatives_question_gets_the_cut_down_views_not_whole_sections():
+    r, _ = make()
+    got = r.search("eh el bdayel bta3et brufen", 4)
+    assert [s.section_id for s in got] == [HEAD.section_id, PAIN.section_id] and got[0].lines == ()
