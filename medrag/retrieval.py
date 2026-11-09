@@ -12,6 +12,7 @@ _STOP = frozenset(
     "a an and are as at be by can do does for from has have how i in is it its of on or "
     "the to what which who with you your".split()
 )
+STOP_WORDS = _STOP
 
 
 def tokenize(text: str) -> list[str]:

@@ -1,7 +1,7 @@
 """The order of decisions for one message:
 
     rules (+ routing call) -> Escalated? return it
-                           -> else retrieval (+ no-match shortcut) -> answer call -> Citations -> invariants
+                           -> else retrieval (+ no-match shortcut) -> answer call -> Citations -> dose check -> support check -> invariants
 
 Escalation is decided BEFORE retrieval and before the answer call, so an emergency or a Dose
 request is never dismissed as out_of_scope by the no-match shortcut and never reaches the model
@@ -17,6 +17,7 @@ from .gate import LLMGate
 from .models import Section
 from .routing import Route, route_message
 from .rules import check
+from .support import SupportCheck
 
 Search = Callable[[str], Awaitable[list[Section]]]
 
@@ -48,9 +49,10 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None) -> D
 
 
 async def respond(message: str, language: str, search: Search, llm: LLMGate,
-                  deadline: float | None = None) -> ChatResponse:
+                  deadline: float | None = None, support: SupportCheck | None = None) -> ChatResponse:
     decision = await decide(message, llm, deadline)
     if decision.trigger:
         return escalated(decision.trigger, language)
     sections = await search(message)
-    return await answer_question(message, language, sections, llm, deadline, backstop=decision.route is None)
+    return await answer_question(message, language, sections, llm, deadline, backstop=decision.route is None,
+                                support=support)

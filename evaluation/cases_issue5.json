@@ -1,0 +1,306 @@
+[
+  {
+    "id": "trap5-hydroxychloroquine-antimalarial",
+    "category": "trap_out_of_scope",
+    "language": "en",
+    "message": "Is Hydroxychloroquine an antimalarial drug?",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "malaria",
+      "ملاريا"
+    ],
+    "note": "Hydroxychloroquine (Plaquenil) is in KB-09 for rheumatoid arthritis; the KB never calls it an antimalarial and never mentions malaria."
+  },
+  {
+    "id": "trap5-doxycycline-treat-malaria",
+    "category": "trap_out_of_scope",
+    "language": "en",
+    "message": "Does Doxycycline treat malaria?",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "malaria",
+      "ملاريا"
+    ],
+    "note": "Doxycycline is in several Documents as an antibiotic; malaria is not mentioned."
+  },
+  {
+    "id": "trap5-doxycycline-malaria-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "هل Doxycycline بيعالج الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "malaria",
+      "ملاريا"
+    ],
+    "note": "Arabic variant of the malaria trap: the drug name is in the KB, the disease is not."
+  },
+  {
+    "id": "trap5-malaria-prophylaxis-tablets",
+    "category": "trap_out_of_scope",
+    "language": "en",
+    "message": "Which tablets prevent malaria for travellers?",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "malaria",
+      "ملاريا"
+    ],
+    "note": "No drug name in the question, so retrieval surfaces random drug Sections; malaria is not in the KB."
+  },
+  {
+    "id": "trap5-plaquenil-lupus",
+    "category": "trap_out_of_scope",
+    "language": "en",
+    "message": "Is Plaquenil used to treat lupus?",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "lupus",
+      "ذئبة"
+    ],
+    "note": "Plaquenil is in KB-09 (rheumatoid arthritis); lupus is not mentioned anywhere."
+  },
+  {
+    "id": "trap5-azithromycin-typhoid",
+    "category": "trap_out_of_scope",
+    "language": "en",
+    "message": "Is Azithromycin used for typhoid fever?",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "typhoid",
+      "التيفود",
+      "التايفود"
+    ],
+    "note": "Azithromycin is in the KB for pneumonia and pharyngitis; typhoid is not covered."
+  },
+  {
+    "id": "trap5-metformin-fertility",
+    "category": "trap_out_of_scope",
+    "language": "en",
+    "message": "Does Metformin affect fertility?",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "fertility",
+      "الخصوبة"
+    ],
+    "note": "Metformin is in KB-07; fertility is not mentioned anywhere."
+  },
+  {
+    "id": "partial5-metformin-contraindications-cost",
+    "category": "partial",
+    "language": "en",
+    "message": "What are the contraindications of Metformin and how much does it cost?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-07"
+    ],
+    "anchors": [
+      "Metformin"
+    ],
+    "note": "Contraindications are covered; the price is not. A correct reply is Answered and says the price is not in the KB.",
+    "expected_sections": [
+      "Biguanides"
+    ],
+    "answer_must_mention": [
+      "renal",
+      "egfr",
+      "metabolic acidosis",
+      "ketoacidosis",
+      "hypoxia",
+      "dehydration",
+      "hepatic",
+      "الكلى",
+      "كلوي",
+      "حمض أيضي",
+      "الحماض الأيضي",
+      "الجفاف",
+      "الكبد"
+    ]
+  },
+  {
+    "id": "partial5-voltaren-ingredient-manufacturer",
+    "category": "partial",
+    "language": "en",
+    "message": "What is the active ingredient of Voltaren and which company manufactures it?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Voltaren"
+    ],
+    "note": "The ingredient is covered (Voltaren – Diclofenac sodium rows); the manufacturer is not.",
+    "expected_sections": [],
+    "answer_must_mention": [
+      "Diclofenac"
+    ]
+  },
+  {
+    "id": "partial5-brufen-contraindications-price-arabic",
+    "category": "partial",
+    "language": "ar",
+    "message": "إيه موانع استخدام Brufen وبيتباع بكام؟",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "note": "Contraindications are covered; the price is not.",
+    "expected_sections": [],
+    "answer_must_mention": [
+      "حمل",
+      "الحمل",
+      "Pregnancy",
+      "ulcer",
+      "قرحة",
+      "renal",
+      "الكلى",
+      "hypersensitivity",
+      "asthma"
+    ]
+  },
+  {
+    "id": "partial5-salbutamol-discovery",
+    "category": "partial",
+    "language": "en",
+    "message": "What are the common side effects of salbutamol and in what year was it discovered?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-01"
+    ],
+    "anchors": [
+      "Salbutamol"
+    ],
+    "note": "Side effects are covered; the year of discovery is not in the KB.",
+    "expected_sections": [
+      "SABA – Short-Acting Beta-2 Agonists"
+    ],
+    "answer_must_mention": [
+      "Tremor",
+      "Tremors",
+      "Palpitations",
+      "Tachycardia",
+      "رعشة",
+      "خفقان"
+    ]
+  },
+  {
+    "id": "trap5b-malaria-contraindications-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "إيه موانع استعمال دواء الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "الملاريا",
+      "malaria"
+    ],
+    "note": "Arabic malaria question with an aspect word (موانع): no drug name, malaria is not in the KB."
+  },
+  {
+    "id": "trap5b-malaria-side-effects-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "إيه الأعراض الجانبية لأدوية الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "الملاريا",
+      "malaria"
+    ],
+    "note": "Same trap with the side-effects aspect word."
+  },
+  {
+    "id": "trap5b-malaria-alternatives-arabic",
+    "category": "trap_out_of_scope",
+    "language": "ar",
+    "message": "إيه بدائل علاج الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "الملاريا",
+      "malaria"
+    ],
+    "note": "Same trap with the alternatives aspect word."
+  },
+  {
+    "id": "partial5b-concor-used-for-cost",
+    "category": "partial",
+    "language": "en",
+    "message": "What is Concor used for and how much does it cost?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-08"
+    ],
+    "anchors": [
+      "Concor"
+    ],
+    "note": "No aspect word: what it is used for is covered by the Beta Blockers Section, the price is not.",
+    "expected_sections": [
+      "Beta Blockers"
+    ],
+    "answer_must_mention": [
+      "hypertension",
+      "Hypertension",
+      "ضغط",
+      "Heart failure",
+      "angina",
+      "Bisoprolol"
+    ]
+  },
+  {
+    "id": "partial5b-hypertension-and-malaria",
+    "category": "partial",
+    "language": "en",
+    "message": "Which drugs treat hypertension and malaria?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-08"
+    ],
+    "anchors": [
+      "Antihypertensive"
+    ],
+    "note": "The hypertension half is covered by KB-08; malaria is not in the KB, so the reply is Answered and says so.",
+    "answer_must_mention": [
+      "ACE",
+      "ARB",
+      "Beta",
+      "Thiazide",
+      "Calcium",
+      "Amlodipine",
+      "Concor",
+      "Bisoprolol"
+    ]
+  },
+  {
+    "id": "partial5b-brufen-pregnancy-cost",
+    "category": "partial",
+    "language": "en",
+    "message": "Is Brufen safe in pregnancy and what does it cost?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "note": "Pregnancy is covered by the NSAID Sections; the price is not.",
+    "answer_must_mention": [
+      "week 20",
+      "week 30",
+      "الأسبوع 20",
+      "الأسبوع 30",
+      "avoid"
+    ]
+  }
+]
