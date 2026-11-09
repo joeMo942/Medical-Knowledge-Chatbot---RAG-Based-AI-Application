@@ -6,10 +6,16 @@ ENV PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
 WORKDIR /app
 # Dependencies first, in their own layer: a code change does not download the wheels again.
 # constraints.txt pins every dependency (regenerate: pip freeze inside a fresh image, minus medrag).
-# The pip cache is a build cache mount: a build that fails half way resumes with the wheels it has.
+# The pip cache is a build cache mount, and the install is retried as a whole: a download that
+# stalls or arrives corrupted fails the attempt, and the next one keeps the wheels already fetched.
 COPY constraints.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --retries 10 --timeout 100 -r constraints.txt "setuptools>=68"
+    ok=0; \
+    for attempt in 1 2 3 4 5 6 7 8; do \
+        if pip install --retries 10 --timeout 100 -r constraints.txt "setuptools>=68"; then ok=1; break; fi; \
+        echo "pip install failed (attempt $attempt), retrying"; sleep 5; \
+    done; \
+    [ "$ok" = 1 ]
 COPY pyproject.toml ./
 COPY medrag ./medrag
 # Build in-tree without isolation (setuptools is already installed above, so nothing is downloaded);
