@@ -39,6 +39,12 @@ def _rx(*parts: str) -> re.Pattern[str]:
 
 # ------------------------------------------------------------------------------- emergency
 
+_EN_TOOK = r"(took|taken|swallowed|ate|eaten|drank|drunk|gulped|downed|ingested|consumed|popped|chewed)"
+_EN_MANY = (r"\d{2,}|too many|too much|a whole|the whole|whole|half (a |an |the |of a |of the )?(bottle|box|strip|pack|packet)|"
+            r"a lot of|lots of|handful|several|a bunch of|all (of )?(the|my|his|her)")
+_EN_UNIT = (r"pills?|tablets?|tabs|capsules?|caps|bottles?|strips?|packs?|packets?|boxes|box|sachets?|ampoules?|"
+            r"syrup|drops|puffs?|medicines?|medications?|meds|drugs?|dawa")
+
 # Wording that is an emergency wherever it appears: a person who is acutely unwell right now.
 _EMERGENCY_STRONG = _rx(
     # English
@@ -50,8 +56,12 @@ _EMERGENCY_STRONG = _rx(
     r"\boverdos\w*|\bswallowed (a|an|the|his|her|my|whole|too many|\d+)\b.{0,25}\b(box|bottle|strip|pack|packet|pills|tablets|capsules|syrup)\b",
     r"\b(took|taken|ate|drank) (a|an|the|too many|too much|whole|\d+)\b.{0,20}\b(whole )?(box|bottle|strip|pack|packet)\b",
     r"\b(vomit\w*|cough\w*|spit\w*|pass\w*) (up )?(blood|bloody)\b|\bblood in (his|her|my|the) (vomit|stool|urine)\b",
-    r"\bkill (myself|himself|herself)\b|\bend (my|his|her) life\b|\bwants? to die\b",
+    r"\bkill (myself|himself|herself)\b|\bdon\'?t want to (live|be alive)\b|\bno reason to live\b|\bbetter off dead\b|\bend it all\b|\bend (my|his|her) life\b|\bwants? to die\b",
     r"\bambulance\b",
+    # a reported intake of many pills / a bottle / "some of my pills": overdose or accidental ingestion
+    rf"\b{_EN_TOOK}\b[^.?!]{{0,25}}\b({_EN_MANY})\b[^.?!]{{0,40}}\b({_EN_UNIT})\b",
+    rf"\b{_EN_TOOK}\b[^.?!]{{0,12}}\b(some|any|a few|several|few|a bunch|lots|a lot) of (my|his|her|the|their|your|our)\b",
+    rf"\b(child|kid|baby|toddler|infant|son|daughter|\d+[- ]?(year|yr|month)s?[- ]?old)\b[^.?!]{{0,40}}\b(swallowed|ate|eaten|drank|drunk|ingested|got into|chewed)\b[^.?!]{{0,40}}\b({_EN_UNIT}|meds|drug|drugs|panadol|medicine)\b",
     # Arabic (normalised: alef, ya, ta marbuta folded)
     r"(مش|ما|لا|مو)\s*(قادر\w*|عارف\w*|بيعرف|بتعرف|بقدر|بيقدر)\s*(ا|ي|ت|ن)?تنفس|(مش|ما)\s*(بيتنفس|بتتنفس)",
     r"نفس\w*\s*(مقطوع|بيقطع|واقف|محبوس|مخنوق)|(مقطوع|انقطاع|انحباس)\s*(ال)?نفس|بيختنق|مختنق",
@@ -62,6 +72,10 @@ _EMERGENCY_STRONG = _rx(
     r"(بلع|ابتلع|شرب|اخد|اخدت|اخذ)\w*\s*(علبه|علب|شريط|زجاجه|ازازه)\w*\s*(كامل\w*|كلها|كله)?|بلع (كتير|كميه كبيره)",
     r"(بيرجع|بترجع|رجع|رجعت|بيتقيا|بتتقيا|تقيا|كحه|بيكح|بتكح)\w*\s*(منه|منها)?\s*دم\b|قيء دموي|قي دموي|دم في (ال)?(براز|بول|قي)",
     r"عايز\w* اموت|نفسي اموت|بفكر\w* (اموت|انتحر)|(اقتل|اذي)\s*نفس\w*|اسعاف",
+    # Arabic: swallowed / drank pills or medicine (accidental ingestion), or took many of them
+    r"(بلع|ابتلع|بلعت|ابتلعت|بلعوا|شرب|شربت|اكل|اكلت|لحس)\w*\s*(\w+\s*){0,2}(حبوب|حبات|اقراص|كبسولات|ادويه|دوا|الدوا|الادويه|شراب|ازازه|زجاجه|شريط|علبه|علب)",
+    r"(اخد|اخدت|اخذ|خد|خدت|تناول|تناولت)\w*\s*(\w+\s*){0,2}(\d{2,}|كتير|كتيره|كميه كبيره|عدد كبير|كل)\s*(حب|قرص|اقراص|كبسول|حبوب|شريط|علبه)",
+    r"(بلع|ابتلع|شرب|اكل)\w*\s*(\w+\s*){0,2}\d+\s*(حب|قرص|اقراص|كبسول|حبوب)",
     r"عرق\s*بارد",
     # Franco-Arabic (digits stand for Arabic letters: 3=ع 7=ح 2=ء 5=خ 9=ق 6=ط)
     r"\bd(ee?|i)?2\s*(el\s*)?nafa?s\w*|\bdee?q\s*(el\s*)?nafa?s",
@@ -73,6 +87,9 @@ _EMERGENCY_STRONG = _rx(
     r"\bby?r[ei]?g[ae]?a?3\s*dam\b|\brega3\w* dam\b|\bbyrg3 dam\b",
     r"\b3ar2 bared\b|\b3ara2 bared\b",
     r"\b(by?)?takhod\w* (el )?(3elba|3elab|elba) (kolha|kolaha)\b|\b(ba3|bal3|bala3)\w* (el )?3elba\b",
+    # Franco: swallowed / drank pills or medicine, or took many of them
+    r"\b(bala3|bal3|bala3et|bala3t|bal3et|shereb|shereb|sharab|sherib|akal|akalet|akl)\w*\s*(\w+\s*){0,2}(7ab\w*|hab\w*|dawa|2ors|a2ras|capsul\w*|kapsul\w*|shreet|azaza|3elba|3elbet|syrup)",
+    r"\b(a5ad|akhad|5ad|a5adt|akhadt|5adet|a5adet|5adt|akhdt)\w*\s*(\w+\s*){0,2}(\d{2,}|kteer|ketir|kiteer|kol)\s*(7ab\w*|hab\w*|2ors|a2ras|capsul\w*|shreet|3elba|3elbet)",
     r"\bover ?dose\b|\boverdoz\w*",
 )
 
@@ -80,7 +97,7 @@ _EMERGENCY_STRONG = _rx(
 # a side-effect or contraindication question. Dropped when the message is framed that way.
 _EMERGENCY_WEAK = _rx(
     r"\b(short(ness)? of breath|breathless\w*|difficulty breathing|trouble breathing|hard to breathe|can'?t catch (his|her|my) breath|wheez\w*|chest pain|chest tightness|chest pressure|tight chest|palpitations?|fast heart ?beat|heart attack|cardiac arrest)\b",
-    r"\b(stroke|slurred speech|face drooping|paraly\w*|numb\w* on one side|severe headache|worst headache|confus\w+|disorient\w*|very drowsy|can'?t stay awake)\b",
+    r"\b(stroke|slurred speech|face (is )?drooping|drooping face|cannot move (his|her|my) (arm|leg)|can'?t move (his|her|my) (arm|leg)|paraly\w*|numb\w* on one side|severe headache|worst headache|confus\w+|disorient\w*|very drowsy|can'?t stay awake)\b",
     r"\b(seizures?|convuls\w+|fits?|anaphyla\w*|severe allergic|choking|suicid\w*|self[- ]harm|faint\w*)\b",
     r"\b(throat|tongue|face|lips?)\b.{0,15}\b(swell\w*|swollen|closing|closed)\b|\b(swollen|swelling of( the| his| her| my)?) (throat|tongue|face|lips?)\b",
     r"\b(bleed\w*|hemorrhag\w*|haemorrhag\w*) (heavily|a lot|badly|profusely|won'?t stop|that won'?t stop)\b|\bheavy bleeding\b|\bwon'?t stop bleeding\b",
@@ -113,14 +130,11 @@ _PERSON_NOW = _rx(
 # Cues that a quantity question is about how much to give or take (not about product composition).
 _EN_INTAKE_CUE = (r"(take|taking|taken|takes|give|giving|given|gave|administer\w*|inject\w*|swallow\w*|"
                   r"drink\w*|use|using|used|dose|doses|per (day|night|dose|kg|week|hour)|a day|each day|every|daily|"
-                  r"at (night|once|a time|bedtime)|once|twice|times|safe|maximum|max|limit|too much|too many|at most|"
-                  r"for (a |an |my |his |her |the )?(child|children|kid|baby|adult|patient|infant|elderly|pregnan\w*|\d+[- ]year))")
+                  r"at (night|once|a time|bedtime)|once|twice|times|maximum|max|limit|too much|too many|at most)")
 
 _DOSE_EN = _rx(
-    r"\b(dose|doses|dosage|dosages|dosing|posology|dosed)\b(?!\s*forms?\b)",
     rf"\bhow (many|much)\b[^.?!]{{0,70}}\b{_EN_INTAKE_CUE}\b",
     r"\bhow (often|frequently|long|many days|many weeks)\b[^.?!]{0,40}\b(take|taking|give|giving|use|using|inject\w*|used|taken|apply\w*|continue)\b",
-    r"\bhow (often|frequently)\b",
     r"\b(mg|mcg|ml|milligrams?|grams?|tablets?|pills?|capsules?|puffs?|drops?|units?|sachets?|ampoules?|injections?|sprays?|tsp|teaspoons?)\b[^.?!]{0,25}\b(per|a|each|every)\s*(day|night|morning|hour|week|dose|kg|kilo|time)\b",
     r"\b\d+(\.\d+)?\s*(mg|mcg|ml|units?)\s*/\s*(kg|day|dose)\b|\bmg\s*/\s*kg\b|\bmg per kg\b",
     r"\b(once|twice|thrice|one time|two times|three times|\d+ times|every \d+ hours?)\b[^.?!]{0,15}\b(a|per|each|every|in a)\s*(day|daily|week|night|hours?)\b",
@@ -137,11 +151,10 @@ _DOSE_AR_UNIT = (r"(حب[ه]|حبايه|حبايات|حبوب|حبه|قرص|اق
                  r"مل|ملي|مللي|ملجم|مجم|ملغ|جرام|غرام|ملعق\w*|وحد\w*|ساش\w*|لبوس\w*|مره|مرات|مرتين)")
 _AR_INTAKE_CUE = (r"(اخد|آخد|اخذ|ياخد|تاخد|ناخد|يتاخد|تتاخد|ياخدها|ياخده|اتناول|يتناول|اعطي|اعطيه|اعطيها|ادي|اديه|اديها|اديله|اديلها|"
                   r"يدي|ادّي|يعطي|يستخدم|استخدم|يستعمل|استعمل|احقن|يحقن|اشرب|يشرب|اخلي|يوميا|في اليوم|فى اليوم|باليوم|بالنهار|بالليل|في الاسبوع|"
-                  r"كل\s*\d*\s*(ساع|يوم|ليل|صباح)|مره في|مرتين في|مرات في|ينفع|يصلح|اقدر|ممكن|لازم|يجب|ينبغي|اقصي|اقصى|الاقصي|"
+                  r"كل\s*\d*\s*(ساع|يوم|ليل|صباح)|مره في|مرتين في|مرات في|ينفع|اقدر|اقصي|اقصى|الاقصي|"
                   r"للاطفال|لطفل|للكبار|لكبير|للحامل|للرضيع|لمريض|حد اقصي|زياده|اكتر|اقل)")
 
 _DOSE_AR = _rx(
-    r"جرع[ه]|جرعات|جرعتي|جرعته|جرعتها",
     rf"\b(كام|كم|قد ايه|قدر ايه|اد ايه|ايه كميه|كميه)\s*(ال)?\s*{_DOSE_AR_UNIT}\b[^.؟?!]{{0,60}}{_AR_INTAKE_CUE}|{_AR_INTAKE_CUE}[^.؟?!]{{0,40}}\b(كام|كم)\s*(ال)?\s*{_DOSE_AR_UNIT}",
     r"\b(كام|كم)\s*(ال)?\s*(حب[ه]|حبايه|حبايات|حبوب|قرص|اقراص|كبسول\w*|نقط\w*|قطر\w*|بخ\w*|امبول\w*|حقن\w*|كيس|اكياس|ملعق\w*|لبوس\w*)(?!\s*(في|فى|فيه|جوه|داخل)\s*(ال)?(علب|شريط|عبو|باكت|كرتون|ورق))",
     r"\b(كام|كم)\s*(مره|مرات|مرتين|يوم|ايام|اسبوع|اسابيع|ساعه|ساعات)\b[^.؟?!]{0,30}(اخد|ياخد|تاخد|يتاخد|اتناول|يستخدم|استخدم|اعطي|ادي|اديه|اديله|اديها|يدي|احقن|يحقن)",
@@ -163,7 +176,7 @@ _FR_CUE = (r"(a3mel|a3ml|a3ty|a3ti|e3ty|e3ti|a3tih\w*|a3te\w*|edy|edi|edih\w*|ed
            r"a5od|a5d|akhod|akhud|a5ud|akhd|ya5od|yakhod|ya5d|yakhd|ye5od|ta5od|takhod|takhd|yetaa?5ed|yet?akhed|yenfa3|yenfa3?|"
            r"a7ot|a7ott|a7ut|ahot|fel\s*yom|fe\s*el\s*yom|fi\s*el\s*yom|bel\s*yom|el\s*yom|youm\w*|yawm\w*|f el yom|"
            r"fel\s*layl|belayl|kol\s*(\d+\s*)?(sa3|sa3a|yom|youm|layl)|yomeyan|yawmeyan|yawmiyan|marra fel|marteen fel|"
-           r"e2dar|a2dar|a2dr|momken|lazem|yegib|ye3ty|kebeer|el\s*atfal|le\s*atfal|lel\s*atfal|lel\s*kobar|lel\s*7amel|tefl|teflo)")
+           r"e2dar|a2dar|a2dr|ye3ty)")
 
 _FR_CUE_RX = re.compile(rf"\b{_FR_CUE}\b")
 
@@ -200,24 +213,43 @@ def has_red_flag(message: str) -> bool:
     return _first(_EMERGENCY_WEAK_AR, t) or (_first(_EMERGENCY_WEAK, t) and _first(_PERSON_NOW, t))
 
 
+# The bare word "dose" is a Dose request only with a cue that an amount, a person or a frequency
+# is asked about, and never when the question is about what the KB says in general ("is the dose
+# adjusted in kidney failure?", "what strengths and doses does X come in?": group-level, Answered).
+_DOSE_WORD = re.compile(r"\b(dose|doses|dosage|dosages|dosing|posology|dosed|doza|doz)\b(?!\s*forms?\b)")
+_DOSE_WORD_AR = re.compile(r"جرع[ه]|جرعات|جرعتي|جرعته|جرعتها")
+_DOSE_CUE = re.compile(
+    r"\b(what'?s|what is|what are|tell me|give me|state|the right|correct|recommended|usual|normal|standard|"
+    r"safe|toxic|lethal|max\w*|min\w*|starting|initial|loading|maintenance|pediatric|paediatric|adult|adults|"
+    r"child|children|kid|kids|infant|baby|my|his|her|our|per|daily|weekly|twice|once|kg|missed|forgot\w*|"
+    r"skip\w*|doubl\w*|increase|decrease|reduce|how much|how many|how often|should i|can i|\d+)\b"
+    r"|كام|كم|الجرع[ه] (ال)?(صحيح|مناسب|المناسب|الصحيح|القصوي|اليوميه)|للاطفال|لطفل|للكبار|للرضيع|ايه|ما هي|ماهي|قولي|اعطيني|اعرف|\bkam\b|\ba3mel\b")
+_DOSE_GROUP_FRAME = re.compile(
+    r"\b(adjust\w*|differ\w*|chang\w*|modif\w*|vary|varies|come|comes|available|forms?|strengths?|"
+    r"require\w*|needed|necessary)\b|تتعدل|بتتعدل|تعديل|تختلف|بتختلف|تتغير|اشكال|تركيز|يتعدل|بيتعدل|هل يلزم|هل تحتاج")
+
+
+def _asks_amount(t: str) -> bool:
+    return _first(_DOSE_EN, t) or _first(_DOSE_AR, t) or _first(_DOSE_FR, t)
+
+
 def has_dose_wording(message: str) -> bool:
     t = normalize(message)
-    if _first(_DOSE_EN, t) or _first(_DOSE_AR, t) or _first(_DOSE_FR, t):
+    if _asks_amount(t):
         return True
-    return (_first(_FR_KAM_MG, t)
-            and (_first(_FR_CUE_RX, t) or not _first(_FR_STRENGTH_MARK, t)))
+    if _first(_FR_KAM_MG, t) and (_first(_FR_CUE_RX, t) or not _first(_FR_STRENGTH_MARK, t)):
+        return True
+    if _first(_DOSE_WORD, t) or _first(_DOSE_WORD_AR, t):
+        return _first(_DOSE_CUE, t) and not _first(_DOSE_GROUP_FRAME, t)
+    return False
 
 
 def check(message: str) -> RuleTrigger | None:
     """The trigger the wording alone reveals: emergency before dose, None when nothing matched
-    (which never means "safe": the routing call and the pipeline still decide)."""
+    (which never means "safe": the routing call and the pipeline still decide). The rules only
+    ever raise a status: they have no way to lower one."""
     if has_red_flag(message):
         return "emergency"
     if has_dose_wording(message):
         return "dose"
     return None
-
-
-def raise_status(current: str, flagged: RuleTrigger | None) -> str:
-    """Rules may only raise: a flagged message is Escalated whatever the status was."""
-    return "escalated" if flagged else current
