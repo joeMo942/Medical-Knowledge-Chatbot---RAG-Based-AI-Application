@@ -30,11 +30,24 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_MIN_OUTPUT_TOKENS` | `150` | a request with time for fewer output tokens than this is refused (500 busy) instead of calling the model |
 | `MEDRAG_DECODE_TOK_S` | `53` | decode speed used to size each reply's cap to the time left: (time left - margin) x speed; the server may lower it from observed speeds, never raise it |
 | `MEDRAG_LLM_MARGIN_S` | `2.5` | time kept back for prompt evaluation and overhead when sizing that cap |
+| `MEDRAG_USAGE_HEADER` | `0` | `1` sends the `X-Medrag-Usage` response header (JSON: `prompt_tokens`, `completion_tokens`, `llm_calls` of that request, also on 500s); needed for the token metrics of the evaluation runs. The response body never changes |
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
 
 All of these except `MEDRAG_KB_DIR` are passed through by `docker-compose.yml`, with the defaults above.
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing.
+
+## Evaluation
+
+The test set (`evaluation/cases.json`: 85 cases, 90 turns, each with expected status, expected KB IDs, relevance terms and a note) and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them. Start the stack with the usage header on, so tokens are measured (`MEDRAG_USAGE_HEADER=1 docker compose up -d --wait`), then:
+
+```
+python -m evaluation.run --label baseline          # every case, one at a time, against http://localhost:8000
+python -m evaluation.review evaluation/results/<date>-baseline.json   # manual faithfulness-review sheet
+python -m evaluation.kb_check                      # checks expected KB IDs, sections and out-of-scope traps against the real KB files
+```
+
+`run` writes `evaluation/results/<date>-<label>.json` (a row per turn with the full response, latency, the Session ID sent and returned) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50/p95, tokens, contract violations). The label may hold only letters, digits, `.`, `_` and `-` (for example `qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request. A name that already exists gets a numeric suffix. The results folder is gitignored: results stay local. Without the usage header the runner warns and the token metrics are marked absent. The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply and up to 5 escalated ones, plus at least 5 seeded random answered replies, and never overwrites an existing sheet; faithfulness is judged by a person, never by an LLM.
 
 ## Tests
 

@@ -111,6 +111,27 @@ def test_truncation_reports_tokens_used_and_cap():
     with pytest.raises(LLMTruncated) as e:
         run(c.complete_json("s", "u", ANSWER_SCHEMA, max_tokens=321))
     assert (e.value.completion_tokens, e.value.cap) == (321, 321)
+    assert e.value.prompt_tokens is None                    # not reported by this reply
+
+
+def test_truncation_carries_the_prompt_tokens_of_both_clients():
+    # The prompt was evaluated even though the reply was cut off: the usage header must count it.
+    def ollama(request):
+        return httpx.Response(200, json={"message": {"content": '{"answer": "x'}, "done_reason": "length",
+                                         "eval_count": 150, "prompt_eval_count": 1234})
+
+    def openai(request):
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"answer": "x'}, "finish_reason": "length"}],
+                                         "usage": {"prompt_tokens": 987, "completion_tokens": 150}})
+
+    o = OllamaClient("http://o", "m:1", transport=httpx.MockTransport(ollama))
+    with pytest.raises(LLMTruncated) as e:
+        run(o.complete_json("s", "u", ANSWER_SCHEMA, max_tokens=150))
+    assert (e.value.prompt_tokens, e.value.completion_tokens) == (1234, 150)
+    a = OpenAICompatClient("https://h/v1", "m", "", transport=httpx.MockTransport(openai))
+    with pytest.raises(LLMTruncated) as e:
+        run(a.complete_json("s", "u", ANSWER_SCHEMA, max_tokens=150))
+    assert (e.value.prompt_tokens, e.value.completion_tokens) == (987, 150)
 
 
 def test_output_cap_comes_from_settings(monkeypatch):

@@ -1,7 +1,9 @@
 """API tests: fake LLM, small synthetic Sections; no Ollama and no KB files needed."""
 import asyncio
 import json
+import re
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -306,3 +308,106 @@ def test_chat_page_is_a_working_chat_ui():
     html = r.text
     assert 'dir="auto"' in html and "<form" in html
     assert 'fetch("/chat"' in html and "X-Session-Id" in html and "citations" in html
+
+
+# --- X-Medrag-Usage header (tokens and LLM calls); off by default, the body never changes ---
+
+def uclient(llm, **settings):
+    return client(llm, usage_header=True, **settings)
+
+
+def usage_of(r):
+    return json.loads(r.headers["X-Medrag-Usage"])
+
+
+def test_usage_header_is_off_by_default():
+    r = client(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json=Q)
+    assert r.status_code == 200 and "X-Medrag-Usage" not in r.headers
+
+
+def test_usage_header_reports_tokens_and_calls_without_touching_the_body():
+    r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json=Q)
+    assert usage_of(r) == {"prompt_tokens": 321, "completion_tokens": 45, "llm_calls": 1}
+    assert set(r.json()) == {"answer", "citations", "status", "language"}
+
+
+def test_usage_header_counts_zero_when_the_model_is_not_called():
+    r = uclient(FakeLLM(answered(), tokens=(321, 45))).post("/chat", json={"message": "zzzz qqqq"})
+    assert r.status_code == 200 and r.json()["status"] == "out_of_scope"
+    assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0}
+
+
+def test_usage_header_counts_a_truncated_call_with_its_prompt_tokens():
+    r = uclient(FakeLLM(exc=LLMTruncated(150, 150, prompt_tokens=900))).post("/chat", json=Q)
+    assert r.status_code == 200 and r.json()["status"] == "out_of_scope"
+    assert usage_of(r) == {"prompt_tokens": 900, "completion_tokens": 150, "llm_calls": 1}
+
+
+def test_usage_header_unreported_tokens_count_as_zero():
+    r = uclient(FakeLLM(answered())).post("/chat", json=Q)
+    assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 1}
+
+
+def test_usage_header_is_not_shared_between_requests():
+    c = uclient(FakeLLM(answered(), tokens=(10, 5)))
+    first = c.post("/chat", json=Q).headers["X-Medrag-Usage"]
+    assert c.post("/chat", json=Q).headers["X-Medrag-Usage"] == first
+
+
+def test_usage_header_is_also_sent_on_500_responses():
+    r = uclient(FakeLLM(exc=LLMError("boom"))).post("/chat", json=Q)   # the failed call still held the GPU
+    assert r.status_code == 500
+    assert "X-Medrag-Usage" in r.headers and usage_of(r)["llm_calls"] == 1
+    r = uclient(FakeLLM(answered(), delay=1.0), budget_s=0.3, llm_est_s=0.1).post("/chat", json=Q)
+    assert r.status_code == 500 and "X-Medrag-Usage" in r.headers
+
+
+def test_usage_header_on_busy_500_counts_no_calls():
+    r = uclient(FakeLLM(answered()), min_output_tokens=1200).post("/chat", json=Q)
+    assert r.status_code == 500 and usage_of(r)["llm_calls"] == 0
+
+
+def test_usage_header_on_a_timeout_500():
+    # Same set-up as test_slow_llm_is_500_within_budget: the call starts, the request budget runs out.
+    r = uclient(FakeLLM(answered(), delay=5), budget_s=0.2, llm_est_s=0.05, llm_margin_s=0.0,
+                min_output_tokens=1).post("/chat", json=Q)
+    assert r.status_code == 500 and r.json() == {"error": "the request timed out"}
+    # The cancelled call reported no usage, and is not counted as a finished call.
+    assert usage_of(r) == {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0}
+
+
+def test_usage_meter_adds_up_several_llm_calls_of_one_request():
+    from medrag.gate import LLMGate
+    from medrag.usage import start_meter
+
+    async def go():
+        meter = start_meter()
+        gate = LLMGate(FakeLLM(answered(), tokens=(100, 10)))
+        await gate.complete_json("s", "u", {})
+        await gate.complete_json("s", "u", {})   # e.g. a classifier call plus the answer call
+        return meter
+
+    meter = asyncio.run(go())
+    assert (meter.prompt_tokens, meter.completion_tokens, meter.llm_calls) == (200, 20, 2)
+    assert json.loads(meter.header_value()) == {"prompt_tokens": 200, "completion_tokens": 20, "llm_calls": 2}
+
+
+def test_usage_header_can_be_turned_off_and_setting_from_env(monkeypatch):
+    r = client(FakeLLM(answered()), usage_header=False).post("/chat", json=Q)
+    assert r.status_code == 200 and "X-Medrag-Usage" not in r.headers
+    monkeypatch.delenv("MEDRAG_USAGE_HEADER", raising=False)
+    assert Settings.from_env().usage_header is False
+    monkeypatch.setenv("MEDRAG_USAGE_HEADER", "1")
+    assert Settings.from_env().usage_header is True
+    monkeypatch.setenv("MEDRAG_USAGE_HEADER", "0")
+    assert Settings.from_env().usage_header is False
+
+
+def test_compose_keeps_the_usage_header_off_by_default():
+    # The graded stack is docker compose: the header must be opt-in there too, not only in Settings.
+    root = Path(__file__).resolve().parents[1]
+    for f in sorted(root.glob("docker-compose*.yml")):
+        for value in re.findall(r"MEDRAG_USAGE_HEADER:\s*(\S+)", f.read_text(encoding="utf-8")):
+            assert value == "${MEDRAG_USAGE_HEADER:-0}", f"{f.name}: {value}"
+    assert re.search(r"MEDRAG_USAGE_HEADER:\s*\$\{MEDRAG_USAGE_HEADER:-0\}",
+                     (root / "docker-compose.yml").read_text(encoding="utf-8"))

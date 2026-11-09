@@ -10,6 +10,7 @@ from collections import deque
 from typing import Any
 
 from .llm import DEFAULT_MAX_OUTPUT_TOKENS, LLMClient, LLMResult, LLMTruncated
+from .usage import record_call
 
 log = logging.getLogger("medrag")
 
@@ -93,6 +94,7 @@ class LLMGate:
                     result = await self._llm.complete_json(system, user, schema, max_tokens=cap)
                 except LLMTruncated as exc:
                     self._recent.append(time.monotonic() - t0)
+                    record_call(exc.prompt_tokens, exc.completion_tokens)
                     log.warning("LLM reply truncated: %s completion tokens used, cap %d, %.1fs",
                                 exc.completion_tokens, cap, time.monotonic() - t0)
                     raise
@@ -100,9 +102,11 @@ class LLMGate:
                     # A finished call, even a failed one, held the GPU this long.
                     # A cancelled call (timeout, client gone) says nothing: skipped.
                     self._recent.append(time.monotonic() - t0)
+                    record_call(None, None)
                     raise
                 self._recent.append(time.monotonic() - t0)
                 self._observe(result)
+                record_call(result.prompt_tokens, result.completion_tokens)
                 log.info("LLM call: cap %d, prompt %s, completion %s tokens, %.1fs",
                          cap, result.prompt_tokens, result.completion_tokens, time.monotonic() - t0)
                 return result

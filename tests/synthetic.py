@@ -24,8 +24,9 @@ HEADER_ROW = "Trade Name – Active Ingredient"
 class FakeLLM:
     model = "fake-model"
 
-    def __init__(self, reply=None, exc=None, delay=0.0):
+    def __init__(self, reply=None, exc=None, delay=0.0, tokens=(None, None)):
         self.reply, self.exc, self.delay = reply, exc, delay
+        self.usage = tokens  # (prompt, completion) tokens each call reports
         self.calls = []
         self.cancelled = False
         self.caps = []  # max_tokens passed by the gate, per call
@@ -41,7 +42,7 @@ class FakeLLM:
             raise
         if self.exc:
             raise self.exc
-        return LLMResult(data=self.reply)
+        return LLMResult(data=self.reply, prompt_tokens=self.usage[0], completion_tokens=self.usage[1])
 
 
 def answered(snippet=ROW, section_id=NSAIDS.section_id):

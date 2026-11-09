@@ -21,6 +21,7 @@ from .llm import LLMClient, build_llm
 from .models import Section
 from .retrieval import LexicalRetriever
 from .sessions import SessionStore
+from .usage import USAGE_HEADER, start_meter
 
 log = logging.getLogger("medrag")
 STATIC = Path(__file__).parent / "static"
@@ -31,9 +32,11 @@ class BadRequest(ValueError):
     pass
 
 
-def _error(status: int, message: str, session_id: str | None = None) -> JSONResponse:
-    headers = {"X-Session-Id": session_id} if session_id else None
-    return JSONResponse({"error": message}, status_code=status, headers=headers)
+def _error(status: int, message: str, session_id: str | None = None,
+           extra_headers: dict[str, str] | None = None) -> JSONResponse:
+    headers = {"X-Session-Id": session_id} if session_id else {}
+    headers.update(extra_headers or {})
+    return JSONResponse({"error": message}, status_code=status, headers=headers or None)
 
 
 async def _read_json(request: Request, max_chars: int) -> dict:
@@ -142,6 +145,8 @@ def create_app(
             return _error(400, str(exc))
         session_id = store.resolve(body.get("session_id") or request.headers.get("x-session-id"))
         deadline = time.monotonic() + settings.budget_s
+        meter = start_meter()  # before the pipeline task exists, so the gate adds to this meter
+        usage = lambda: {USAGE_HEADER: meter.header_value()} if settings.usage_header else None  # noqa: E731
         try:
             result = await asyncio.wait_for(
                 _run_unless_disconnected(request, pipeline(message, deadline)),
@@ -149,17 +154,17 @@ def create_app(
             )
         except asyncio.TimeoutError:
             log.error("chat timed out after %.1fs", settings.budget_s)
-            return _error(500, "the request timed out", session_id)
+            return _error(500, "the request timed out", session_id, usage())
         except Busy as exc:
             log.warning("chat rejected, LLM busy: %s", exc)
-            return _error(500, "the server is busy, try again shortly", session_id)
+            return _error(500, "the server is busy, try again shortly", session_id, usage())
         except Exception as exc:
             log.exception("chat failed")
-            return _error(500, f"internal error: {type(exc).__name__}", session_id)
+            return _error(500, f"internal error: {type(exc).__name__}", session_id, usage())
         if result is None:  # client disconnected; nobody is listening
-            return _error(499, "client closed the request", session_id)
+            return _error(499, "client closed the request", session_id, usage())
         store.add_turn(session_id, message, result.answer)
-        return JSONResponse(result.model_dump(), headers={"X-Session-Id": session_id})
+        return JSONResponse(result.model_dump(), headers={"X-Session-Id": session_id, **(usage() or {})})
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
