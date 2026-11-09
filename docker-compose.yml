@@ -75,6 +75,7 @@ services:
       MEDRAG_USAGE_HEADER: ${MEDRAG_USAGE_HEADER:-0}
     volumes:
       - ./data:/kb:ro
+      - sessions:/var/lib/medrag  # Sessions (SQLite) survive restarts and rebuilds of the api
     ports:
       - "8000:8000"
     healthcheck:
@@ -87,3 +88,4 @@ services:
 
 volumes:
   ollama-models:
+  sessions:

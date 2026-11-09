@@ -23,6 +23,10 @@ COPY medrag ./medrag
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --retries 10 --timeout 100 --no-deps --no-build-isolation . \
     && rm -rf build medrag.egg-info && useradd --system --uid 10001 medrag
+# The Sessions database (SQLite) lives here; compose mounts a named volume on it, which takes over this
+# directory's owner the first time it is created.
+RUN mkdir -p /var/lib/medrag && chown medrag /var/lib/medrag
+ENV MEDRAG_SESSIONS_DB=/var/lib/medrag/sessions.db
 USER medrag
 
 # The KB .docx files are not in the image: mount them and point MEDRAG_KB_DIR at them.

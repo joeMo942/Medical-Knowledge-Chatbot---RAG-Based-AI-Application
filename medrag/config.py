@@ -39,6 +39,9 @@ class Settings:
     # Send the X-Medrag-Usage response header (tokens and LLM calls of the request); body unchanged.
     # Off by default: it is for evaluation runs (MEDRAG_USAGE_HEADER=1).
     usage_header: bool = False
+    # SQLite file of the Sessions (a Docker volume in compose). ":memory:" (the default, also the one the
+    # tests get) keeps them only until the process ends.
+    sessions_db: str = ":memory:"
 
     def __post_init__(self) -> None:
         if self.budget_s <= self.llm_est_s:
@@ -66,5 +69,6 @@ class Settings:
             min_output_tokens=int(e("MEDRAG_MIN_OUTPUT_TOKENS") or d.min_output_tokens),
             decode_tok_s=float(e("MEDRAG_DECODE_TOK_S") or d.decode_tok_s),
             llm_margin_s=float(e("MEDRAG_LLM_MARGIN_S") or d.llm_margin_s),
+            sessions_db=e("MEDRAG_SESSIONS_DB") or d.sessions_db,
             usage_header=(e("MEDRAG_USAGE_HEADER") or str(int(d.usage_header))).strip().lower() in TRUE_VALUES,
         )
