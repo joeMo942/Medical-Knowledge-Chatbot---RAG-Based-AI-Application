@@ -1,6 +1,7 @@
 """Load KB Documents from .docx files into Sections."""
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -79,3 +80,13 @@ def load_knowledge_base(
             + ", ".join(str(m) for m in missing)
         )
     return tuple(load_document(e, directory) for e in entries)
+
+
+def kb_files_hash(directory: Path | None = None, entries: tuple[ManifestEntry, ...] | None = None) -> str:
+    """SHA-256 over the KB .docx files (name and bytes, in manifest order): changes when any Document changes."""
+    directory = Path(directory) if directory is not None else kb_dir()
+    h = hashlib.sha256()
+    for e in entries if entries is not None else load_manifest():
+        h.update(e.file.encode())
+        h.update((directory / e.file).read_bytes())
+    return h.hexdigest()

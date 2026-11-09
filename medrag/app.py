@@ -15,12 +15,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .answering import ChatResponse
 from .config import EMBEDDING_PLACEHOLDER, Settings
 from .gate import Busy, LLMGate
-from .ingest import kb_dir, load_knowledge_base
+from .ingest import kb_dir, kb_files_hash, load_knowledge_base
 from .language import detect_language
 from .llm import LLMClient, build_llm
 from .models import Section
 from .pipeline import respond
-from .retrieval import LexicalRetriever
+from .retrieval import LexicalRetriever, Retriever
 from .support import SupportCheck
 from .routing import HISTORY_TURNS
 from .sessions import SessionStore, Turn
@@ -100,15 +100,29 @@ def create_app(
     llm: LLMClient,
     settings: Settings | None = None,
     embedding_name: str = EMBEDDING_PLACEHOLDER,
+    retriever: Retriever | None = None,
 ) -> FastAPI:
+    """`retriever` is anything with `search(query, k)`; without one the Sections are searched by BM25 alone.
+    A retriever that has to load (a model, an index) also has `ready`, `load()` and `model_id`: /health is 503
+    and /chat refuses until `ready`, and `load()` runs in a worker thread at startup."""
     settings = settings or Settings()
-    retriever = LexicalRetriever(sections)
+    retriever = retriever or LexicalRetriever(sections)
     support = SupportCheck(sections)
     store = SessionStore(settings.sessions_db)
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
     warmed = {"done": getattr(gate, "warm", None) is None}  # nothing to warm: ready at once
+    loader = getattr(retriever, "load", None)
+
+    def search_ready() -> bool:
+        return bool(getattr(retriever, "ready", True))
+
+    async def load_retriever() -> None:
+        try:
+            await asyncio.to_thread(loader)
+        except Exception:
+            log.exception("the search index could not be loaded; /health stays 503")
 
     async def warm_up() -> None:
         try:
@@ -118,9 +132,11 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        task = asyncio.create_task(warm_up()) if not warmed["done"] else None
+        tasks = [asyncio.create_task(warm_up())] if not warmed["done"] else []
+        if loader and not search_ready():
+            tasks.append(asyncio.create_task(load_retriever()))
         yield
-        if task:
+        for task in tasks:
             task.cancel()
 
     app = FastAPI(title="Drug Information Assistant", lifespan=lifespan)
@@ -139,15 +155,20 @@ def create_app(
         ready = getattr(gate, "ready", None)
         # Not "ok" until the model is loaded: the first request must not pay for the load (it would
         # run into the routing timeout and the request budget).
-        ok = warmed["done"] and ((await ready()) if ready else True)
-        return JSONResponse(
-            {"status": "ok" if ok else "error", "llm": gate.model, "embedding": embedding_name},
-            status_code=200 if ok else 503,
-        )
+        ok = warmed["done"] and search_ready() and ((await ready()) if ready else True)
+        body = {"status": "ok" if ok else "error", "llm": gate.model,
+                "embedding": getattr(retriever, "model_id", None) or embedding_name}
+        if getattr(retriever, "revision", ""):
+            body["embedding_revision"] = retriever.revision
+        return JSONResponse(body, status_code=200 if ok else 503)
 
     async def pipeline(message: str, deadline: float, history: list[Turn]) -> ChatResponse:
         async def search(text: str) -> list[Section]:
-            return await asyncio.to_thread(retriever.search, text, settings.top_k)
+            t0 = time.monotonic()
+            found = await asyncio.to_thread(retriever.search, text, settings.top_k)
+            log.info("search: %d Sections in %.0f ms (embedding %.0f ms)", len(found), (time.monotonic() - t0) * 1000,
+                     getattr(retriever, "last_embed_ms", 0.0))
+            return found
 
         return await respond(message, detect_language(message), search, gate, deadline, support, history)
 
@@ -172,6 +193,8 @@ def create_app(
             message = _validate_message(body, settings.max_message_chars)
         except BadRequest as exc:
             return _error(400, str(exc))
+        if not search_ready():
+            return _error(503, "the search index is still loading, try again shortly")
         session_id = store.resolve(body.get("session_id") or request.headers.get("x-session-id"))
         deadline = time.monotonic() + settings.budget_s
         history = await load_history(session_id)
@@ -203,6 +226,22 @@ def create_app(
     return app
 
 
+def build_retriever(sections, settings: Settings, files_hash: str = "") -> Retriever:
+    """BM25 alone, or the hybrid retriever (loaded later, in a worker thread: see create_app)."""
+    if settings.retriever == "bm25":
+        return LexicalRetriever(sections)
+    from .embedding import BGEM3Embedder  # torch is imported only now, never by the tests or CI
+    from .hybrid import HybridRetriever
+    from .modelstore import MODEL_ID, REVISION, ensure_model
+
+    def make_embedder():
+        directory = ensure_model(settings.embed_path, settings.embed_seed or None)
+        return BGEM3Embedder(directory, threads=settings.embed_threads or None)
+
+    return HybridRetriever(sections, make_embedder, MODEL_ID, REVISION, cache_dir=settings.index_dir or None,
+                           files_hash=files_hash, min_dense=settings.min_dense)
+
+
 def create_default_app() -> FastAPI:
     """Entry point for uvicorn (`--factory`): KB from MEDRAG_KB_DIR, models from env."""
     logging.basicConfig(level=logging.INFO)
@@ -210,4 +249,4 @@ def create_default_app() -> FastAPI:
     docs = load_knowledge_base(kb_dir())
     sections = [s for d in docs for s in d.sections]
     log.info("loaded %d Sections from %d KB Documents", len(sections), len(docs))
-    return create_app(sections, build_llm(settings), settings)
+    return create_app(sections, build_llm(settings), settings, retriever=build_retriever(sections, settings, kb_files_hash()))

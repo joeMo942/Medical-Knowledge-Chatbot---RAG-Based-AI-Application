@@ -1,9 +1,10 @@
-"""Placeholder retrieval: BM25 over Section.render(). Hybrid BGE-M3 search replaces it in #6."""
+"""Retrieval interface and the lexical half of it: BM25 over Section.render() (hybrid.py fuses it with BGE-M3)."""
 from __future__ import annotations
 
 import math
 import re
 from collections import Counter
+from typing import Protocol
 
 from .models import Section
 
@@ -17,6 +18,14 @@ STOP_WORDS = _STOP
 
 def tokenize(text: str) -> list[str]:
     return [t for t in (m.lower() for m in _TOKEN.findall(text)) if t not in _STOP]
+
+
+class Retriever(Protocol):
+    """What the pipeline needs from retrieval: the Sections for a question, best first, at most k.
+    The call blocks (an embedding model runs on the CPU): callers run it off the event loop. A retriever
+    that needs loading also has `ready` (bool), `model_id` and `load()` (see app.py)."""
+
+    def search(self, query: str, k: int) -> list[Section]: ...
 
 
 class LexicalRetriever:
@@ -34,18 +43,22 @@ class LexicalRetriever:
         n = len(self.sections)
         self._idf = {t: math.log(1 + (n - c + 0.5) / (c + 0.5)) for t, c in df.items()}
 
-    def search(self, query: str, k: int) -> list[Section]:
-        """Top-k Sections with a non-zero score, best first (empty if no term matches)."""
+    def scores(self, query: str) -> list[float]:
+        """BM25 score of every Section (0.0 when no query term occurs in it), in Section order."""
         q = [t for t in tokenize(query) if t in self._idf]
-        scored: list[tuple[float, int]] = []
-        for i, tf in enumerate(self._tf):
+        out = []
+        for tf, length in zip(self._tf, self._len):
             score = 0.0
             for t in q:
                 f = tf.get(t, 0)
                 if f:
-                    norm = 1 - self._b + self._b * self._len[i] / (self._avg or 1)
+                    norm = 1 - self._b + self._b * length / (self._avg or 1)
                     score += self._idf[t] * f * (self._k1 + 1) / (f + self._k1 * norm)
-            if score > 0:
-                scored.append((score, i))
+            out.append(score)
+        return out
+
+    def search(self, query: str, k: int) -> list[Section]:
+        """Top-k Sections with a non-zero score, best first (empty if no term matches)."""
+        scored = [(sc, i) for i, sc in enumerate(self.scores(query)) if sc > 0]
         scored.sort(key=lambda x: (-x[0], x[1]))
         return [self.sections[i] for _, i in scored[:k]]

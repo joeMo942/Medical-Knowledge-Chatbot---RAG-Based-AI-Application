@@ -132,6 +132,9 @@ class DrugIndex:
                         self._comp_alias[first].add(s)
                         self._comp_grams.add((first,))
         self.names = frozenset(self._display)
+        # every word of a Trade Name or an Active Ingredient (a word that only says which drug is meant)
+        self.words = frozenset(w for k in self._display for w in k.split()) | frozenset(
+            w for ing in self._names_of for c in ing for w in c.split())
 
     # ---------------------------------------------------------------- lookups
     def display(self, key: str) -> str:
@@ -181,6 +184,11 @@ class DrugIndex:
         return Mentions(tuple(trade), tuple(sets))
 
     # ---------------------------------------------------------------- Alternatives
+    def sections_with(self, ings) -> set[str]:
+        """section_ids of the Sections that list a product with one of these Active Ingredient sets."""
+        ings = set(ings)
+        return {sid for (sid, ing) in self._where if ing in ings}
+
     def alternatives(self, ings) -> dict[frozenset[str], list[str]]:
         return {i: self.trade_names_of(i) for i in ings}
 
