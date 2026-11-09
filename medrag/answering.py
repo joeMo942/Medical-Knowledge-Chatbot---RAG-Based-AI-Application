@@ -296,17 +296,21 @@ def _pick_snippet(given: str, section: Section, hints: str) -> str | None:
     return _repair(section, hints, given)
 
 
+_KB_ID = re.compile(r"^(KB-\d{2})(?!\d)")
+
+
 def _by_prefix(section_id: Any, snippet: str, sections: list[Section]) -> Section | None:
-    """A small model often writes only the start of a long section_id ("KB-03", or "KB-02 > Disease"). That names a
-    retrieved Section when it is the only one starting that way, or when only one of them holds the snippet word for word;
-    anything else (an invented ID, an ambiguous prefix) is still dropped."""
-    if not isinstance(section_id, str) or not section_id.strip():
+    """A small model often garbles a long section_id: only "KB-03", or "KB-04 > Pharyngitis > Analgesics" with the
+    heading translated. If it starts with the KB ID of retrieved Sections, it names the one retrieved Section of that
+    Document, or, of several, the only one that holds the snippet word for word. An invented ID, a Document that
+    was not retrieved or an ambiguous case is still dropped (the Citation always points to a retrieved Section)."""
+    m = _KB_ID.match(section_id.strip()) if isinstance(section_id, str) else None
+    if not m:
         return None
-    sid = section_id.strip()
-    starts = [s for s in sections if s.section_id.startswith(sid + PATH_SEPARATOR)]
-    if len(starts) > 1:
-        starts = [s for s in starts if is_valid_snippet(snippet, s)]
-    return starts[0] if len(starts) == 1 else None
+    same = [s for s in sections if s.kb_id == m.group(1)]
+    if len(same) > 1:
+        same = [s for s in same if is_valid_snippet(snippet, s)]
+    return same[0] if len(same) == 1 else None
 
 
 def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Section, Citation]]:

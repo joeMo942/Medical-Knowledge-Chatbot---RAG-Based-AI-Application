@@ -247,7 +247,10 @@ def test_an_ambiguous_prefix_needs_the_snippet_to_settle_it_and_an_invented_id_i
     assert [c.section for c in build_citations([{"section_id": "KB-03", "snippet": "Flabu – Ibuprofen"}], secs, "q")] == ["NSAIDs"]
     assert build_citations([{"section_id": "KB-03", "snippet": "Brufen – Ibuprofen"}], [PAIN, THROAT_LIKE_PAIN], "q") == []
     assert build_citations([{"section_id": "KB-77", "snippet": "Brufen – Ibuprofen"}], secs, "q") == []
-    assert build_citations([{"section_id": "KB-0", "snippet": "Brufen – Ibuprofen"}], secs, "q") == []  # not a prefix at a boundary
+    assert build_citations([{"section_id": "KB-0", "snippet": "Brufen – Ibuprofen"}], secs, "q") == []  # not a KB ID
+    # a garbled path (the heading translated) still names the Section that holds the snippet
+    got = build_citations([{"section_id": "KB-03 › Headache › NSAIDs", "snippet": "Flabu – Ibuprofen"}], secs, "q")
+    assert [c.section for c in got] == ["NSAIDs"] and got[0].title == "Headache"
 
 
 THROAT_LIKE_PAIN = section("KB-03", "Fever", "NSAIDs", [("Brufen", "Ibuprofen")])
