@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import subprocess
 import sys
 import time
@@ -26,6 +27,8 @@ from .scoring import Case, build_kb_index, load_cases, parse_usage, score_turn, 
 HERE = Path(__file__).parent
 DEFAULT_CASES = HERE / "cases.json"
 DEFAULT_OUT = HERE / "results"
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+MAX_LABEL_CHARS = 80
 CLIENT_TIMEOUT_S = 45.0  # above the API's own 30 s limit, so its 500s are recorded, not cut off
 
 
@@ -115,10 +118,24 @@ def load_kb_index(kb_dir: Path | None) -> dict | None:
     return build_kb_index(load_knowledge_base(directory))
 
 
+def run_label(value: str) -> str:
+    """argparse type for --label: it becomes part of a file name, so only letters, digits, '.', '_' and '-'.
+    Checked before the first request: on Windows "qwen3.5:4b" would write into an NTFS alternate data
+    stream, and '/', '?' or '*' would fail only after the whole run."""
+    if LABEL_RE.match(value) and len(value) <= MAX_LABEL_CHARS:
+        return value
+    suggestion = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-._")[:MAX_LABEL_CHARS] or "run"
+    raise argparse.ArgumentTypeError(
+        f"invalid label {value!r}: use letters, digits, '.', '_' and '-' only, starting with a letter or "
+        f"digit, at most {MAX_LABEL_CHARS} characters (for example {suggestion!r})")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m evaluation.run", description=__doc__.split("\n")[0])
     p.add_argument("--base-url", default="http://localhost:8000")
-    p.add_argument("--label", required=True, help="run label, e.g. baseline; part of the output file name")
+    p.add_argument("--label", required=True, type=run_label,
+                   help="run label, e.g. baseline or qwen3.5-4b; part of the output file name "
+                        "(letters, digits, '.', '_', '-')")
     p.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     p.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     p.add_argument("--kb-dir", type=Path, help="KB .docx folder for the snippet check (default: $MEDRAG_KB_DIR or ./data)")

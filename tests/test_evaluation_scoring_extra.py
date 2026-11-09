@@ -1,6 +1,7 @@
 """More evaluation-harness tests: relevance, the metric edge cases that mutation testing found
 unprotected, the runner's Session handling (against a mock transport), the KB checks on synthetic
 text, the stratified review sample, and the rule that results are never tracked by git."""
+import argparse
 import json
 import subprocess
 import threading
@@ -281,6 +282,33 @@ def test_a_dotted_label_keeps_its_full_name_and_a_rerun_gets_a_suffix(tmp_path):
         [f"{name}.json", f"{name}.md", f"{name}-2.json", f"{name}-2.md",
          "2026-01-01-qwen2.5-14b.json", "2026-01-01-qwen2.5-14b.md"])
     assert json.loads(first[0].read_text(encoding="utf-8"))["meta"]["label"] == "qwen2.5-7b"
+
+
+@pytest.mark.parametrize("label", ["baseline", "baseline-r5", "qwen3.5-4b", "qwen2.5_7b", "A1", "x" * 80])
+def test_valid_run_labels_are_accepted(label):
+    assert run.run_label(label) == label
+
+
+@pytest.mark.parametrize("label,suggestion", [
+    ("qwen3.5:4b", "qwen3.5-4b"),        # ':' would write into an NTFS alternate data stream on Windows
+    ("a/b", "a-b"), ("what?", "what"), ("all*", "all"), ("two words", "two-words"), ("-lead", "lead"),
+    (".hidden", "hidden"), ("", "run"), ("x" * 81, "x" * 80), ("مقارنة", "run"),
+])
+def test_invalid_run_labels_are_rejected_with_a_suggestion(label, suggestion):
+    with pytest.raises(argparse.ArgumentTypeError) as e:
+        run.run_label(label)
+    assert repr(suggestion) in str(e.value)
+
+
+def test_an_invalid_label_stops_the_run_before_any_request(tmp_path, monkeypatch, capsys):
+    def no_network(*a, **kw):
+        raise AssertionError("the runner opened an HTTP client before validating the label")
+    monkeypatch.setattr(run.httpx, "Client", no_network)
+    monkeypatch.setattr(run, "load_kb_index", lambda *_: pytest.fail("the KB was loaded before validating the label"))
+    with pytest.raises(SystemExit) as e:
+        run.main(["--label", "qwen3.5:4b", "--out-dir", str(tmp_path)])
+    assert e.value.code == 2
+    assert "invalid label 'qwen3.5:4b'" in capsys.readouterr().err and list(tmp_path.iterdir()) == []
 
 
 def test_markdown_warns_when_the_usage_header_was_missing():
