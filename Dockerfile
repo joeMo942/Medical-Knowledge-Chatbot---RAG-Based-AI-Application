@@ -1,12 +1,22 @@
 FROM python:3.12.12-slim-bookworm
 
-ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+# Generous network settings: PyPI reads from inside the build sometimes time out.
+ENV PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=100 PIP_RETRIES=10
 WORKDIR /app
-# constraints.txt pins every dependency (regenerate: pip freeze inside a fresh image, minus medrag)
-COPY pyproject.toml constraints.txt ./
+# Dependencies first, in their own layer: a code change does not download the wheels again.
+# constraints.txt pins every dependency (regenerate: pip freeze inside a fresh image, minus medrag).
+# The pip cache is a build cache mount: a build that fails half way resumes with the wheels it has.
+COPY constraints.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --retries 10 --timeout 100 -r constraints.txt "setuptools>=68"
+COPY pyproject.toml ./
 COPY medrag ./medrag
-# pip builds in-tree; drop its leftovers (build/, *.egg-info) so only the installed package remains.
-RUN pip install -c constraints.txt . && rm -rf build medrag.egg-info && useradd --system --uid 10001 medrag
+# Build in-tree without isolation (setuptools is already installed above, so nothing is downloaded);
+# drop pip's leftovers (build/, *.egg-info) so only the installed package remains.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --retries 10 --timeout 100 --no-deps --no-build-isolation . \
+    && rm -rf build medrag.egg-info && useradd --system --uid 10001 medrag
 USER medrag
 
 # The KB .docx files are not in the image: mount them and point MEDRAG_KB_DIR at them.
