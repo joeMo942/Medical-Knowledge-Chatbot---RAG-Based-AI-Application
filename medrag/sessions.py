@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-_VALID_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_VALID_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 MAX_TURNS = 20  # turns kept per Session (only the last few are ever used)
 MAX_SESSIONS = 10_000  # least recently used Sessions are dropped beyond this
 MAX_TEXT_CHARS = 4000  # a message is at most 2000 characters; an answer is far shorter than this
@@ -74,7 +74,7 @@ class SessionStore:
     @staticmethod
     def resolve(session_id: object) -> str:
         """The given ID if usable (and so reused), else a fresh one."""
-        if isinstance(session_id, str) and _VALID_ID.match(session_id):
+        if isinstance(session_id, str) and _VALID_ID.fullmatch(session_id):
             return session_id
         return uuid.uuid4().hex
 
