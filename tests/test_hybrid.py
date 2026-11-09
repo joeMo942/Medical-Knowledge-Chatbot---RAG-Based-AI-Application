@@ -181,7 +181,7 @@ class SlowRetriever:
         return self.inner.search(query, k)
 
 
-def test_health_and_chat_are_503_until_the_retriever_is_loaded_then_report_the_model():
+def test_health_is_503_and_chat_500_until_the_retriever_is_loaded_then_report_the_model():
     inner, _ = make()
     slow = SlowRetriever(inner)
     app = create_app(ALL, FakeLLM(answered()), Settings(), retriever=slow)
@@ -308,3 +308,20 @@ def test_alternatives_wordings_are_answered_through_the_pipeline(q):
             return (await c.post("/chat", json={"message": q})).json()
     body = asyncio.run(go())
     assert body["status"] == "answered" and body["citations"][0]["snippet"] == "Flabu – Ibuprofen"
+
+
+def test_an_emergency_or_dose_message_is_escalated_even_while_the_index_loads():
+    inner, _ = make()
+    slow = SlowRetriever(inner)  # never loads in this test
+    app = create_app(ALL, FakeLLM(answered()), Settings(), retriever=slow)
+
+    async def post(msg):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            return await c.post("/chat", json={"message": msg})
+    emergency = asyncio.run(post("My son swallowed a whole bottle of Panadol"))
+    assert emergency.status_code == 200 and emergency.json()["status"] == "escalated"
+    dose = asyncio.run(post("How much Brufen should I give my patient per day?"))
+    assert dose.status_code == 200 and dose.json()["status"] == "escalated"
+    needs_search = asyncio.run(post("What is the active ingredient in Cataflam?"))
+    assert needs_search.status_code == 500 and "loading" in needs_search.json()["error"]
+    assert slow.search_threads == []  # nothing was searched

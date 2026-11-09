@@ -35,6 +35,10 @@ class BadRequest(ValueError):
     pass
 
 
+class Loading(RuntimeError):
+    """Search was needed before the embedding model and the index were loaded."""
+
+
 def _error(status: int, message: str, session_id: str | None = None,
            extra_headers: dict[str, str] | None = None) -> JSONResponse:
     headers = {"X-Session-Id": session_id} if session_id else {}
@@ -104,7 +108,8 @@ def create_app(
 ) -> FastAPI:
     """`retriever` is anything with `search(query, k)`; without one the Sections are searched by BM25 alone.
     A retriever that has to load (a model, an index) also has `ready`, `load()` and `model_id`: /health is 503
-    and /chat answers 500 until `ready`, and `load()` runs in a worker thread at startup."""
+    and a /chat that needs search answers 500 until `ready` (escalations do not need it), and `load()` runs in a
+    worker thread at startup."""
     settings = settings or Settings()
     retriever = retriever or LexicalRetriever(sections)
     support = SupportCheck(sections)
@@ -164,6 +169,8 @@ def create_app(
 
     async def pipeline(message: str, deadline: float, history: list[Turn]) -> ChatResponse:
         async def search(text: str) -> list[Section]:
+            if not search_ready():  # escalation (rules + routing) has already run: only a request that needs search waits
+                raise Loading("the search index is still loading")
             t0 = time.monotonic()
             found = await asyncio.to_thread(retriever.search, text, settings.top_k)
             log.info("search: %d Sections in %.0f ms (embedding %.0f ms)", len(found), (time.monotonic() - t0) * 1000,
@@ -193,8 +200,6 @@ def create_app(
             message = _validate_message(body, settings.max_message_chars)
         except BadRequest as exc:
             return _error(400, str(exc))
-        if not search_ready():
-            return _error(500, "the search index is still loading, try again shortly")  # 500: the contract has no 503
         session_id = store.resolve(body.get("session_id") or request.headers.get("x-session-id"))
         deadline = time.monotonic() + settings.budget_s
         history = await load_history(session_id)
@@ -208,6 +213,8 @@ def create_app(
         except asyncio.TimeoutError:
             log.error("chat timed out after %.1fs", settings.budget_s)
             return _error(500, "the request timed out", session_id, usage())
+        except Loading:
+            return _error(500, "the search index is still loading, try again shortly", session_id, usage())  # 500: the contract has no 503
         except Busy as exc:
             log.warning("chat rejected, LLM busy: %s", exc)
             return _error(500, "the server is busy, try again shortly", session_id, usage())
