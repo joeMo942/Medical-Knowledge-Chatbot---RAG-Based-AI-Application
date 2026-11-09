@@ -318,7 +318,8 @@ def test_markdown_warns_when_the_usage_header_was_missing():
                         "warnings": ["No response carried the X-Medrag-Usage header"]},
                "summary": summarize(rows), "rows": rows}
     md = report.render_markdown(results)
-    assert "WARNING" in md and "absent" in md and "Relevance" in md and "label line" in md
+    assert "WARNING" in md and "absent" in md and "Relevance" in md and "only a label" in md
+    assert "answer_must_mention_all" in md and "not a judgement" in md     # what relevance can and cannot catch
 
 
 # ---------------------------------------------------- the KB checks on synthetic text
