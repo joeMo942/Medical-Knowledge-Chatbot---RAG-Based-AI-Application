@@ -44,6 +44,11 @@ class LLMGate:
         return self._llm.model
 
     @property
+    def idle(self) -> bool:
+        """True when no LLM call is running or waiting."""
+        return self._occupied == 0
+
+    @property
     def estimate(self) -> float:
         """Expected duration of one call: the slowest recent call, never below the
         configured floor. Pessimistic on purpose: a quick out_of_scope reply must
@@ -74,7 +79,8 @@ class LLMGate:
             self._rate_seen = (1 - RATE_WEIGHT) * self._rate_seen + RATE_WEIGHT * (tokens / secs)
 
     async def complete_json(self, system: str, user: str, schema: dict[str, Any],
-                            deadline: float | None = None) -> LLMResult:
+                            deadline: float | None = None, max_tokens: int | None = None) -> LLMResult:
+        """`max_tokens` is a smaller output cap for a call known to be short (the routing call)."""
         if deadline is not None:
             waves_ahead = self._occupied // self._concurrency
             expected = (waves_ahead + 1) * self.estimate
@@ -85,9 +91,12 @@ class LLMGate:
             async with self._sem:
                 remaining = None if deadline is None else deadline - time.monotonic()
                 cap = self.output_cap(remaining)
+                floor = self._min_tokens
+                if max_tokens is not None:
+                    cap, floor = min(cap, max_tokens), min(floor, max_tokens)
                 # The wait may have been longer than estimated: do not start a call
                 # (and hold the GPU) that cannot finish, or not say enough, in time.
-                if remaining is not None and (remaining < self.estimate or cap < self._min_tokens):
+                if remaining is not None and (remaining < self.estimate or cap < floor):
                     raise Busy(f"only {remaining:.1f}s left after queueing (cap {cap} tokens)")
                 t0 = time.monotonic()
                 try:
