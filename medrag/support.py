@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 
+from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
 from .models import Section
 from .rules import normalize
@@ -126,8 +127,8 @@ def _words(block: str) -> set[str]:
     return {w for w in normalize(block).split() if w}
 
 
-FRAME = _words(_FRAME_EN) | _words(_FRAME_AR) | _words(_FRAME_FRANCO)
-ASPECT = _words(_ASPECT)
+FRAME = _words(_FRAME_EN) | _words(_FRAME_AR) | _words(_FRAME_FRANCO) | ALT_WORDS
+ASPECT = _words(_ASPECT) | ALT_WORDS
 
 
 def stem(word: str) -> str:
@@ -194,6 +195,7 @@ class SupportCheck:
             for cell in (trade, active):
                 names.update(t for t in tokens(cell) if len(t) >= 3)
         self.drug_names = names
+        self.section_ids = frozenset(sec.section_id for sec in sections)  # every Section of the KB (answering.py)
         # Drug Class names (the headings of the class Sections): "Which drug class is it in?" is rewritten
         # to name the class or the drug, so both are words a rewrite may bring in from the history.
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}

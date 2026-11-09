@@ -260,3 +260,51 @@ def test_a_named_drug_keeps_its_sections_ahead_of_noise_words():
     otc = [Section("KB-0%d" % n, "T%d" % n, "OTC vs Prescription", "otc", (Line("OTC or prescription: some OTC products."),)) for n in range(1, 5)]
     r, _ = make([*otc, PPI])
     assert r.search("OTC Controloc", 2)[0] is PPI  # the Section that lists Controloc, though four others repeat "OTC"
+
+
+def test_prefix_resolution_never_redirects_an_invented_or_unretrieved_id():
+    from medrag.answering import build_citations
+
+    head = section("KB-03", "Headache & Migraine", "NSAIDs", [("Brufen", "Ibuprofen"), ("Spididol", "Ibuprofen (as ibuprofen arginine)")])
+    para = section("KB-03", "Pain & Fever", "Paracetamol", [("Panadol", "Paracetamol")])
+    known = frozenset({head.section_id, para.section_id})  # the whole KB; only `head` was retrieved
+    # an invented path and a snippet no retrieved Section holds: dropped, not "repaired" to another row
+    assert build_citations([{"section_id": "KB-03 > Malaria", "snippet": "Chloroquine treats malaria"}], [head], "q", known) == []
+    # the exact ID of a real Section that was NOT retrieved: dropped, even though its KB ID matches a retrieved one
+    assert build_citations([{"section_id": para.section_id, "snippet": "Panadol – Paracetamol"}], [head], "q", known) == []
+    assert build_citations([{"section_id": para.section_id, "snippet": "Brufen – Ibuprofen"}], [head], "q", known) == []
+    # the regression this resolver exists for still works: only the KB ID, and a verbatim snippet
+    got = build_citations([{"section_id": "KB-03", "snippet": "Brufen – Ibuprofen"}], [head], "q", known)
+    assert [(c.section, c.snippet) for c in got] == [("NSAIDs", "Brufen – Ibuprofen")]
+
+
+# ------------------------------------------------------------------ Alternatives wordings, end to end
+
+ALT_QUESTIONS = ["bdayel brufen", "badayel brufen eh", "eh el bdayel bta3et brufen", "بدايله ايه Brufen",
+                 "what can replace Brufen", "fe bedail tegareya le Brufen?", "ايه البدائل التجارية لـ Brufen؟",
+                 "What are the alternatives to Brufen?", "any substitute for Brufen"]
+
+
+@pytest.mark.parametrize("q", ALT_QUESTIONS)
+def test_every_alternatives_wording_passes_the_support_check_and_gets_the_name_sections(q):
+    from medrag.support import SupportCheck
+
+    assert SupportCheck(ALL).supported(q, [HEAD])  # asking for alternatives of a listed drug is covered
+    r, _ = make()
+    assert r.search(q, 4)[0].section_id == HEAD.section_id
+
+
+@pytest.mark.parametrize("q", ALT_QUESTIONS)
+def test_alternatives_wordings_are_answered_through_the_pipeline(q):
+    from synthetic import FakeLLM
+
+    reply = {"answer": "Nurofen, Flabu.", "status": "answered",
+             "citations": [{"section_id": HEAD.section_id, "snippet": "Flabu – Ibuprofen"}]}
+    inner, _ = make()
+    app = create_app(ALL, FakeLLM(reply), Settings(), retriever=inner)
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            return (await c.post("/chat", json={"message": q})).json()
+    body = asyncio.run(go())
+    assert body["status"] == "answered" and body["citations"][0]["snippet"] == "Flabu – Ibuprofen"

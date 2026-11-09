@@ -40,6 +40,7 @@ from array import array
 from collections.abc import Callable
 from pathlib import Path
 
+from .alternatives import ALT_WORDS, BRAND_WORDS
 from .drugs import DrugIndex, Mentions, tokens
 from .embedding import Embedder, Encoded, dense_score, sparse_score
 from .models import Line, Section
@@ -56,14 +57,11 @@ QUERY_MAX_LENGTH = 512
 CANDIDATES = 12  # fused Sections considered for thinning
 THIN_OVERLAP = 0.6  # a Section is passed over when this share of its lines/rows is already in the chosen ones
 MAX_EXPANSION_NAMES = 10
-ALT_WORDS = {normalize(w) for w in """alternative alternatives substitute substitutes equivalent equivalents
-بديل بدائل البدائل بدايل بدايله bedail bedayel badail badayel bdail bdayel""".split()}
 # Aspects the KB states in a Section's lines, not in its product rows (the cut-down views lack them).
 LINE_ASPECTS = {normalize(w) for w in """side effect effects adverse contraindication contraindications contraindicated
 warning warnings avoid interact interaction interactions otc prescription
 عرض اعراض الاعراض جانبي جانبيه الجانبيه مضاعفات اثار مانع موانع ممنوع ممنوعه تحذير تحذيرات تداخل تداخلات
 a3rad gaanbeya ganbeya mamnoo3 mamno3 mawane3""".split()}
-BRAND_WORDS = {normalize(w) for w in ("trade", "brand", "brands", "التجارية", "تجارية", "تجاري", "tegareya", "tegarya")}
 
 
 def _units(section: Section) -> set[str]:

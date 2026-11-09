@@ -299,21 +299,23 @@ def _pick_snippet(given: str, section: Section, hints: str) -> str | None:
 _KB_ID = re.compile(r"^(KB-\d{2})(?!\d)")
 
 
-def _by_prefix(section_id: Any, snippet: str, sections: list[Section]) -> Section | None:
+def _by_prefix(section_id: Any, snippet: str, sections: list[Section], known: frozenset[str]) -> Section | None:
     """A small model often garbles a long section_id: only "KB-03", or "KB-04 > Pharyngitis > Analgesics" with the
     heading translated. If it starts with the KB ID of retrieved Sections, it names the one retrieved Section of that
-    Document, or, of several, the only one that holds the snippet word for word. An invented ID, a Document that
-    was not retrieved or an ambiguous case is still dropped (the Citation always points to a retrieved Section)."""
-    m = _KB_ID.match(section_id.strip()) if isinstance(section_id, str) else None
+    Document that holds the snippet word for word. Never when the ID is the exact ID of a real Section that was not
+    retrieved (`known`: every Section of the KB), when no retrieved Section of that Document holds the snippet, or when
+    two do: the Citation must always point to a retrieved Section, and the snippet is what proves which."""
+    if not isinstance(section_id, str) or section_id.strip() in known:
+        return None
+    m = _KB_ID.match(section_id.strip())
     if not m:
         return None
-    same = [s for s in sections if s.kb_id == m.group(1)]
-    if len(same) > 1:
-        same = [s for s in same if is_valid_snippet(snippet, s)]
+    same = [s for s in sections if s.kb_id == m.group(1) and is_valid_snippet(snippet, s)]
     return same[0] if len(same) == 1 else None
 
 
-def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Section, Citation]]:
+def build_cited(raw: Any, sections: list[Section], hints: str,
+                known: frozenset[str] = frozenset()) -> list[tuple[Section, Citation]]:
     """Each valid Citation with the retrieved Section it points to."""
     by_id = {s.section_id: s for s in sections}
     out: list[tuple[Section, Citation]] = []
@@ -323,7 +325,7 @@ def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Sec
             continue
         given = c.get("snippet")
         given = given if isinstance(given, str) else ""
-        sec = by_id.get(c.get("section_id")) or _by_prefix(c.get("section_id"), given, sections)
+        sec = by_id.get(c.get("section_id")) or _by_prefix(c.get("section_id"), given, sections, known)
         if sec is None:
             continue  # not a retrieved Section: drop it
         snippet = _pick_snippet(given, sec, hints)
@@ -334,8 +336,8 @@ def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Sec
     return out
 
 
-def build_citations(raw: Any, sections: list[Section], hints: str) -> list[Citation]:
-    return [c for _, c in build_cited(raw, sections, hints)]
+def build_citations(raw: Any, sections: list[Section], hints: str, known: frozenset[str] = frozenset()) -> list[Citation]:
+    return [c for _, c in build_cited(raw, sections, hints, known)]
 
 
 def escalated(trigger: str, language: str) -> ChatResponse:
@@ -379,7 +381,8 @@ async def answer_question(
     answer = raw.get("answer")
     answer = answer.strip() if isinstance(answer, str) else ""
     if raw.get("status") == "answered" and answer:
-        cited = build_cited(raw.get("citations"), sections, f"{question} {answer}")
+        cited = build_cited(raw.get("citations"), sections, f"{question} {answer}",
+                            support.section_ids if support is not None else frozenset())
         if cited:
             cited_sections = list({s.section_id: s for s, _ in cited}.values())
             cited_text = "\n".join(s.render() for s in cited_sections)
