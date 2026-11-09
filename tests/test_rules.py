@@ -124,3 +124,27 @@ def test_normalisation_folds_arabic_variants_and_digits():
     assert normalize("جُرْعَةُ الأطفـــال") == "جرعه الاطفال"
     assert normalize("آخد ٢ حبّة") == "اخد 2 حبه"
     assert check("جرعـة الـ Ventolin كام") == "dose"  # tatweel inside the word
+
+
+@pytest.mark.parametrize("message", [
+    "How many Panadol tablets are dangerous for my son who swallowed some?",
+    "my daughter swallowed some",
+    "my 3 year old swallowed a few of them",
+    "ابني بلع شوية",
+    "ابني بلع شوية من الدوا",
+    "ebny bala3 shwaya",
+])
+def test_a_child_who_swallowed_some_is_an_emergency_without_a_unit_word(message):
+    assert check(message) == "emergency"
+
+
+@pytest.mark.parametrize("message", [
+    "I swallowed some water with Panadol",
+    "my son swallowed some water",
+    "my son ate some food",
+    "Can a child take Panadol after he swallowed some food?",
+    "ابني بلع شوية ميه مع الدوا",
+    "ebny bala3 shwaya maya",
+])
+def test_ordinary_intake_is_not_an_emergency(message):
+    assert check(message) != "emergency"

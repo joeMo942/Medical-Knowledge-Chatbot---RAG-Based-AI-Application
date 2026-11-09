@@ -62,6 +62,8 @@ _EMERGENCY_STRONG = _rx(
     rf"\b{_EN_TOOK}\b[^.?!]{{0,25}}\b({_EN_MANY})\b[^.?!]{{0,40}}\b({_EN_UNIT})\b",
     rf"\b{_EN_TOOK}\b[^.?!]{{0,12}}\b(some|any|a few|several|few|a bunch|lots|a lot) of (my|his|her|the|their|your|our)\b",
     rf"\b(child|kid|baby|toddler|infant|son|daughter|\d+[- ]?(year|yr|month)s?[- ]?old)\b[^.?!]{{0,40}}\b(swallowed|ate|eaten|drank|drunk|ingested|got into|chewed)\b[^.?!]{{0,40}}\b({_EN_UNIT}|meds|drug|drugs|panadol|medicine)\b",
+    # a child who swallowed "some" with no unit word ("my son swallowed some?"): not when something else follows ("some water")
+    rf"\b(child|kid|baby|toddler|infant|son|daughter|\d+[- ]?(year|yr|month)s?[- ]?old)\b[^.?!]{{0,40}}\b(swallowed|ingested|chewed|got into)\b\s*(some|a few|several|too many|too much|something)(?=\s*(of\b|[.?!,;]|$))",
     # Arabic (normalised: alef, ya, ta marbuta folded)
     r"(مش|ما|لا|مو)\s*(قادر\w*|عارف\w*|بيعرف|بتعرف|بقدر|بيقدر)\s*(ا|ي|ت|ن)?تنفس|(مش|ما)\s*(بيتنفس|بتتنفس)",
     r"نفس\w*\s*(مقطوع|بيقطع|واقف|محبوس|مخنوق)|(مقطوع|انقطاع|انحباس)\s*(ال)?نفس|بيختنق|مختنق",
@@ -76,6 +78,7 @@ _EMERGENCY_STRONG = _rx(
     r"(بلع|ابتلع|بلعت|ابتلعت|بلعوا|شرب|شربت|اكل|اكلت|لحس)\w*\s*(\w+\s*){0,2}(حبوب|حبات|اقراص|كبسولات|ادويه|دوا|الدوا|الادويه|شراب|ازازه|زجاجه|شريط|علبه|علب)",
     r"(اخد|اخدت|اخذ|خد|خدت|تناول|تناولت)\w*\s*(\w+\s*){0,2}(\d{2,}|كتير|كتيره|كميه كبيره|عدد كبير|كل)\s*(حب|قرص|اقراص|كبسول|حبوب|شريط|علبه)",
     r"(بلع|ابتلع|شرب|اكل)\w*\s*(\w+\s*){0,2}\d+\s*(حب|قرص|اقراص|كبسول|حبوب)",
+    r"(ابن|بنت|طفل|رضيع|ولد|عيل)\w*\s*(\w+\s*){0,2}(بلع|ابتلع|شرب)\w*\s*(شويه|بعض|كتير)(?=\s*(من|[.؟?!,]|$))",
     r"عرق\s*بارد",
     # Franco-Arabic (digits stand for Arabic letters: 3=ع 7=ح 2=ء 5=خ 9=ق 6=ط)
     r"\bd(ee?|i)?2\s*(el\s*)?nafa?s\w*|\bdee?q\s*(el\s*)?nafa?s",
@@ -90,6 +93,7 @@ _EMERGENCY_STRONG = _rx(
     # Franco: swallowed / drank pills or medicine, or took many of them
     r"\b(bala3|bal3|bala3et|bala3t|bal3et|shereb|shereb|sharab|sherib|akal|akalet|akl)\w*\s*(\w+\s*){0,2}(7ab\w*|hab\w*|dawa|2ors|a2ras|capsul\w*|kapsul\w*|shreet|azaza|3elba|3elbet|syrup)",
     r"\b(a5ad|akhad|5ad|a5adt|akhadt|5adet|a5adet|5adt|akhdt)\w*\s*(\w+\s*){0,2}(\d{2,}|kteer|ketir|kiteer|kol)\s*(7ab\w*|hab\w*|2ors|a2ras|capsul\w*|shreet|3elba|3elbet)",
+    r"\b(ebny|ebni|ebn|bnty|binty|bent|tefl|tefly|walad)\w*\s*(\w+\s*){0,2}(bala3|bal3|bala3et|sherib|shereb|sharab)\w*\s*(shwaya|shweya|ba3d|kteer|ketir)(?=\s*(men|menha|minha|[.?!,]|$))",
     r"\bover ?dose\b|\boverdoz\w*",
 )
 

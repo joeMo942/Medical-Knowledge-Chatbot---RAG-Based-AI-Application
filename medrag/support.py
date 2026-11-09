@@ -204,7 +204,29 @@ class SupportCheck:
                         if c < len(row.cells):
                             names.update(t for t in tokens(row.cells[c]) if len(t) >= 3)
         self.drug_names = names
+        # Drug Class names (the headings of the class Sections): "Which drug class is it in?" is rewritten
+        # to name the class or the drug, so both are words a rewrite may bring in from the history.
+        self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}
         self._kb = _Text("\n".join(s.render() for s in sections))
+
+    def rewrite_ok(self, message: str, rewrite: str) -> bool:
+        """True when a standalone rewrite of `message` adds nothing but what the Session may bring in:
+        every number of the rewrite is in the message, and every content word it does not share with
+        the message (frame and aspect words aside) is a KB drug name (Trade Name or Active Ingredient)
+        or a Drug Class name. A rewrite that carries any other word (a price, a symptom, a claim from an
+        earlier reply) is refused, so the earlier turns can resolve "it" but never add a fact."""
+        have = {stem(t) for t in tokens(message)}
+        for t in tokens(rewrite):
+            if _NUMBERISH.match(t):
+                if t not in tokens(message):
+                    return False
+                continue
+            if len(t) < 3 or t in FRAME or t in ASPECT or stem(t) in have:
+                continue
+            if t in self.drug_names or t in self.class_names:
+                continue
+            return False
+        return True
 
     def topic_terms(self, question: str) -> list[str]:
         return self._topic(tokens(question))
