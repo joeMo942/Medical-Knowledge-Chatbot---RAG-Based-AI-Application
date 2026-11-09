@@ -17,29 +17,40 @@ def test_every_expected_kb_id_is_backed_by_the_real_kb_and_every_trap_is_a_real_
     errors, notes = kb_check.anchor_problems(cases, texts)
     errors += kb_check.absent_problems(cases, texts)
     errors += kb_check.relevance_problems(cases, texts, kb_check.section_names(list(real_kb.values())))
+    errors += kb_check.echo_problems(cases)
     assert errors == []
     assert notes == []   # no Document with an anchor is left out of the expected IDs unexplained
 
 
-# Short body lines of the real KB with no sentence content that DO carry a fact (an item of a list).
-KB_SHORT_CONTENT_LINES = {
+# Body lines of the real KB that look like headings but DO carry a fact: short list items, the
+# prescription status, and sentences that happen to end in ':'.
+KB_HEADING_LIKE_CONTENT_LINES = {
     "Menthol", "Camphor", "Methyl salicylate", "Capsaicin", "Diethylamine salicylate", "OTC: None",
     "Depends on formulation", "Psyllium / Ispaghula husk", "Plantago ovata", "Methylcellulose",
+    "Prescription Only",
+    "ممكن تقلل امتصاص أدوية كتير، مثل:",
+    "الاستخدام: خفض LDL Cholesterol بشكل كبير، خصوصاً في:",
+    "في المجموعة دي فيه 3 مواد فعالة أساسية، وبعضها Thiazide-like:",
+    "أهم دواء هنا هو Paracetamol، ونفس الأسماء التجارية المذكورة في Analgesics:",
 }
 
 
 @pytest.mark.kb
-def test_every_short_heading_like_line_of_the_real_kb_is_classified(real_kb):
-    """Every body line of up to 7 words that is not a sentence (no final '.') is either a label or a
-    known content line, so a new heading shape in the KB cannot slip through as support unnoticed."""
+def test_every_heading_like_line_of_the_real_kb_is_classified(real_kb):
+    """Every body line that could be a label (up to 7 words and not a sentence ending in '.', or any line
+    ending in ':' or a question mark, whatever its length) is either a label or a known content line, so a
+    new heading shape in the KB cannot slip through unnoticed."""
     from evaluation.scoring import is_label_line
-    short = {p.strip() for d in real_kb.values() for s in d.sections for ln in s.lines for p in ln.split("\n")
-             if p.strip() and len(p.split()) <= 7 and not p.strip().endswith(".")}
-    labels = {x for x in short if is_label_line(x)}
-    assert short - labels == KB_SHORT_CONTENT_LINES
-    for heading in ("Prescription Only", "Side Effects", "Contraindications", "C. Nitroimidazoles",
-                    "الأدوية الموجودة في السوق المصري", "OTC ولا Prescription؟", "Common side effects:"):
+    parts = {p.strip() for d in real_kb.values() for s in d.sections for ln in s.lines for p in ln.splitlines()}
+    candidates = {p for p in parts if p and ((len(p.split()) <= 7 and not p.endswith("."))
+                                             or p.endswith((":", "؟", "?")))}
+    labels = {x for x in candidates if is_label_line(x)}
+    assert candidates - labels == KB_HEADING_LIKE_CONTENT_LINES
+    for heading in ("Side Effects", "Contraindications", "C. Nitroimidazoles", "الأدوية الموجودة في السوق المصري",
+                    "OTC ولا Prescription؟", "Common side effects:", "Contraindications / أهم التحذيرات:",
+                    "أمثلة إضافية موثقة للـCaffeine combinations في مصر:"):
         assert heading in labels
+    assert len([x for x in candidates if x.endswith(":")]) > 25          # the long colon lines are covered too
 
 
 def test_normalisation_for_matching():

@@ -45,7 +45,9 @@ class Turn:
     absent_terms: tuple[str, ...] = ()  # out-of-scope traps: none of these may occur anywhere in the KB
     expected_sections: tuple[str, ...] = ()  # relevance: a cited Section must be one of these (name, or "title › name")
     answer_must_mention: tuple[str, ...] = ()  # relevance: the answer text must contain one of these terms
-    answer_must_mention_all: tuple[str, ...] = ()  # relevance: the answer text must contain every one of these
+    # relevance: the answer text must match EVERY entry; an entry is a term, or a tuple of alternative terms
+    # (any one of which matches it): ("500", "65") or (("30%", "30 %"), ("70%", "70 %"))
+    answer_must_mention_all: tuple[str | tuple[str, ...], ...] = ()
 
     @property
     def passing_statuses(self) -> tuple[str, ...]:
@@ -69,6 +71,23 @@ def _text_list_errors(where: str, key: str, v: Any) -> list[str]:
     if not isinstance(v, list) or any(not isinstance(x, str) or not x.strip() for x in v):
         return [f"{where}: {key!r} must be a list of non-empty strings"]
     return []
+
+
+def _group_list_errors(where: str, key: str, v: Any) -> list[str]:
+    """A list whose entries are a non-empty string or a non-empty list of non-empty strings."""
+    def ok(x: Any) -> bool:
+        if isinstance(x, str):
+            return bool(x.strip())
+        return isinstance(x, list) and bool(x) and all(isinstance(y, str) and y.strip() for y in x)
+    if not isinstance(v, list) or not all(ok(x) for x in v):
+        return [f"{where}: {key!r} must be a list whose entries are a non-empty string or a non-empty "
+                "list of non-empty strings (alternatives)"]
+    return []
+
+
+def term_groups(entries: Iterable[str | Iterable[str]]) -> list[tuple[str, ...]]:
+    """answer_must_mention_all entries as groups of alternatives: "500" -> ("500",)."""
+    return [(e,) if isinstance(e, str) else tuple(e) for e in entries]
 
 
 def _turn_errors(where: str, t: Any) -> list[str]:
@@ -99,8 +118,9 @@ def _turn_errors(where: str, t: Any) -> list[str]:
         errs.append(f"{where}: only an answered turn has expected_kb_ids")
     if status == "answered" and not t.get("anchors"):
         errs.append(f"{where}: an answered turn needs 'anchors' (terms to check its KB IDs against the real KB)")
-    for key in ("anchors", "absent_terms", *RELEVANCE_FIELDS):
+    for key in ("anchors", "absent_terms", "expected_sections", "answer_must_mention"):
         errs += _text_list_errors(where, key, t.get(key, []))
+    errs += _group_list_errors(where, "answer_must_mention_all", t.get("answer_must_mention_all", []))
     if status == "answered" and t.get("absent_terms"):
         errs.append(f"{where}: 'absent_terms' belongs on out_of_scope turns")
     if status == "answered" and not any(t.get(k) for k in RELEVANCE_FIELDS):
@@ -158,7 +178,7 @@ def _as_turn(t: dict) -> Turn:
         anchors=tuple(t.get("anchors", ())), absent_terms=tuple(t.get("absent_terms", ())),
         expected_sections=tuple(t.get("expected_sections", ())),
         answer_must_mention=tuple(t.get("answer_must_mention", ())),
-        answer_must_mention_all=tuple(t.get("answer_must_mention_all", ())))
+        answer_must_mention_all=tuple(term_groups(t.get("answer_must_mention_all", ()))))
 
 
 def parse_cases(data: Any) -> list[Case]:
@@ -223,37 +243,55 @@ _DIACRITICS = re.compile("[\u064b-\u065f\u0670\u0640]")
 _ARABIC_FOLD = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه",
                               # Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits -> 0-9
                               **{chr(0x0660 + i): str(i) for i in range(10)},
-                              **{chr(0x06F0 + i): str(i) for i in range(10)}})
+                              **{chr(0x06F0 + i): str(i) for i in range(10)},
+                              "٪": "%"})  # Arabic percent sign
 
 
 def norm(text: str) -> str:
     """Case-insensitive text with Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants folded,
-    and Arabic-Indic digits mapped to 0-9 ("٥٠٠" matches "500")."""
+    Arabic-Indic digits mapped to 0-9 ("٥٠٠" matches "500") and the Arabic percent sign "٪" to "%"."""
     return _DIACRITICS.sub("", text).translate(_ARABIC_FOLD).casefold()
 
 
 # Body lines that only introduce what follows and support no claim by themselves, derived from the
 # real KB (every short body line without sentence content): mostly the per-class headings of KB-07 and
-# KB-08. Content lines that are just as short ("Menthol", "OTC: None", "Depends on formulation") are
-# NOT labels.
+# KB-08. Content lines that are just as short ("Menthol", "OTC: None", "Depends on formulation", and
+# "Prescription Only", which states the prescription status) are NOT labels.
 LABEL_LINES = frozenset(norm(x) for x in (
-    "Prescription Only", "Side Effects", "Side Effects (الأعراض الجانبية)", "Contraindications",
+    "Side Effects", "Side Effects (الأعراض الجانبية)", "Contraindications",
     "Contraindications (موانع الاستعمال)", "الأدوية", "الأدوية الموجودة في السوق المصري",
     "الأدوية والمستحضرات الموجودة في السوق المصري", "مستحضر خاص بالـMigraine",
 ))
 # Lettered sub-headings ("C. Nitroimidazoles") and Arabic ordinal ones ("أولًا: Aspirin – ...").
 _SUB_HEADING = re.compile(r"^(?:[A-Z]\.\s+\S|(?:أولًا|ثانيًا|ثالثًا|رابعًا|أولا|ثانيا|ثالثا|رابعا)\s*:)")
+LABEL_MAX_WORDS = 7  # a label that ends in ':' or '?' is short ...
+_CLAUSE = re.compile("[,،;؛]")  # ... and has no clause break, which marks sentence content
 
 
 def is_label_line(text: str) -> bool:
-    """A body line that labels what follows: it ends in ':' or a question mark ("Common side effects:",
-    "OTC ولا Prescription؟"), is a lettered or ordinal sub-heading ("C. Nitroimidazoles", "أولًا: Aspirin"),
-    or is one of LABEL_LINES ("Prescription Only", "Contraindications")."""
+    """A body line that labels what follows and states nothing by itself:
+    - a short line (at most LABEL_MAX_WORDS words, no comma) ending in ':' or a question mark
+      ("Common side effects:", "Trade Names في مصر:", "OTC ولا Prescription؟"). A sentence that happens to
+      end in ':' ("في المجموعة دي فيه 3 مواد فعالة أساسية، وبعضها Thiazide-like:") is content;
+    - a lettered or Arabic ordinal sub-heading that is not a sentence ("C. Nitroimidazoles", "أولًا: Aspirin");
+    - one of LABEL_LINES ("Side Effects", "Contraindications", "الأدوية الموجودة في السوق المصري")."""
     t = text.strip()
-    if t.endswith((":", "؟", "?")) or norm(t) in LABEL_LINES:
+    if not t:
+        return False
+    if norm(t) in LABEL_LINES:
         return True
+    if t.endswith((":", "؟", "?")):
+        return len(t.split()) <= LABEL_MAX_WORDS and not _CLAUSE.search(t)
     # A sentence ends in '.': "H. pylori is ..." would match the lettered pattern but is content.
     return bool(_SUB_HEADING.match(t)) and not t.endswith(".")
+
+
+_EDGE_NON_WORD = re.compile(r"^\W+|\W+$")
+
+
+def word_text_len(s: str) -> int:
+    """Length of `s` without leading and trailing punctuation or spaces (": ممنوعة" counts 6)."""
+    return len(_EDGE_NON_WORD.sub("", s))
 
 
 def _is_word_char(ch: str) -> bool:
@@ -288,13 +326,16 @@ def _units(section: Any) -> list[tuple[str, bool]]:
 
 def snippet_check(snippet: str, section: Any) -> dict[str, bool]:
     """`valid`: the snippet is a whole body line or data row of the Section, or lies inside ONE of them,
-    is at least MIN_SNIPPET_CHARS long and starts and ends on word boundaries (so not "a" or "oloc – Pant").
-    `label`: it is valid but only because of label lines (is_label_line: "Common side effects:",
-    "Prescription Only", "C. Nitroimidazoles"), which support no claim by themselves."""
+    has at least MIN_SNIPPET_CHARS characters of word text (leading/trailing punctuation does not count,
+    so not ": ممنوعة") and starts and ends on word boundaries (so not "a" or "oloc – Pant").
+    `label`: it is valid but supports no claim by itself: the snippet is itself label-shaped
+    (is_label_line: "Common side effects:", "Side Effects", "C. Nitroimidazoles"), or every line holding it
+    is a label line."""
     snip = snippet.strip()
     holders = [(u, lab) for u, lab in _units(section)
-               if snip and (snip == u or (len(snip) >= MIN_SNIPPET_CHARS and _on_word_boundaries(snip, u)))]
-    return {"valid": bool(holders), "label": bool(holders) and all(lab for _, lab in holders)}
+               if snip and (snip == u or (word_text_len(snip) >= MIN_SNIPPET_CHARS and _on_word_boundaries(snip, u)))]
+    return {"valid": bool(holders),
+            "label": bool(holders) and (is_label_line(snip) or all(lab for _, lab in holders))}
 
 
 def snippet_in_one_unit(snippet: str, section: Any) -> bool:
@@ -328,7 +369,8 @@ def check_relevance(turn: "Turn", body: Any, cites: list[dict]) -> bool | None:
     """Does the reply answer the question asked? None when the turn defines no relevance check.
     expected_sections: some cited Section is one of them (matched by name or by "title › name").
     answer_must_mention: the answer contains one of the terms (Arabic normalised).
-    answer_must_mention_all: the answer contains every one of the terms (Arabic normalised).
+    answer_must_mention_all: the answer matches every entry; an entry is a term or a group of alternative
+    terms, matched by any one of them (Arabic normalised).
     Every check that is set must hold."""
     verdicts = []
     if turn.expected_sections:
@@ -341,7 +383,7 @@ def check_relevance(turn: "Turn", body: Any, cites: list[dict]) -> bool | None:
         verdicts.append(any(norm(t) in answer for t in turn.answer_must_mention))
     if turn.answer_must_mention_all:
         answer = norm(str(body.get("answer", ""))) if isinstance(body, dict) else ""
-        verdicts.append(all(norm(t) in answer for t in turn.answer_must_mention_all))
+        verdicts.append(all(any(norm(t) in answer for t in group) for group in term_groups(turn.answer_must_mention_all)))
     return all(verdicts) if verdicts else None
 
 

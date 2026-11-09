@@ -4,7 +4,9 @@
 - the documents that contain an anchor but are not listed are printed, so each omission is deliberate;
 - every `expected_sections` entry must be a Section of one of the expected Documents;
 - at least one `answer_must_mention` term must occur in one of the expected Documents;
-- every `answer_must_mention_all` term must occur in one of the expected Documents;
+- every `answer_must_mention_all` entry (a term, or a list of alternatives) must occur in one of the
+  expected Documents;
+- no answer term may already be in the question (a reply that repeats the question must not pass);
 - every `absent_terms` entry of an out-of-scope trap must occur nowhere in the KB.
 
 Matching is case-insensitive and ignores Arabic diacritics, tatweel and alef/yeh/teh-marbuta variants;
@@ -16,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .scoring import PATH_SEPARATOR, Case, load_cases, norm
+from .scoring import PATH_SEPARATOR, Case, load_cases, norm, term_groups
 
 DEFAULT_CASES = Path(__file__).with_name("cases.json")
 def doc_texts(documents: list[Any]) -> dict[str, str]:
@@ -75,9 +77,29 @@ def relevance_problems(cases: list[Case], texts: dict[str, str], sections: dict[
             if t.answer_must_mention and not any(norm(term) in texts.get(kb, "")
                                                  for kb in t.expected_kb_ids for term in t.answer_must_mention):
                 errors.append(f"{where}: none of {list(t.answer_must_mention)} occurs in {list(t.expected_kb_ids)}")
-            for term in t.answer_must_mention_all:
-                if not any(norm(term) in texts.get(kb, "") for kb in t.expected_kb_ids):
-                    errors.append(f"{where}: {term!r} (answer_must_mention_all) occurs in none of {list(t.expected_kb_ids)}")
+            for group in term_groups(t.answer_must_mention_all):
+                if not any(norm(term) in texts.get(kb, "") for kb in t.expected_kb_ids for term in group):
+                    errors.append(f"{where}: none of {list(group)} (answer_must_mention_all) occurs in "
+                                  f"{list(t.expected_kb_ids)}")
+    return errors
+
+
+def echo_problems(cases: list[Case]) -> list[str]:
+    """Errors: answer terms the question itself already contains (after normalisation), so a reply that
+    only repeats the question would pass relevance. An answer_must_mention term is flagged on its own;
+    answer_must_mention_all is flagged when the question matches EVERY entry (one entry may echo the
+    question, "breastfeeding", as long as another one, the verdict, does not)."""
+    errors = []
+    for case in cases:
+        for i, t in enumerate(case.turns, 1):
+            where = f"{case.id}" + (f" turn {i}" if case.multi_turn else "")
+            q = norm(t.message)
+            for term in t.answer_must_mention:
+                if norm(term) in q:
+                    errors.append(f"{where}: answer term {term!r} is already in the question")
+            groups = term_groups(t.answer_must_mention_all)
+            if groups and all(any(norm(term) in q for term in g) for g in groups):
+                errors.append(f"{where}: the question alone matches every answer_must_mention_all entry")
     return errors
 
 
@@ -95,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     errors, notes = anchor_problems(cases, texts)
     errors += absent_problems(cases, texts)
     errors += relevance_problems(cases, texts, section_names(documents))
+    errors += echo_problems(cases)
     for n in notes:
         print("note:", n)
     for e in errors:

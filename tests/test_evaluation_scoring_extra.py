@@ -63,6 +63,16 @@ def test_relevance_by_expected_section_and_by_answer_terms():
     assert check_relevance(every, body(answer="Paracetamol 500 mg and Caffeine 65 mg"), []) is True
     assert check_relevance(every, body(answer="Paracetamol 500 mg and Caffeine"), []) is False   # one strength missing
     assert check_relevance(every, body(answer="Paracetamol and Caffeine"), []) is False
+    # an entry may be a group of alternatives: EVERY entry must match, a group by ANY one of its terms
+    grouped = Turn("q", "answered", "en", ("KB-08",), anchors=("x",), answer_must_mention_all=(
+        ("breastfeeding", "الرضاعة"), ("not recommended", "avoid", "لا ينصح")))
+    assert check_relevance(grouped, body(answer="Statins are not recommended during breastfeeding."), []) is True
+    assert check_relevance(grouped, body(answer="لا يُنصح باستخدامها أثناء الرضاعة"), []) is True     # Arabic, diacritics
+    assert check_relevance(grouped, body(answer="Statins should be avoided in pregnancy."), []) is False  # topic missing
+    assert check_relevance(grouped, body(answer="The KB covers statins and breastfeeding."), []) is False  # no verdict
+    pct = Turn("q", "answered", "en", ("KB-07",), anchors=("x",), answer_must_mention_all=(("30%", "30 %"), ("70%",)))
+    assert check_relevance(pct, body(answer="NovoMix 30: ٣٠٪ Insulin Aspart + ٧٠٪ Protamine Aspart"), []) is True
+    assert check_relevance(pct, body(answer="NovoMix 30 is a premixed insulin"), []) is False
     assert check_relevance(both, body(answer="Diclofenac"), [cite(section="x")]) is False
     assert check_relevance(Turn("q", "answered", "en", ("KB-04",), anchors=("x",)), body(), [cite()]) is None
 
@@ -326,6 +336,39 @@ def test_relevance_check_against_synthetic_sections():
     assert kb_check.relevance_problems(cases_with(**base, answer_must_mention_all=["ventolin", "salbutamol"]), TEXTS, secs) == []
     errors = kb_check.relevance_problems(cases_with(**base, answer_must_mention_all=["salbutamol", "nothing"]), TEXTS, secs)
     assert len(errors) == 1 and "'nothing'" in errors[0]
+    # a group of alternatives needs one of its terms in an expected Document
+    grouped = cases_with(**base, answer_must_mention_all=[["nothing", "salbutamol"], "ventolin"])
+    assert kb_check.relevance_problems(grouped, TEXTS, secs) == []
+    errors = kb_check.relevance_problems(cases_with(**base, answer_must_mention_all=[["nothing", "nada"]]), TEXTS, secs)
+    assert len(errors) == 1 and "'nada'" in errors[0]
+
+
+def test_echo_check_flags_answer_terms_the_question_already_contains():
+    base = dict(expected_status="answered", expected_kb_ids=["KB-01"], anchors=["x"])
+    ok = cases_with(**base, message="What are the side effects of Ventolin?", answer_must_mention=["Tremor"])
+    assert kb_check.echo_problems(ok) == []
+    echo = cases_with(**base, message="Is there a warning about alcohol with Flagyl?", answer_must_mention=["ALCOHOL", "48"])
+    errors = kb_check.echo_problems(echo)
+    assert len(errors) == 1 and "'ALCOHOL'" in errors[0]
+    arabic = cases_with(**base, message="هل في تحذير من الكُحول؟", answer_must_mention=["الكحول"])   # normalised
+    assert len(kb_check.echo_problems(arabic)) == 1
+    # answer_must_mention_all: one entry may echo the topic as long as another (the verdict) does not
+    topic_and_verdict = cases_with(**base, message="Can statins be used during breastfeeding?",
+                                   answer_must_mention_all=[["breastfeeding", "الرضاعة"], ["not recommended", "avoid"]])
+    assert kb_check.echo_problems(topic_and_verdict) == []
+    all_echo = cases_with(**base, message="Can statins be used during breastfeeding?",
+                          answer_must_mention_all=[["breastfeeding"], ["statins"]])
+    assert len(kb_check.echo_problems(all_echo)) == 1
+
+
+def test_answer_must_mention_all_schema_accepts_strings_and_groups_only():
+    base = dict(expected_status="answered", expected_kb_ids=["KB-01"], anchors=["x"])
+    assert cases_with(**base, answer_must_mention_all=["500", ["65 mg", "65mg"]])[0].turns[0].answer_must_mention_all == (
+        ("500",), ("65 mg", "65mg"))
+    for bad in ([[]], [["ok", ""]], [5], ["ok", [""]], "500", [{"a": 1}]):
+        errors = scoring.validate_cases([{"id": "c-one", "category": "dose", "note": "n", "language": "en",
+                                          "message": "m", **base, "answer_must_mention_all": bad}])
+        assert any("answer_must_mention_all" in e for e in errors), bad
 
 
 # --------------------------------------------------------- stratified review sample

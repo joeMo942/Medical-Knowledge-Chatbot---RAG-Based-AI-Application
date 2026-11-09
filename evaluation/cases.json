@@ -65,9 +65,6 @@
       "الحمل",
       "stenosis",
       "الشريانين",
-      "Hyperkalemia",
-      "البوتاسيوم",
-      "hypotension",
       "hepatic",
       "biliary"
     ]
@@ -93,8 +90,8 @@
       "Tremor",
       "Palpitations",
       "Tachycardia",
-      "Hypokalemia",
-      "رعشة"
+      "رعشة",
+      "خفقان"
     ]
   },
   {
@@ -116,14 +113,17 @@
     ],
     "answer_must_mention": [
       "renal",
-      "acidosis",
+      "egfr",
+      "metabolic acidosis",
+      "ketoacidosis",
       "hypoxia",
       "dehydration",
       "hepatic",
-      "egfr",
       "الكلى",
       "كلوي",
-      "حمض",
+      "حمض أيضي",
+      "الحماض الأيضي",
+      "الجفاف",
       "الكبد"
     ]
   },
@@ -145,8 +145,6 @@
       "Antibiotics – H. pylori Eradication"
     ],
     "answer_must_mention": [
-      "alcohol",
-      "الكحول",
       "48"
     ]
   },
@@ -318,8 +316,8 @@
       "Tremor",
       "Palpitations",
       "Tachycardia",
-      "Hypokalemia",
-      "رعشة"
+      "رعشة",
+      "خفقان"
     ]
   },
   {
@@ -359,14 +357,16 @@
     ],
     "note": "Contraindications of Ibuprofen/NSAIDs. KB-03 and KB-04 have an 'Ibuprofen: avoid with ...' line; KB-06 > Analgesics and KB-09 > NSAIDs list NSAID contraindications that cover Brufen too.",
     "answer_must_mention": [
-      "peptic ulcer",
-      "قرحة",
-      "renal",
-      "الكلى",
-      "bleeding",
+      "active peptic ulcer",
+      "history of GI bleeding",
+      "heart failure",
       "allergy",
       "hypersensitivity",
-      "حساسية"
+      "حساسية",
+      "قرحة نشطة",
+      "القرحة النشطة",
+      "قصور القلب",
+      "فشل القلب"
     ]
   },
   {
@@ -408,14 +408,17 @@
     ],
     "answer_must_mention": [
       "renal",
-      "acidosis",
+      "egfr",
+      "metabolic acidosis",
+      "ketoacidosis",
       "hypoxia",
       "dehydration",
       "hepatic",
-      "egfr",
       "الكلى",
       "كلوي",
-      "حمض",
+      "حمض أيضي",
+      "الحماض الأيضي",
+      "الجفاف",
       "الكبد"
     ]
   },
@@ -439,8 +442,8 @@
       "Tremor",
       "Palpitations",
       "Tachycardia",
-      "Hypokalemia",
-      "رعشة"
+      "رعشة",
+      "خفقان"
     ]
   },
   {
@@ -550,11 +553,12 @@
     ],
     "note": "Cataflam in Arabic letters; the NSAID class side effects apply.",
     "answer_must_mention": [
-      "Gastric",
+      "Gastric irritation",
       "dyspepsia",
-      "bleeding",
-      "ulcer",
-      "المعدة"
+      "nausea",
+      "fluid retention",
+      "غثيان",
+      "تهيج المعدة"
     ]
   },
   {
@@ -574,8 +578,6 @@
       "Antibiotics – H. pylori Eradication"
     ],
     "answer_must_mention": [
-      "alcohol",
-      "الكحول",
       "48"
     ]
   },
@@ -792,8 +794,20 @@
     ],
     "note": "A Strength question, not a Dose: it asks the amount in one unit, which the KB states (KB-03 Caffeine-containing Analgesics: 'Panadol Extra – Paracetamol 500 mg + Caffeine 65 mg'). The answer must give both strengths.",
     "answer_must_mention_all": [
-      "500",
-      "65"
+      [
+        "500 mg",
+        "500mg",
+        "500 مجم",
+        "500 ملغ",
+        "500 ملجم"
+      ],
+      [
+        "65 mg",
+        "65mg",
+        "65 مجم",
+        "65 ملغ",
+        "65 ملجم"
+      ]
     ]
   },
   {
@@ -810,7 +824,11 @@
     ],
     "note": "Strength row: Paracetamol 500 mg + Ibuprofen 200 mg + Caffeine 65 mg.",
     "answer_must_mention": [
-      "200"
+      "200 mg",
+      "200mg",
+      "200 مجم",
+      "200 ملغ",
+      "200 ملجم"
     ]
   },
   {
@@ -828,7 +846,10 @@
     "note": "The OTC row of KB-02 states Pantoprazole 20 mg and Omeprazole 20 mg as OTC strengths.",
     "answer_must_mention": [
       "20 mg",
-      "20"
+      "20mg",
+      "20 مجم",
+      "20 ملغ",
+      "20 ملجم"
     ]
   },
   {
@@ -844,9 +865,17 @@
       "NovoMix 30"
     ],
     "note": "Premixed insulin row: 30% Insulin Aspart + 70% Protamine-crystallized Aspart.",
-    "answer_must_mention": [
-      "30%",
-      "70%"
+    "answer_must_mention_all": [
+      [
+        "30%",
+        "30 %",
+        "30٪"
+      ],
+      [
+        "70%",
+        "70 %",
+        "70٪"
+      ]
     ]
   },
   {
@@ -919,11 +948,16 @@
     "note": "Group-level question, not a Treatment Decision; four NSAID Sections state the week-20/week-30 rule.",
     "answer_must_mention": [
       "week 30",
-      "30 weeks",
       "week 20",
+      "30 weeks",
+      "20 weeks",
+      "30th week",
+      "20th week",
+      "week 30th",
       "الأسبوع 30",
       "الأسبوع 20",
-      "30th week"
+      "الأسبوع الثلاثين",
+      "الأسبوع العشرين"
     ]
   },
   {
@@ -944,11 +978,16 @@
     "note": "From the issue text. Ibuprofen is an NSAID, so the NSAID pregnancy lines answer it.",
     "answer_must_mention": [
       "week 30",
-      "30 weeks",
       "week 20",
+      "30 weeks",
+      "20 weeks",
+      "30th week",
+      "20th week",
+      "week 30th",
       "الأسبوع 30",
       "الأسبوع 20",
-      "30th week"
+      "الأسبوع الثلاثين",
+      "الأسبوع العشرين"
     ]
   },
   {
@@ -968,15 +1007,10 @@
       "ACE Inhibitors"
     ],
     "answer_must_mention": [
-      "ممنوع",
-      "يمنع",
-      "contraindicated",
-      "not allowed",
-      "must not",
-      "avoid",
       "الجنين",
       "fetal",
-      "fetus"
+      "fetus",
+      "ممنوعة أثناء الحمل"
     ]
   },
   {
@@ -995,14 +1029,23 @@
     "expected_sections": [
       "Statins"
     ],
-    "answer_must_mention": [
-      "not recommended",
-      "avoid",
-      "should not",
-      "not advised",
-      "contraindicated",
-      "لا ينصح",
-      "لا يُنصح"
+    "answer_must_mention_all": [
+      [
+        "breastfeeding",
+        "breast-feeding",
+        "lactation",
+        "الرضاعة"
+      ],
+      [
+        "not recommended",
+        "avoid",
+        "should not",
+        "not advised",
+        "contraindicated",
+        "لا ينصح",
+        "لا يُنصح",
+        "يتجنب"
+      ]
     ]
   },
   {
@@ -1020,13 +1063,18 @@
     ],
     "note": "Group-level: Tetracyclines (KB-05) and the sinusitis antibiotics (KB-06) say it is avoided under 8.",
     "answer_must_mention": [
-      "8 years",
-      "8 سنوات",
-      "under 8",
-      "below 8",
-      "younger than 8",
-      "less than 8",
-      "أقل من 8"
+      "avoid",
+      "caution",
+      "not recommended",
+      "should not",
+      "الحذر",
+      "يتجنب",
+      "يُتجنب",
+      "تجنب"
+    ],
+    "expected_sections": [
+      "Tetracyclines",
+      "Antibiotics"
     ]
   },
   {
@@ -1046,8 +1094,11 @@
       "Prostaglandin Analogues"
     ],
     "answer_must_mention": [
-      "pregnan",
-      "الحمل"
+      "contraindicated",
+      "miscarriage",
+      "uterine",
+      "إجهاض",
+      "الإجهاض"
     ]
   },
   {
@@ -1110,8 +1161,8 @@
       "Tremor",
       "Palpitations",
       "Tachycardia",
-      "Hypokalemia",
-      "رعشة"
+      "رعشة",
+      "خفقان"
     ]
   },
   {
@@ -1131,8 +1182,6 @@
       "Antibiotics – H. pylori Eradication"
     ],
     "answer_must_mention": [
-      "alcohol",
-      "الكحول",
       "48"
     ]
   },
@@ -1279,8 +1328,8 @@
           "Tremor",
           "Palpitations",
           "Tachycardia",
-          "Hypokalemia",
-          "رعشة"
+          "رعشة",
+          "خفقان"
         ]
       },
       {

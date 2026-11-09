@@ -174,6 +174,11 @@ def test_shipped_answered_turns_check_the_answer_text_not_only_the_cited_section
                 assert t.answer_must_mention or t.answer_must_mention_all, case.id
 
 
+def test_shipped_answer_terms_never_repeat_the_question(shipped):
+    # A reply that only repeats the question ("... alcohol with Metronidazole?") must not pass relevance.
+    assert kb_check.echo_problems(parse_cases(shipped)) == []
+
+
 def test_the_system_never_imports_the_test_set():
     package = Path(medrag.__file__).parent
     for py in package.rglob("*.py"):
@@ -249,6 +254,8 @@ LABELLED = Section("KB-03", "Pain", "NSAIDs", "class", (
 @pytest.mark.parametrize("snippet", [
     "a", "o", "Ta", "oloc – Pant", "flam – Diclo", "ataflam", "Cataflam – Diclofenac potass",   # fragments, mid-word edges
     "Tremor",                                                  # shorter than the minimum and not a whole line
+    "ataflam – Diclofenac potassium",                          # starts mid-word, ends at the end of the row
+    "iclofenac sodium",                                        # starts mid-word, ends at the end of the row
 ])
 def test_fragments_and_tiny_snippets_are_not_valid(snippet):
     assert not snippet_in_one_unit(snippet, LABELLED)
@@ -282,42 +289,71 @@ HEADINGS = Section("KB-07", "Diabetes", "Biguanides", "class", (
     Line("Menthol"), Line("OTC: None"), Line("Depends on formulation"),
     Line("H. pylori is treated with a combination regimen."),
     Line("Severe renal impairment: eGFR أقل من 30 mL/min/1.73m²."),
+    Line("في المجموعة دي فيه 3 مواد فعالة أساسية، وبعضها Thiazide-like:"),
+    Line("Pregnancy: ممنوعة أثناء الحمل بسبب خطر إصابة الجنين."),
 ))
 
 
 @pytest.mark.parametrize("line", [
-    "Prescription Only", "prescription only", "الأدوية الموجودة في السوق المصري", "Side Effects",
-    "Contraindications (موانع الاستعمال)", "C. Nitroimidazoles", "A. Penicillins", "E. Premixed Insulin",
+    "الأدوية الموجودة في السوق المصري", "Side Effects", "side effects", "Contraindications (موانع الاستعمال)",
+    "C. Nitroimidazoles", "A. Penicillins", "E. Premixed Insulin",
     "أولًا: Aspirin – Acetylsalicylic Acid", "ثانيًا: Topical Salicylates", "OTC ولا Prescription؟",
-    "Common side effects:", "Is it OTC?",
+    "Common side effects:", "Is it OTC?", "Contraindications / أهم التحذيرات:",
+    "أمثلة إضافية موثقة للـCaffeine combinations في مصر:",     # 7 words, no clause break: still a label
 ])
-def test_heading_like_body_lines_without_a_colon_are_labels(line):
+def test_heading_like_body_lines_are_labels(line):
     assert scoring.is_label_line(line)
 
 
 @pytest.mark.parametrize("line", [
     "Menthol", "OTC: None", "Depends on formulation", "Tremors.", "H. pylori is treated with a combination regimen.",
     "Severe renal impairment: eGFR أقل من 30 mL/min/1.73m².", "Pregnancy: ممنوعة أثناء الحمل.",
-    "Prescription Only for adults",
+    "Prescription Only",                                            # states the prescription status
+    "Prescription Only for adults", "",
+    # sentences that end in ':' (the four of the real KB): a clause break or more than 7 words
+    "ممكن تقلل امتصاص أدوية كتير، مثل:",
+    "الاستخدام: خفض LDL Cholesterol بشكل كبير، خصوصاً في:",
+    "في المجموعة دي فيه 3 مواد فعالة أساسية، وبعضها Thiazide-like:",
+    "أهم دواء هنا هو Paracetamol، ونفس الأسماء التجارية المذكورة في Analgesics:",
+    "Used for mild pain and for fever in children and adults alike:",   # 11 words, no comma
 ])
 def test_content_lines_are_not_labels(line):
     assert not scoring.is_label_line(line)
 
 
-def test_colonless_label_lines_are_counted_as_labels_in_snippet_checks():
-    for label in ("Prescription Only", "Side Effects", "C. Nitroimidazoles", "الأدوية الموجودة في السوق المصري"):
+def test_label_lines_are_counted_as_labels_in_snippet_checks():
+    for label in ("Side Effects", "C. Nitroimidazoles", "الأدوية الموجودة في السوق المصري"):
         assert snippet_check(label, HEADINGS) == {"valid": True, "label": True}, label
-    for content in ("Menthol", "OTC: None", "H. pylori is treated with a combination regimen."):
+    for content in ("Prescription Only", "Menthol", "OTC: None", "H. pylori is treated with a combination regimen.",
+                    "في المجموعة دي فيه 3 مواد فعالة أساسية، وبعضها Thiazide-like:"):
         assert snippet_check(content, HEADINGS) == {"valid": True, "label": False}, content
-    # A snippet is a label only when EVERY line holding it is a label: here a content line holds it too.
+
+
+def test_a_label_shaped_snippet_is_a_label_even_inside_a_content_line():
     both = Section("KB-07", "Diabetes", "Biguanides", "class", (Line("Side Effects"), Line("Side Effects are usually mild.")))
-    assert snippet_check("Side Effects", both) == {"valid": True, "label": False}
+    assert snippet_check("Side Effects", both) == {"valid": True, "label": True}             # the snippet itself
+    # A snippet that is not label-shaped is a label only when EVERY line holding it is a label.
+    mixed = Section("KB-03", "Pain", "Paracetamol", "class", (Line("Trade Names في مصر:"),
+                                                               Line("Trade Names في مصر include Panadol.")))
+    assert snippet_check("Trade Names في مصر", mixed) == {"valid": True, "label": False}
+    only_label = Section("KB-03", "Pain", "Paracetamol", "class", (Line("Trade Names في مصر:"),))
+    assert snippet_check("Trade Names في مصر", only_label) == {"valid": True, "label": True}
 
 
-def test_norm_maps_arabic_indic_digits_to_ascii():
+def test_a_snippet_needs_eight_characters_of_word_text_not_counting_edge_punctuation():
+    # ": ممنوعة" is 8 characters, but only 6 of them are word text
+    assert not snippet_in_one_unit(": ممنوعة", HEADINGS)
+    assert not snippet_in_one_unit("– Pantop", PPI)
+    assert snippet_in_one_unit(": ممنوعة أثناء الحمل", HEADINGS)                 # enough word text
+    assert snippet_in_one_unit("Menthol", HEADINGS)                               # a whole short line is fine
+    assert scoring.word_text_len(": ممنوعة") == 6 and scoring.word_text_len("– Pantoprazole –") == 12
+
+
+def test_norm_maps_arabic_indic_digits_and_percent_sign():
     assert scoring.norm("٥٠٠ ملغ") == scoring.norm("500 ملغ")
     assert scoring.norm("۶۵") == "65" and scoring.norm("٠١٢٣٤٥٦٧٨٩") == "0123456789"
     assert scoring.norm("۰۱۲۳۴۵۶۷۸۹") == "0123456789"
+    assert scoring.norm("٣٠٪") == "30%"
     t = Turn("q", "answered", "ar", ("KB-03",), anchors=("x",), answer_must_mention_all=("500", "65"))
     arabic = {"answer": "بنادول اكسترا فيه باراسيتامول ٥٠٠ مجم وكافيين ٦٥ مجم", "citations": [],
               "status": "answered", "language": "ar"}
