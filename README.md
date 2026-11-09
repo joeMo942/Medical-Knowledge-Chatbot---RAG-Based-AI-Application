@@ -39,7 +39,13 @@ A reply cut off at its cap is answered as `out_of_scope` (and logged as a warnin
 
 ## Escalation
 
-Every message is checked before retrieval and before the answer call (`medrag/pipeline.py`): fixed rules for Emergency and Dose wording in English, Arabic, dialect and Franco-Arabic (`medrag/rules.py`; they can only raise a status, and never treat "how much X is in product Y" as a Dose), then one short LLM routing call (`medrag/routing.py`) that also detects Diagnosis and Treatment Decision, and rewrites the question. A flagged message gets a fixed server-written reply (`medrag/escalation.py`: no drug facts, no Citations, Arabic for `ar` and `mixed`). If the routing call fails or the server is busy, the rules decide alone. A rule-flagged message makes no LLM call; otherwise a request makes one extra (short) call, counted in `X-Medrag-Usage`.
+Every message is checked before retrieval and before the answer call (`medrag/pipeline.py`): fixed rules for Emergency and Dose wording in English, Arabic, dialect and Franco-Arabic (`medrag/rules.py`; they can only raise a status, never treat "how much X is in product Y" as a Dose, and treat a reported overdose or a child who swallowed pills as an Emergency), then one short LLM routing call (`medrag/routing.py`) that also detects Diagnosis and Treatment Decision and rewrites the question. An emergency rule escalates at once; a dose rule is still routed, because the router may upgrade it to an Emergency, never downgrade it. A flagged message gets a fixed server-written reply (`medrag/escalation.py`: no drug facts, no Citations, Arabic for `ar` and `mixed`).
+
+- The routing call queues in the gate ahead of answer calls and has its own duration estimate and a 4 s timeout. It is skipped only when the request's remaining budget cannot afford it; then the rules decide alone and the answer call also classifies the message (a `trigger` backstop in its schema).
+- The user text is fenced as data and its angle brackets are replaced, so it cannot close the fence.
+- Last check on every Answered reply (`medrag/dosecheck.py`): a dose-like amount (a number with mg, g, ml, tablets, ... or "three times a day") that is not in the cited Sections' text turns the reply into the fixed Dose escalation.
+- `/health` is `ok` only after the model has been loaded, so the first request does not pay for the load.
+- A rule-flagged emergency makes no LLM call; every other request makes one short extra call, counted in `X-Medrag-Usage`.
 
 ## Evaluation
 
