@@ -12,10 +12,13 @@ question; retrieval, the answer call and the support check then use that questio
 never given to the answer call, so they are never a source of facts. Every turn is checked for
 escalation on its own, on the new message and on its standalone rewrite (so "how many is dangerous?"
 after "my son swallowed Panadol" is still caught); history can only raise a status, never lower one.
-If the routing call is skipped or fails, the raw message is used as before.
+The rewrite is validated against the message and the KB's drug names before use (support.rewrite_ok), and the
+escalation rules run on it unvalidated (they can only raise). If the routing call is skipped or fails, or the
+rewrite is refused, the raw message is used as before.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
@@ -27,6 +30,7 @@ from .rules import check
 from .sessions import Turn
 from .support import SupportCheck
 
+log = logging.getLogger("medrag")
 Search = Callable[[str], Awaitable[list[Section]]]
 
 
@@ -59,12 +63,19 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     return Decision(route.trigger if route else None, route)
 
 
-def standalone_question(message: str, decision: Decision, history: Sequence[Turn]) -> str:
+def standalone_question(message: str, decision: Decision, history: Sequence[Turn],
+                        support: SupportCheck | None = None) -> str:
     """The text retrieval, the answer call and the support check work on: the router's standalone
-    rewrite in a Session, the raw message otherwise or when there is no rewrite."""
-    if history and decision.route and decision.route.question:
-        return decision.route.question
-    return message
+    rewrite in a Session, the raw message otherwise. The rewrite is only used when it passes
+    `SupportCheck.rewrite_ok` (it adds nothing but KB drug or class names to the message), so a fact
+    from an earlier reply cannot enter the question through it; otherwise the raw message is used."""
+    if not (history and decision.route and decision.route.question):
+        return message
+    rewrite = decision.route.question
+    if support is None or not support.rewrite_ok(message, rewrite):
+        log.info("standalone rewrite refused (it carries words that are not in the message or the KB's drug names)")
+        return message
+    return rewrite
 
 
 async def respond(message: str, language: str, search: Search, llm: LLMGate,
@@ -74,7 +85,7 @@ async def respond(message: str, language: str, search: Search, llm: LLMGate,
     decision = await decide(message, llm, deadline, history)
     if decision.trigger:
         return escalated(decision.trigger, language)
-    question = standalone_question(message, decision, history)
+    question = standalone_question(message, decision, history, support)
     sections = await search(question)
     return await answer_question(question, language, sections, llm, deadline, backstop=decision.route is None,
                                  support=support)

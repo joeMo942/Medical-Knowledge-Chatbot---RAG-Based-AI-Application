@@ -11,6 +11,8 @@ from synthetic import ROW, SECTIONS, FakeLLM, answered
 from medrag.answering import NOT_FOUND
 from medrag.app import create_app
 from medrag.config import Settings
+from medrag.escalation import ESCALATION_TEXT
+from medrag.support import SupportCheck
 from medrag.routing import build_route_prompt
 from medrag.sessions import SessionStore, Turn
 
@@ -175,7 +177,8 @@ def test_the_rewrite_is_checked_for_escalation_too():
         "How many tablets of Cataflam are dangerous for my son who swallowed some?"))
     c = Chat(llm)
     c.say(Q1)
-    assert c.say("how many is dangerous?").json()["status"] == "escalated"
+    r = c.say("how many is dangerous?").json()
+    assert r["status"] == "escalated" and r["answer"] == ESCALATION_TEXT["emergency"]["en"]  # not the Dose text
 
 
 def test_history_can_not_lower_an_escalation():
@@ -229,3 +232,84 @@ def test_a_broken_store_never_blocks_the_reply(monkeypatch):
     monkeypatch.setattr(SessionStore, "add_turn", boom)
     r = Chat(FakeLLM(answered())).say(Q1)
     assert r.status_code == 200 and r.json()["status"] == "answered"
+
+
+# --- a rewrite may name the drug, never bring in a fact (M1) -------------------------------------
+
+def _smuggler(rewrite, price="30 EGP"):
+    """Turn 1's reply holds a fact that is not in the KB; the router (fooled or careless) puts it into
+    the rewrite; the model answers from anything in its prompt."""
+    cite = [{"section_id": SECTIONS[0].section_id, "snippet": ROW}]
+
+    def model(user):
+        if price in user:
+            return {"answer": f"Yes, {price}.", "status": "answered", "citations": cite}
+        return {"answer": "", "status": "out_of_scope", "citations": []}
+
+    first = {"answer": f"Cataflam is cheapest at {price}", "status": "answered", "citations": cite}
+    llm = FakeLLM(first, route_fn=lambda u: {"specific_person": False, "trigger": "none", "language": "en",
+                                             "is_drug_question": True, "question": rewrite if "<history>" in u else "q"})
+    return llm, model
+
+
+@pytest.mark.parametrize("follow_up,rewrite,fact", [
+    ("Which of those is the cheapest?", "Is Cataflam the cheapest Diclofenac brand at 30 EGP?", "30 EGP"),
+    ("Is that common?", "Is hair loss a common side effect of Cataflam?", "hair loss"),
+])
+def test_a_rewrite_that_smuggles_a_fact_from_an_earlier_reply_is_not_used(follow_up, rewrite, fact):
+    llm, model = _smuggler(rewrite, fact)
+    c = Chat(llm)
+    c.say(Q1)
+    llm.answer_fn = model
+    r = c.say(follow_up).json()
+    assert r["status"] == "out_of_scope" and r["citations"] == []
+    assert all(fact not in system + user for system, user in llm.calls[1:])  # never in an answer-call prompt
+    assert fact not in r["answer"]
+
+
+def test_the_refused_rewrite_falls_back_to_the_raw_message():
+    llm, model = _smuggler("Is Cataflam the cheapest Diclofenac brand at 30 EGP?")
+    c = Chat(llm)
+    c.say(Q1)
+    c.say("What is the active ingredient in Cataflam, the cheapest?")  # has a KB answer on its own
+    assert llm.calls[-1][1].endswith("QUESTION\nWhat is the active ingredient in Cataflam, the cheapest?")
+
+
+@pytest.mark.parametrize("message,rewrite", [
+    ("And what are its side effects?", "What are the side effects of Cataflam?"),
+    ("Which drug class is it in?", "Which drug class is Controloc in?"),
+    ("and for Voltaren?", "What is the active ingredient of Voltaren?"),
+    ("وإيه الأعراض الجانبية بتاعته؟", "ما الأعراض الجانبية لـ Cataflam؟"),
+    ("eh el a3rad el gaanbeya bta3to?", "What are the side effects of Controloc?"),
+])
+def test_rewrite_ok_accepts_a_rewrite_that_only_names_the_drug(message, rewrite):
+    assert SupportCheck(SECTIONS).rewrite_ok(message, rewrite)
+
+
+@pytest.mark.parametrize("message,rewrite", [
+    ("Which of those is the cheapest?", "Is Cataflam the cheapest Diclofenac brand at 30 EGP?"),
+    ("Which of those is the cheapest?", "Is Cataflam cheaper than Voltaren?"),
+    ("Is that common?", "Is hair loss a common side effect of Cataflam?"),
+    ("and for children?", "Is Cataflam safe for 5 year olds?"),
+])
+def test_rewrite_ok_refuses_words_and_numbers_that_are_not_in_the_message(message, rewrite):
+    assert not SupportCheck(SECTIONS).rewrite_ok(message, rewrite)
+
+
+def test_without_a_support_check_the_raw_message_is_used():
+    from medrag.pipeline import Decision, standalone_question
+    from medrag.routing import Route
+    d = Decision(None, Route(None, "en", True, "What are the side effects of Cataflam?"))
+    assert standalone_question("its side effects?", d, [Turn("a", "b", "answered")]) == "its side effects?"
+
+
+def test_rewrite_ok_on_the_real_kb(real_kb):
+    sup = SupportCheck([s for d in real_kb.values() for s in d.sections])
+    ok = [("And what are its side effects?", "What are the side effects of Glucophage?"),
+          ("Which drug class is it in?", "Which drug class is Controloc in?"),
+          ("وإيه الأعراض الجانبية بتاعته؟", "ما الأعراض الجانبية لـ Metformin؟"),
+          ("Which of those is the cheapest?", "Which of those is the cheapest?")]
+    bad = [("Which of those is the cheapest?", "Is Glucophage the cheapest Metformin brand at 30 EGP?"),
+           ("Is that common?", "Is hair loss a common side effect of Glucophage?")]
+    assert all(sup.rewrite_ok(m, r) for m, r in ok)
+    assert not any(sup.rewrite_ok(m, r) for m, r in bad)
