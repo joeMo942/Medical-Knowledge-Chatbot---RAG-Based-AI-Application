@@ -3,28 +3,131 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Drug Information Assistant</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 46rem; margin: 0 auto; padding: 1rem; }
-  #log { min-height: 50vh; }
-  .msg { margin: .6rem 0; padding: .6rem .8rem; border-radius: .5rem; white-space: pre-wrap; }
-  .user { background: #e8f0fe; } .bot { background: #f3f3f3; }
-  .meta { font-size: .8rem; color: #555; margin-top: .4rem; }
-  blockquote { margin: .3rem 0 0; padding-left: .6rem; border-inline-start: 3px solid #999; font-size: .85rem; }
-  form { display: flex; gap: .5rem; } input { flex: 1; padding: .6rem; font-size: 1rem; }
-  button { padding: .6rem 1rem; font-size: 1rem; }
-  .handoff { display: block; margin: .6rem 0; padding: .6rem .8rem; border: 1px solid #bbb; border-radius: .5rem; }
-  .handoff label { display: block; font-weight: 600; margin: .4rem 0 .2rem; }
-  .handoff textarea, .handoff input { width: 100%; box-sizing: border-box; padding: .5rem; font-size: 1rem; font-family: inherit; }
-  .handoff textarea { min-height: 6rem; } .handoff .note { font-size: .8rem; color: #555; margin: .4rem 0; }
-  .handoff .err { color: #b00020; margin: .4rem 0; } .handoff.done { background: #e6f4ea; }
+  :root {
+    --bg: #f4f7f7; --surface: #ffffff; --ink: #14262b; --muted: #55686d; --line: #d5e0e1;
+    --accent: #0d6a6e; --accent-ink: #ffffff; --accent-soft: #e0f0f0;
+    --info-bg: #eef2f3; --info-ink: #4a5c61;
+    --warn-bg: #fff6e3; --warn-line: #e3bd72; --warn-ink: #6a4700;
+    --danger-bg: #fdeceb; --danger-line: #e0a09c; --danger-ink: #861b16;
+    --ok-bg: #e6f4ea; --ok-ink: #17532b;
+    --shadow: 0 1px 2px rgba(20, 38, 43, .06);
+    --font: "Segoe UI", "Noto Sans Arabic", Tahoma, system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1a1d; --surface: #172529; --ink: #e4eeee; --muted: #9db1b5; --line: #2b3f44;
+      --accent: #4fb8bc; --accent-ink: #072326; --accent-soft: #1b3a3e;
+      --info-bg: #1b2b2f; --info-ink: #a9bcc0;
+      --warn-bg: #2f2612; --warn-line: #7a6228; --warn-ink: #f2d596;
+      --danger-bg: #351a19; --danger-line: #86403c; --danger-ink: #ffc9c4;
+      --ok-bg: #16301e; --ok-ink: #a6dfb8;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--ink); line-height: 1.55; display: flex; flex-direction: column; }
+  button, textarea, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  header { background: var(--surface); border-bottom: 1px solid var(--line); padding: .7rem 1rem; flex: none; }
+  .wrap { max-width: 48rem; margin: 0 auto; width: 100%; }
+  header h1 { margin: 0; font-size: 1.15rem; font-weight: 650; display: flex; flex-wrap: wrap; gap: .1rem .7rem; align-items: baseline; }
+  header h1 span { font-size: 1rem; font-weight: 500; color: var(--muted); }
+  .scope { margin: .25rem 0 0; font-size: .82rem; color: var(--muted); }
+  .scope [lang=ar] { display: block; }
+  .scope strong { color: var(--danger-ink); font-weight: 650; }
+
+  #log { flex: 1; overflow-y: auto; position: relative; padding: 1rem; }
+  #log .wrap, #log { scroll-behavior: auto; }
+  .thread { display: flex; flex-direction: column; gap: .85rem; max-width: 48rem; margin: 0 auto; }
+
+  .msg { padding: .65rem .9rem; border-radius: .9rem; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+  .user { align-self: flex-end; max-width: 85%; background: var(--accent); color: var(--accent-ink); border-end-end-radius: .25rem; }
+  .bot { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); border-end-start-radius: .25rem; }
+  .bot.st-out_of_scope { background: var(--info-bg); color: var(--info-ink); border-style: dashed; }
+  .bot.st-escalated { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .bot.st-escalated.emergency { background: var(--danger-bg); border: 2px solid var(--danger-line); color: var(--danger-ink); font-size: 1.05rem; padding: .85rem 1rem; }
+  .bot.st-escalated.emergency strong { font-size: 1.15em; font-weight: 700; }
+  .bot.st-error { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+
+  .typing { display: inline-flex; gap: .3rem; align-items: center; height: 1.4rem; }
+  .typing i { width: .5rem; height: .5rem; border-radius: 50%; background: var(--muted); opacity: .4; animation: blink 1.2s infinite ease-in-out; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: .6; } }
+
+  .meta { font-size: .75rem; color: var(--muted); margin-top: .5rem; white-space: normal; display: flex; align-items: center; gap: .35rem; }
+  .st-escalated .meta, .st-error .meta { color: inherit; opacity: .8; }
+  .meta .mark { display: inline-grid; place-items: center; width: 1rem; height: 1rem; border-radius: 50%; border: 1px solid currentColor; font-size: .65rem; font-weight: 700; line-height: 1; }
+
+  details.sources { margin-top: .6rem; white-space: normal; font-size: .85rem; }
+  details.sources > summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: .25rem 0; list-style-position: inside; }
+  .cite { margin-top: .45rem; padding: .5rem .65rem; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; color: var(--ink); }
+  .cite .ref { display: flex; flex-wrap: wrap; gap: .25rem .5rem; align-items: baseline; font-size: .78rem; color: var(--muted); }
+  .cite .kb { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .cite q { display: block; margin-top: .25rem; font-size: .85rem; quotes: "\201C" "\201D"; overflow-wrap: anywhere; }
+  .cite q.long { max-height: 4.6em; overflow: hidden; }
+  .cite q.long.open { max-height: none; }
+  .cite .more { background: none; border: 0; padding: .2rem 0; color: var(--accent); cursor: pointer; font-size: .78rem; min-height: 1.75rem; }
+
+  .handoff { max-width: 100%; margin-top: -.4rem; padding: .85rem 1rem; background: var(--surface); border: 1px solid var(--warn-line); border-radius: .25rem .25rem .9rem .9rem; box-shadow: var(--shadow); }
+  .handoff > div:first-child { font-weight: 600; margin-bottom: .2rem; }
+  .handoff label { display: block; font-weight: 600; font-size: .88rem; margin: .65rem 0 .25rem; }
+  .handoff textarea, .handoff input { width: 100%; padding: .55rem .7rem; font-size: 1rem; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; }
+  .handoff textarea { min-height: 6.5rem; resize: vertical; }
+  .handoff .note { font-size: .78rem; color: var(--muted); margin: .5rem 0; }
+  .handoff .err { color: var(--danger-ink); background: var(--danger-bg); border-radius: .4rem; margin: .4rem 0; padding: 0 .5rem; }
+  .handoff .err:not(:empty) { padding: .35rem .5rem; }
+  .handoff button { min-height: 2.75rem; padding: .5rem 1.4rem; border: 0; border-radius: .6rem; background: var(--accent); color: var(--accent-ink); font-weight: 650; cursor: pointer; }
+  .handoff button:disabled { opacity: .6; cursor: default; }
+  .handoff.done { background: var(--ok-bg); color: var(--ok-ink); border-color: transparent; font-weight: 600; }
+
+  #empty { text-align: center; padding: 2rem 0 1rem; color: var(--muted); }
+  #empty h2 { margin: 0 0 .3rem; font-size: 1.3rem; color: var(--ink); font-weight: 600; }
+  #empty p { margin: 0 auto 1.2rem; max-width: 30rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+  .chip { min-height: 2.75rem; padding: .5rem .9rem; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; color: var(--ink); }
+  .chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+  #f { flex: none; background: var(--surface); border-top: 1px solid var(--line); padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); }
+  #f .row { max-width: 48rem; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
+  #q { flex: 1; min-width: 0; resize: none; overflow-y: hidden; max-height: 9rem; padding: .6rem .8rem; font-size: 1rem; line-height: 1.4; background: var(--bg); border: 1px solid var(--line); border-radius: .75rem; }
+  #q:disabled { opacity: .6; }
+  #f .send { flex: none; min-height: 2.9rem; padding: 0 1.2rem; border: 0; border-radius: .75rem; background: var(--accent); color: var(--accent-ink); font-weight: 650; cursor: pointer; }
+  #f .send:disabled { opacity: .5; cursor: default; }
+  .hint { max-width: 48rem; margin: .3rem auto 0; font-size: .72rem; color: var(--muted); }
+  @media (max-width: 480px) { .scope { font-size: .76rem; } .hint { display: none; } header h1 { font-size: 1.05rem; } }
 </style>
 </head>
 <body>
-<h1>Drug Information Assistant</h1>
-<div id="log"></div>
-<form id="f"><input id="q" dir="auto" autocomplete="off" placeholder="Ask about a drug / اسأل عن دواء" required>
-<button>Send</button></form>
+<header><div class="wrap">
+  <h1>Drug Information Assistant <span lang="ar" dir="rtl">مساعد معلومات الأدوية</span></h1>
+  <p class="scope">Answers only from its knowledge base. Not a substitute for a doctor or pharmacist. <strong>Emergency: call 123.</strong>
+    <span lang="ar" dir="rtl">يجيب من قاعدة المعرفة فقط، ولا يغني عن الطبيب أو الصيدلي. للطوارئ: 123.</span></p>
+</div></header>
+
+<main id="log" role="log" aria-live="polite" aria-label="Conversation">
+  <div class="thread" id="thread">
+    <div id="empty">
+      <h2>Ask about a drug / اسأل عن دواء</h2>
+      <p>Brand names, active ingredients, alternatives, doses and side effects, in Arabic, Egyptian dialect, Franco-Arabic or English.</p>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+</main>
+
+<form id="f">
+  <div class="row">
+    <textarea id="q" rows="1" dir="auto" autocomplete="off" aria-label="Your question / سؤالك" placeholder="Ask about a drug / اسأل" style="text-overflow:ellipsis"></textarea>
+    <button class="send" type="submit">Send / إرسال</button>
+  </div>
+  <div class="hint">Enter to send, Shift+Enter for a new line</div>
+</form>
+
 <script>
 let sid = null;
 const typed = [];  // what the user has sent in this Session, as the page shows it
@@ -39,6 +142,13 @@ const HANDOFF_TEXT = {
        send: "إرسال", sending: "جارٍ الإرسال...", done: "شكرًا لك. سيتابع معك صيدلي أو طبيب.",
        fail: "تعذّر الإرسال: "},
 };
+const STATUS_TEXT = {
+  en: {answered: "Answered", out_of_scope: "Out of scope", escalated: "Escalated to a pharmacist or physician", sources: "Sources", more: "Show more", less: "Show less"},
+  ar: {answered: "تمت الإجابة", out_of_scope: "خارج النطاق", escalated: "يلزم الرجوع إلى صيدلي أو طبيب", sources: "المصادر", more: "عرض المزيد", less: "عرض أقل"},
+};
+const EXAMPLES = ["ايه البدائل التجارية لـ Brufen؟", "What are the side effects of Controloc?",
+                  "ما هي أدوية الضغط المتاحة؟", "Is Augmentin used for pharyngitis?"];
+const isAr = (language) => language === "ar" || language === "mixed";
 // The hand-off form of an Escalated reply: built after the reply is on the page, appended below it, never focused.
 let formCount = 0;
 function handoffForm(language, session) {  // `session`: the Session of the reply this form belongs to
@@ -65,17 +175,56 @@ function handoffForm(language, session) {  // `session`: the Session of the repl
   });
   return form;
 }
-const log = document.getElementById("log"), q = document.getElementById("q"), sendBtn = document.querySelector("#f button");
+const log = document.getElementById("log"), thread = document.getElementById("thread"), q = document.getElementById("q");
+const sendBtn = document.querySelector("#f button"), empty = document.getElementById("empty");
 function add(cls, text) {
   const d = document.createElement("div"); d.className = "msg " + cls; d.dir = "auto";
-  d.textContent = text; log.appendChild(d); return d;
+  d.textContent = text; thread.appendChild(d); return d;
+}
+function toBottom() { log.scrollTop = log.scrollHeight; }
+function typingDots(bot) {
+  bot.textContent = ""; const s = document.createElement("span"); s.className = "typing"; s.setAttribute("aria-label", "...");
+  for (let i = 0; i < 3; i++) s.appendChild(document.createElement("i"));
+  bot.appendChild(s);
+}
+function citationBlock(citations, tx) {
+  const box = document.createElement("details"); box.className = "sources"; box.open = citations.length <= 2;
+  const head = document.createElement("summary"); head.textContent = tx.sources + " (" + citations.length + ")"; box.appendChild(head);
+  for (const c of citations) {
+    const item = document.createElement("div"); item.className = "cite";
+    const ref = document.createElement("div"); ref.className = "ref";
+    const kb = document.createElement("span"); kb.className = "kb"; kb.textContent = c.doc_id;
+    const path = document.createElement("span"); path.dir = "auto"; path.textContent = c.title + " > " + c.section;
+    ref.append(kb, path);
+    const quote = document.createElement("q"); quote.dir = "auto"; quote.textContent = c.snippet;
+    item.append(ref, quote);
+    if (String(c.snippet).length > 220) {
+      quote.classList.add("long");
+      const more = document.createElement("button"); more.type = "button"; more.className = "more"; more.textContent = tx.more;
+      more.addEventListener("click", () => { const open = quote.classList.toggle("open"); more.textContent = open ? tx.less : tx.more; });
+      item.appendChild(more);
+    }
+    box.appendChild(item);
+  }
+  return box;
+}
+function autosize() { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 144) + "px"; q.style.overflowY = q.scrollHeight > 144 ? "auto" : "hidden"; }
+q.addEventListener("input", autosize);
+q.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); document.getElementById("f").requestSubmit(); }
+});
+for (const text of EXAMPLES) {
+  const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.dir = "auto"; b.textContent = text;
+  b.addEventListener("click", () => { q.value = text; autosize(); });
+  document.getElementById("chips").appendChild(b);
 }
 document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (q.disabled) return;
   const message = q.value.trim(); if (!message) return;
-  q.value = ""; add("user", message); typed.push(message);
+  q.value = ""; autosize(); empty.remove(); add("user", message); typed.push(message);
   q.disabled = sendBtn.disabled = true;  // one /chat request at a time
-  const bot = add("bot", "...");
+  const bot = add("bot", ""); typingDots(bot); toBottom();
   try {
     const r = await fetch("/chat", {
       method: "POST",
@@ -85,17 +234,26 @@ document.getElementById("f").addEventListener("submit", async (e) => {
     const rsid = r.headers.get("X-Session-Id") || sid;  // this reply's own Session, for its hand-off form
     sid = rsid;
     const data = await r.json();
-    if (!r.ok) { bot.textContent = "Error: " + (data.error || r.status); return; }
+    if (!r.ok) { bot.classList.add("st-error"); bot.textContent = "Error: " + (data.error || r.status); return; }
     bot.textContent = data.answer;
-    const meta = document.createElement("div"); meta.className = "meta";
-    meta.textContent = data.status + " / " + data.language; bot.appendChild(meta);
-    for (const c of data.citations) {
-      const b = document.createElement("blockquote"); b.dir = "auto";
-      b.textContent = c.doc_id + " - " + c.title + " > " + c.section + ": " + c.snippet;
-      bot.appendChild(b);
+    const tx = STATUS_TEXT[isAr(data.language) ? "ar" : "en"];
+    if (["answered", "out_of_scope", "escalated"].includes(data.status)) bot.classList.add("st-" + data.status);
+    if (data.status === "escalated" && /123/.test(data.answer)) {
+      bot.classList.add("emergency");  // the instruction (the first sentence through "123") in bold; the text itself is unchanged
+      const lead = /^[\s\S]*?123[\s\S]*?[.!؟。]/.exec(data.answer);
+      if (lead) { const strong = document.createElement("strong"); strong.textContent = lead[0];
+                  bot.replaceChildren(strong, document.createTextNode(data.answer.slice(lead[0].length))); }
     }
-    if (data.status === "escalated") log.appendChild(handoffForm(data.language, rsid));
-  } catch (err) { bot.textContent = "Error: " + err; }
+    const meta = document.createElement("div"); meta.className = "meta"; meta.dir = isAr(data.language) ? "rtl" : "ltr";
+    if (data.status === "out_of_scope" || data.status === "escalated") {
+      const mark = document.createElement("span"); mark.className = "mark"; mark.textContent = data.status === "escalated" ? "!" : "i"; meta.appendChild(mark);
+    }
+    const label = document.createElement("span"); label.textContent = (tx[data.status] || data.status) + " · " + data.language;
+    meta.appendChild(label); bot.appendChild(meta);
+    if (data.citations.length) bot.appendChild(citationBlock(data.citations, tx));
+    toBottom(); if (bot.offsetHeight > log.clientHeight) log.scrollTop = bot.offsetTop - 8;  // a long reply: show its start
+    if (data.status === "escalated") thread.appendChild(handoffForm(data.language, rsid));  // after the reply; no scroll, no focus
+  } catch (err) { bot.classList.add("st-error"); bot.textContent = "Error: " + err; }
   finally { q.disabled = sendBtn.disabled = false; }
 });
 </script>
