@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from importlib import resources
 
-KB_ID_PATTERN = re.compile(r"^KB-\d{2}$")
+KB_ID_PATTERN = re.compile(r"^KB-[0-9]{2}$")  # [0-9], not \d: that also accepts Arabic-Indic digits
 
 
 @dataclass(frozen=True)
