@@ -64,6 +64,11 @@ def section_names(documents: list[Any]) -> dict[str, set[str]]:
             for d in documents}
 
 
+# Words of the fixed texts the server adds to an Answered reply (selfcare.PHARMACIST_NOTE, typos.DID_YOU_MEAN): an
+# answer_must_mention_all entry with one of them is checked against the answer only, never against the KB text.
+SERVER_TERMS = frozenset(norm(w) for w in ("pharmacist", "الصيدلي", "Did you mean", "هل تقصد"))
+
+
 def relevance_problems(cases: list[Case], texts: dict[str, str], sections: dict[str, set[str]]) -> list[str]:
     """Errors: an expected_sections entry that is no Section of any expected Document, or an
     answer_must_mention list none of whose terms occurs in any expected Document."""
@@ -78,6 +83,8 @@ def relevance_problems(cases: list[Case], texts: dict[str, str], sections: dict[
                                                  for kb in t.expected_kb_ids for term in t.answer_must_mention):
                 errors.append(f"{where}: none of {list(t.answer_must_mention)} occurs in {list(t.expected_kb_ids)}")
             for group in term_groups(t.answer_must_mention_all):
+                if any(norm(term) in SERVER_TERMS for term in group):
+                    continue  # text the server adds (the pharmacist note, "Did you mean"), not KB text
                 if not any(norm(term) in texts.get(kb, "") for kb in t.expected_kb_ids for term in group):
                     errors.append(f"{where}: none of {list(group)} (answer_must_mention_all) occurs in "
                                   f"{list(t.expected_kb_ids)}")

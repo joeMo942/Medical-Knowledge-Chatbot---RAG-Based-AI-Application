@@ -194,7 +194,8 @@ def test_prompt_forbids_outside_knowledge_and_asks_for_partial_answers():
 
 # ------------------------------------------------------------------ real KB (skipped without the .docx files)
 
-CASES = [c for name in ("cases.json", "cases_issue5.json", "cases_issue7.json", "cases_issue8.json")
+CASES = [c for name in ("cases.json", "cases_issue5.json", "cases_issue7.json", "cases_issue8.json",
+                                                   "cases_issue32.json")
          for c in json.loads((Path(__file__).resolve().parents[1] / "evaluation" / name).read_text(encoding="utf-8"))]
 
 

@@ -210,3 +210,31 @@ def test_an_out_of_scope_reply_has_no_prefix():
 
 def test_the_synthetic_fixture_has_the_words_used_above():
     assert "inflammation" in NSAIDS.render().lower() and "Voltaren" in NSAIDS.render()
+
+
+# ------------------------------------------------------------------------------------- the eval cases
+
+def _issue32_cases():
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "evaluation" / "cases_issue32.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_the_issue32_cases_agree_with_the_self_care_rule():
+    from medrag.rules import check
+    from medrag.selfcare import is_self_care
+
+    for case in _issue32_cases():
+        cid, msg = case["id"], case["message"]
+        if cid.startswith("typo32-ambiguous"):
+            continue
+        if cid.startswith("typo32-selfcare"):
+            msg = msg.replace("headace", "headache")  # as the typo correction would
+        if cid.startswith(("selfcare32-qualifier", "selfcare32-other-person", "selfcare32-dose", "selfcare32-emergency")):
+            assert case["expected_status"] == "escalated" and not is_self_care(msg), cid
+        elif "selfcare" in cid and case["expected_status"] == "answered":
+            assert is_self_care(msg), cid
+        if case["category"] in ("dose", "emergency"):
+            assert check(msg) in ("dose", "emergency"), cid
