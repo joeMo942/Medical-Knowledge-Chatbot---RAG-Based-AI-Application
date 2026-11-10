@@ -136,7 +136,7 @@ class HybridRetriever:
         t1 = time.monotonic()
         docs = self._read_cache()
         if docs is None:
-            docs = self._embedder.encode([s.render() for s in self.sections], max_length=DOC_MAX_LENGTH)
+            docs = self._encode(self.sections)
             self._write_cache(docs)
             self.index_source = "built"
         else:
@@ -147,6 +147,31 @@ class HybridRetriever:
         self.ready = True
         log.info("embedder loaded in %.1fs, index %s in %.1fs (%d Sections)", t1 - t0, self.index_source,
                  time.monotonic() - t1, len(self._docs))
+
+    def _encode(self, sections) -> list[Encoded]:
+        return self._embedder.encode([s.render() for s in sections], max_length=DOC_MAX_LENGTH) if sections else []
+
+    def derive(self, sections: list[Section] | tuple[Section, ...]) -> "HybridRetriever":
+        """A loaded retriever for a changed KB: the same model, and the vectors of every Section whose id and text are
+        unchanged reused; only new or edited Sections are embedded. The index cache is written for the new KB.
+        Blocking (it embeds); this retriever keeps serving until the caller swaps."""
+        if not self.ready or self._embedder is None:
+            raise RuntimeError("the retriever is not loaded yet")
+        t0 = time.monotonic()
+        new = HybridRetriever(sections, self._factory, self.model_id, self.revision, self._cache_dir, self._files_hash,
+                              self.min_dense, self.weights)
+        new._embedder = self._embedder
+        have = {(s.section_id, s.render()): d for s, d in zip(self.sections, self._docs)}
+        docs: list[Encoded | None] = [have.get((s.section_id, s.render())) for s in new.sections]
+        todo = [i for i, d in enumerate(docs) if d is None]
+        for i, d in zip(todo, self._encode([new.sections[i] for i in todo])):
+            docs[i] = d
+        new._docs = docs  # type: ignore[assignment]
+        new._write_cache(new._docs)
+        new.index_source = "derived"
+        new.ready = True
+        log.info("index derived in %.1fs (%d Sections, %d embedded)", time.monotonic() - t0, len(docs), len(todo))
+        return new
 
     def _cache_file(self) -> Path | None:
         return self._cache_dir / f"index-{self.cache_key()[:24]}.json" if self._cache_dir else None
