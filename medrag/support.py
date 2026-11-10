@@ -34,7 +34,7 @@ import re
 
 from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
-from .models import Section
+from .models import Line, Section
 from .language import NOT_FRANCO, _is_franco_digit_word
 from .translit import same_word, skeleton, strict_same, strict_skeleton
 from .textnorm import normalize
@@ -168,6 +168,7 @@ def stem(word: str) -> str:
 
 
 _ASPECT_STEMS = frozenset(stem(w) for w in ASPECT)
+_FRAME_STEMS = frozenset(stem(w) for w in FRAME if len(stem(w)) >= 3)
 
 
 def is_aspect(t: str) -> bool:
@@ -177,6 +178,121 @@ def is_aspect(t: str) -> bool:
 
 # Words that introduce the condition a drug is for: the word after one is a disease, not a brand.
 INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج لعلاج يعالج بيعالج تعالج علاجات مرض امراض".split()}
+
+
+# A question that asks what treats a condition (or what is used for one). Its condition term must be grounded where the KB
+# says what a class is FOR, not where it says when NOT to use it or what it does wrong (`indication_text`).
+_INDICATION_EN = {"treat", "treats", "treated", "treating", "treatment", "treatments", "therapy", "dawa", "dawaa", "3elag", "3lag"}
+_DRUG_WORDS = {"drug", "drugs", "medicine", "medicines", "medication", "medications", "meds"}
+_EXISTENTIAL = {("is", "there"), ("are", "there"), ("هل", "في"), ("هل", "فيه"), ("هل", "عندكم"), ("في", "حاجه")}
+_INDICATION_PAIRS = {("help", "with"), ("helps", "with"), ("helping", "with"), ("used", "for"), ("used", "in"), ("use", "for"),
+                     ("anything", "for")}
+# What a question asks about a drug's risks, or what a drug causes: these are not indication questions even with no drug named.
+_RISK_ASPECT = """
+side effect effects adverse contraindication contraindications contraindicated warning warnings avoid interact interaction
+interactions cause causes caused causing
+عرض اعراض الاعراض جانبي جانبيه الجانبيه مضاعفات اثار مانع موانع ممنوع ممنوعه تحذير تحذيرات تداخل تداخلات
+تسبب بتسبب يسبب بيسبب بتعمل بيعمل a3rad gaanbeya ganbeya mamnoo3 mamno3 mawane3
+"""
+_RISK_ASPECT_WORDS = _words(_RISK_ASPECT)
+_RISK_ASPECT_STEMS = frozenset(stem(w) for w in _RISK_ASPECT_WORDS)
+_PATIENT = {"patient", "patients", "مريض", "مرضي", "مريضه", "عيان", "عيانه"}
+_TAKE = {"take", "takes", "taking", "ياخد", "اخد", "بياخد", "ياخدوا", "بياخدوا", "يستخدم", "بيستخدم", "يستعمل", "a5od", "ya5od"}
+_QWORDS = {"what", "which", "ايه", "ايش", "اي", "ماذا", "ما", "eh", "eih", "ee"}
+_YESNO_FIRST = {"can", "could", "may", "might", "is", "are", "do", "does", "should", "would", "will", "هل", "ممكن", "ينفع"}
+# Words of the indication frame that are not the condition ("the suitable treatment for cancer").
+_INDICATION_FILLER = {stem(normalize(w)) for w in "مناسب مناسبه افضل احسن suitable appropriate best good right".split()}
+
+
+def _is_risk_aspect(t: str) -> bool:
+    return t in _RISK_ASPECT_WORDS or stem(t) in _RISK_ASPECT_STEMS
+
+
+def asks_indication(question: str, named_drug: bool = False) -> bool:
+    """Indication wording and no risk aspect, no drug named: "what treats / is used for / helps with a condition" (دواء /
+    علاج / treat / "drugs for" ...; a drug word anywhere counts, as ادوية does). Questions about a drug's side effects,
+    contraindications, interactions or what causes a symptom, and any question that names a drug, keep the plain check;
+    class, group, ingredient, trade-name and alternatives words switch the rule off only when a drug is named.
+    "What does a cancer patient take" asks the same thing: a patient word, a take word followed by a question word or
+    nothing, and a question that is not a yes/no one."""
+    if named_drug:
+        return False  # a yes/no question about a named drug ("هل اكتوس بيعالج ...", "is Actos used for ...") is about that drug
+    toks = tokens(question)
+    if not toks or any(_is_risk_aspect(t) for t in toks):
+        return False
+    if any(t in _INDICATION_EN or t in _DRUG_WORDS or stem(t) in INDICATION for t in toks):
+        return True
+    if any(pair in _INDICATION_PAIRS for pair in zip(toks, toks[1:])):
+        return True
+    # "is there / are there / any X for ...", "هل في / فيه / يوجد X ل..", "هل ينفع X ل..": asking whether something exists or
+    # works for a condition, with no drug named, is asking what treats it
+    if any(pair in _EXISTENTIAL for pair in zip(toks, toks[1:])) or "ينفع" in toks or "يوجد" in toks:
+        return True
+    # "ايه اللي ينفع لـ X": what is good for X (a yes/no "ينفع" with a drug named never gets here)
+    if any(t == "ينفع" and (i >= 1 and toks[i - 1] in _QWORDS or i >= 2 and toks[i - 1] == "اللي" and toks[i - 2] in _QWORDS)
+           for i, t in enumerate(toks)):
+        return True
+    if toks[0] not in _YESNO_FIRST and any(t in _PATIENT for t in toks):
+        for i, t in enumerate(toks):
+            if t in _TAKE and (i + 1 == len(toks) or toks[i + 1] in _QWORDS):
+                return True
+    return False
+
+
+# Population words: who the drug is for, which the KB states in cautions as much as in usage lines (pregnancy, children ...).
+_POPULATION_STEMS = [stems for group, stems in zip(
+    [{normalize(w) for w in g} for g in _ALIASES], [{stem(normalize(w)) for w in g} for g in _ALIASES])
+    if group & {"pregnancy", "breastfeeding", "children", "elderly", "kidney", "liver"}]
+
+
+def _is_population(w: str) -> bool:
+    return any(w in group or stem(w) in group for group in _POPULATION_STEMS)
+
+
+# The label lines that open a contraindication / caution / side-effect block, and what ends one.
+_RISK_LABEL = re.compile(r"^(?:common\s+)?(?:contraindications?|side\s+effects?|adverse|warnings?|precautions?|serious\s+risks?|"
+                         r"important\s+(?:drug\s+)?interactions?|موانع|تحذيرات|الاعراض|اعراض|مضاعفات)")
+_RISK_LINE = re.compile(r"^(?:الحذر|لا\s+يستخدم)")  # a caution on its own line
+_USAGE_LINE = re.compile(r"^(?:الاستخدام|الاستعمال|استخدام|uses?|indications?)\s*(?::|$)")  # the label, not a sentence that starts with it
+_SUB_LABEL = re.compile(r"^(?:[a-z]\.\s+\S|اولا|ثانيا|ثالثا|رابعا)")
+_NON_RISK_LABEL = re.compile(r"^(?:trade\s+names?|الادويه|otc|prescription|common\s+(?:active\s+)?ingredients?|combination)")
+_CLAUSE_BREAK = re.compile("[,،;؛]")
+
+
+def _is_label(text: str) -> bool:
+    t = text.strip()
+    return len(t.split()) <= 7 and not _CLAUSE_BREAK.search(t) and (t.endswith((":", "؟", "?")) or not t.endswith("."))
+
+
+def indication_text(section: Section) -> str:
+    """The text of a Section a condition may be grounded in for an indication question: its heading (section name and
+    disease title), usage / indication lines and every other body line, but NOT a table of side effects or a line under a
+    contraindication / caution / side-effect label. The block such a label opens (with the sub-labels inside it:
+    "Intranasal:", "Serious Risks:") runs to the next usage line, products table, lettered sub-heading or non-risk label
+    (Trade Names, الأدوية, OTC, Common Ingredients). Read from the Section's structure, never from KB sentences."""
+    out = [f"{section.title} {section.section}" if section.heading_present else section.title]
+    risky = False
+    for item in section.items:
+        if not isinstance(item, Line):
+            if item.kind == "side_effects":
+                risky = True
+            elif item.kind in ("products", "otc"):
+                risky = False
+            if not risky:
+                out.extend(r.text for r in item.rows)
+            continue
+        t = normalize(item.text)
+        if _RISK_LABEL.match(t) and _is_label(item.text):
+            risky = True
+        elif _USAGE_LINE.match(t):
+            risky = False
+            out.append(item.text)
+        elif risky:
+            if _SUB_LABEL.match(t) or _NON_RISK_LABEL.match(t):
+                risky = False
+        elif not _RISK_LINE.match(t):
+            out.append(item.text)
+    return "\n".join(out)
 
 
 _ALIAS_GROUPS = [{normalize(w) for w in g} for g in _ALIASES]
@@ -258,6 +374,8 @@ class SupportCheck:
         # Drug Class names (the headings of the class Sections): "Which drug class is it in?" is rewritten
         # to name the class or the drug, so both are words a rewrite may bring in from the history.
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}
+        self._sections = tuple(sections)
+        self._arabic_names = None  # built on the first Arabic-letter question
         self._kb = _Text("\n".join(s.render() for s in sections))
 
     def rewrite_ok(self, message: str, rewrite: str, *, from_history: bool = True, translate: bool = False) -> bool:
@@ -347,6 +465,23 @@ class SupportCheck:
         return [t for t in toks
                 if not (t in FRAME or t in ABSENT or t in self.drug_names or len(t) < 3 or is_number(t))]
 
+    def _names_arabic_brand(self, question: str) -> bool:
+        """The question names a KB Trade Name / Active Ingredient written in Arabic letters (the #7 mapper)."""
+        try:
+            if self._arabic_names is None:
+                from .arabicnames import ArabicNames, arabic_common_words  # imports this module: not at the top
+                from .drugs import DrugIndex
+                self._arabic_names = ArabicNames(DrugIndex(self._sections), arabic_common_words(self._sections))
+            return bool(self._arabic_names.map(question)[1])
+        except Exception:  # fail safe: no lookup, no drug named, so the indication rule applies
+            return False
+
+    def _condition_terms(self, toks: list[str]) -> list[str]:
+        """The topic terms of an indication question that are not the frame itself: "الادويه", "بتعالج", "العلاج" (article
+        and verb forms of the indication and frame words) and "المناسب" say what is asked, not which condition."""
+        return [t for t in self._topic(toks) if stem(t) not in _FRAME_STEMS and stem(t) not in INDICATION
+                and stem(t) not in _INDICATION_FILLER]
+
     def _brand_like(self, toks: list[str], i: int) -> bool:
         """An unknown Arabic word that may be a brand written in Arabic letters (بروفين, لكتافلام):
         not a definite noun (ال..., لل...) and not the object of an indication frame
@@ -365,7 +500,10 @@ class SupportCheck:
         drugs = [t for t in qtokens if t in self.drug_names and t not in FRAME]
         if drugs and not any(text.has(d) for d in drugs):
             return False  # the Sections cited say nothing about the drug that was asked about
-        if not self._topic(qtokens):
+        # An indication question grounds its condition only in what the Sections say a class is FOR.
+        indication = asks_indication(question, bool(drugs) or self._names_arabic_brand(question))
+        grounded = _Text("\n".join(indication_text(s) for s in cited)) if indication else text
+        if not self._topic(qtokens) or (indication and not self._condition_terms(qtokens)):
             return True
         # A partly covered question: an aspect the KB answers by structure, asked of a drug
         # (or a brand written in Arabic letters) the cited Sections cover.
@@ -376,8 +514,16 @@ class SupportCheck:
         # none is unknown to the whole KB (unless it may be an Arabic brand), and one is in the cited text.
         for clause in _CLAUSES.split(question):
             toks = tokens(clause)
-            topic = self._topic(toks)
-            if not topic or not any(text.has(w) for w in topic):
+            topic = self._condition_terms(toks) if indication else self._topic(toks)
+            if not topic:
+                continue
+            if indication:
+                # who it is for (pregnancy, children, kidney ...) is stated in cautions as much as in usage lines: grounded
+                # in the whole text; any other term only in what the Sections say the class is for
+                covered = any((text if _is_population(w) else grounded).has(w) for w in topic)
+            else:
+                covered = any(grounded.has(w) for w in topic)
+            if not covered:
                 continue
             unknown = [w for w in topic if not self._kb.has(w)]
             if all(self._brand_like(toks, toks.index(w)) for w in unknown):
