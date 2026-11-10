@@ -327,7 +327,7 @@ python -m evaluation.recall                                                     
 `run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
 The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`). The results folder is gitignored, so results stay local until you copy them out (see Test results).
 The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; faithfulness is judged by a person, never by an LLM.
-`--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides).
+`--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides). Send no other traffic to the API while it runs: any other request in the window shows up as a DIFF.
 
 ## Test results
 
