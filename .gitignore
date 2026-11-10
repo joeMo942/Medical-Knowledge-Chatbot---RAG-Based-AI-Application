@@ -9,3 +9,4 @@ __pycache__/
 .pytest_cache/
 evaluation/results/
 docs/MTI_AI_SOLUTIONS_AI_ENGINEER_TECHNICAL_ASSESSMENT.pdf
+.playwright-mcp/
