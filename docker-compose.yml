@@ -96,6 +96,8 @@ services:
       MEDRAG_DECODE_TOK_S: ${MEDRAG_DECODE_TOK_S:-53}
       MEDRAG_LLM_MARGIN_S: ${MEDRAG_LLM_MARGIN_S:-2.5}
       MEDRAG_USAGE_HEADER: ${MEDRAG_USAGE_HEADER:-0}
+      # Bearer token of the /admin endpoints, from your shell; unset = /admin answers 503. No value in this file.
+      MEDRAG_ADMIN_TOKEN: ${MEDRAG_ADMIN_TOKEN:-}
       MEDRAG_RETRIEVER: ${MEDRAG_RETRIEVER:-hybrid}
       MEDRAG_MIN_DENSE: ${MEDRAG_MIN_DENSE:-0.5}
       MEDRAG_EMBED_THREADS: ${MEDRAG_EMBED_THREADS:-4}

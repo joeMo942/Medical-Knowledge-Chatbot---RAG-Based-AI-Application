@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from typing import Any
 
 import httpx
 
+from .analytics_check import compare, fetch
 from .report import render_markdown
 from .scoring import Case, build_kb_index, load_cases, parse_usage, score_turn, summarize
 
@@ -141,8 +143,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kb-dir", type=Path, help="KB .docx folder for the snippet check (default: $MEDRAG_KB_DIR or ./data)")
     p.add_argument("--notes", default="", help="free text recorded in the results (what the pipeline was at this run)")
     p.add_argument("--only", help="run only cases whose id contains this text (a smoke run)")
+    p.add_argument("--analytics-check", action="store_true",
+                   help="after the run, compare GET /admin/analytics for the run's window with the run's own numbers "
+                        "(needs MEDRAG_ADMIN_TOKEN in the environment, the same one the server was started with)")
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
+    token = os.environ.get("MEDRAG_ADMIN_TOKEN", "")
+    if args.analytics_check and not token:
+        print("--analytics-check needs MEDRAG_ADMIN_TOKEN in the environment", file=sys.stderr)
+        return 2
 
     cases = [c for c in load_cases(args.cases) if not args.only or args.only in c.id]
     if not cases:
@@ -159,12 +168,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"the API at {args.base_url} is not healthy (GET /health); start it with: docker compose up -d --wait", file=sys.stderr)
             return 2
         rows: list[dict] = []
+        run_start = time.time()  # the analytics window starts here (server and client share a clock on one machine)
         for i, case in enumerate(cases, 1):
             got = run_case(client, case, kb_index)
             rows += got
             print(f"[{i}/{len(cases)}] {case.id}: " + ", ".join(
                 f"{r['actual_status']}{'' if r['status_ok'] else ' (expected ' + r['expected_status'] + ')'} {r['latency_s']:.1f}s"
                 for r in got), flush=True)
+        report = None
+        if args.analytics_check:
+            try:
+                report = fetch(client, token, run_start)
+            except (httpx.HTTPError, ValueError) as exc:
+                print(f"WARNING: analytics check failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     warnings = []
     if not any(r.get("usage") for r in rows):
@@ -174,6 +190,11 @@ def main(argv: list[str] | None = None) -> int:
         warnings.append("Some multi-turn turns were not sent in their Session (see session_problem in the rows).")
     for w in warnings:
         print(f"WARNING: {w}", file=sys.stderr)
+    if report is not None:
+        lines, matched = compare(rows, report)
+        print(chr(10) + "Analytics check (GET /admin/analytics since the run start):")
+        print(chr(10).join(lines))
+        print("analytics check: " + ("all exact numbers match" if matched else "MISMATCH (see DIFF lines)"))
     commit, dirty = git_info()
     today = dt.date.today().isoformat()
     results = {

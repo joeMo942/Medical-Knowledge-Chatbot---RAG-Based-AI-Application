@@ -20,7 +20,9 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
+from collections.abc import Iterator
 from pathlib import Path
 
 _VALID_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
@@ -66,6 +68,12 @@ class SessionStore:
             self._db.execute("PRAGMA synchronous=NORMAL")  # durable across a process restart; WAL's usual setting
             self._db.execute("PRAGMA foreign_keys=ON")
             self._db.executescript(SCHEMA)
+
+    @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        """The one connection, under its lock: the analytics log (analytics.py) lives in the same database file."""
+        with self._lock:
+            yield self._db
 
     def close(self) -> None:
         with self._lock:

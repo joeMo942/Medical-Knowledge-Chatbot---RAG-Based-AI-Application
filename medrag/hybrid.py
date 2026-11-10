@@ -47,6 +47,7 @@ from .models import Line, Section
 from .retrieval import LexicalRetriever
 from .textnorm import normalize
 from .support import ABSENT, ASPECT, FRAME, alias_words
+from .usage import EMBEDDING, record_call
 
 log = logging.getLogger("medrag")
 
@@ -196,6 +197,9 @@ class HybridRetriever:
         t0 = time.monotonic()
         enc = self._embedder.encode(variants, max_length=QUERY_MAX_LENGTH)
         self.last_embed_ms = (time.monotonic() - t0) * 1000
+        # One embedding call per query (its variants are one forward pass); the tokens are the model tokenizer's own count.
+        record_call(sum(e.tokens for e in enc), 0, EMBEDDING, f"{self.model_id}@{self.revision}" if self.revision else self.model_id,
+                    self.last_embed_ms / 1000)
         n = len(self.sections)
         rankings: list[tuple[float, list[int]]] = []
         best_dense = 0.0

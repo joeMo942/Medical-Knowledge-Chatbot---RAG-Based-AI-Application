@@ -18,7 +18,7 @@ from collections import deque
 from typing import Any
 
 from .llm import DEFAULT_MAX_OUTPUT_TOKENS, LLMClient, LLMResult, LLMTruncated
-from .usage import record_call
+from .usage import ANSWER, ROUTING, record_call
 
 log = logging.getLogger("medrag")
 
@@ -169,11 +169,12 @@ class LLMGate:
                 if remaining is not None and (remaining < est or cap < floor):
                     raise Busy(f"only {remaining:.1f}s left after queueing (cap {cap} tokens)")
                 t0 = time.monotonic()
+                kind = ROUTING if routing else ANSWER
                 try:
                     result = await self._llm.complete_json(system, user, schema, max_tokens=cap)
                 except LLMTruncated as exc:
                     history.append(time.monotonic() - t0)
-                    record_call(exc.prompt_tokens, exc.completion_tokens)
+                    record_call(exc.prompt_tokens, exc.completion_tokens, kind, self.model, time.monotonic() - t0)
                     log.warning("LLM reply truncated: %s completion tokens used, cap %d, %.1fs",
                                 exc.completion_tokens, cap, time.monotonic() - t0)
                     raise
@@ -181,12 +182,12 @@ class LLMGate:
                     # A finished call, even a failed one, held the GPU this long.
                     # A cancelled call (timeout, client gone) says nothing: skipped.
                     history.append(time.monotonic() - t0)
-                    record_call(None, None)
+                    record_call(None, None, kind, self.model, time.monotonic() - t0)
                     raise
                 history.append(time.monotonic() - t0)
                 if not routing:
                     self._observe(result)
-                record_call(result.prompt_tokens, result.completion_tokens)
+                record_call(result.prompt_tokens, result.completion_tokens, kind, self.model, time.monotonic() - t0)
                 log.info("LLM call (%s): cap %d, prompt %s, completion %s tokens, %.1fs",
                          "routing" if routing else "answer", cap, result.prompt_tokens,
                          result.completion_tokens, time.monotonic() - t0)
