@@ -226,8 +226,7 @@ def test_page_offers_the_form_only_for_escalated_after_the_answer():
     assert "innerHTML" not in PAGE
 
 
-def test_page_form_is_appended_after_the_citations_and_in_arabic_for_ar_and_mixed():
-    body = PAGE[PAGE.index("function handoffForm"):]
-    assert 'language === "ar" || ' in PAGE or '"mixed"' in PAGE
-    assert "رقم" in PAGE or "تواصل" in PAGE
-    assert "2000" in PAGE
+def test_page_form_is_arabic_for_ar_and_mixed_never_autofocused_and_capped():
+    assert 'language === "ar" || language === "mixed"' in PAGE
+    assert "رقم الهاتف" in PAGE and "ملخص" in PAGE and "textContent" in PAGE
+    assert "SUMMARY_MAX = 2000" in PAGE and "X-Session-Id" in PAGE
