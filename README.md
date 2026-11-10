@@ -54,18 +54,42 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
 ```
 git clone <this repository> && cd <this repository>
 # put the nine .docx files in ./data  (see above)
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)     # optional: enables /admin and the analytics endpoint; keep it in your shell or an untracked, gitignored `.env`, never in a tracked file
+echo "MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)" > .env    # optional: enables the admin dashboard; .env is gitignored and read by docker compose
 docker compose up -d --build --wait
 ```
 
 That is the whole start: one command builds the `api` image, starts Ollama, downloads the models on the first run, and (with `--wait`) returns when `GET /health` is `ok`.
-Then open <http://localhost:8000> (the chat page) or:
+
+### Open it
+
+When `docker compose up` returns, everything is on <http://localhost:8000>:
+
+| What | URL | Notes |
+| --- | --- | --- |
+| **Chat page** | <http://localhost:8000> | Ask in Arabic, Egyptian dialect, Franco-Arabic or English. Escalated replies show the hand-off form. |
+| **Admin dashboard** | <http://localhost:8000/admin> | Sign in with the admin token (below). Tabs: Documents (upload, replace, delete KB Documents), Analytics, Hand-offs. |
+| Health | <http://localhost:8000/health> | `{"status":"ok", ...}` when the models and the index are ready (503 before). |
+| Interactive API docs | <http://localhost:8000/docs> | FastAPI's Swagger page for every endpoint. |
+| Chat API | `POST http://localhost:8000/chat` | See [API](#api). |
+
+**The admin token** is the value of `MEDRAG_ADMIN_TOKEN`. To see it: `cat .env` (or `echo $MEDRAG_ADMIN_TOKEN` if you exported it in your shell instead). The dashboard keeps it only for the browser tab (sessionStorage); "Sign out" forgets it.
+Without a token the admin dashboard says "admin disabled: set MEDRAG_ADMIN_TOKEN": add the line to `.env` and run `docker compose up -d` again (no rebuild needed). The chat page never needs a token.
+
+From a terminal:
 
 ```
+curl localhost:8000/health
 curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"What is the active ingredient in Cataflam?"}'
+curl -H "Authorization: Bearer $(sed -n 's/^MEDRAG_ADMIN_TOKEN=//p' .env)" localhost:8000/admin/documents
 ```
 
-`docker compose down` stops it and keeps the models, the KB store and the Sessions (never add `-v` unless you want them gone). Logs: `docker compose logs -f api`.
+Port 8000 busy? The API listens on host port 8000 (`docker-compose.yml`, `api` → `ports`); change the left side of `"8000:8000"` and use that port in the URLs.
+
+### Stop, restart, logs
+
+- `docker compose down` stops it and keeps the models, the KB store, the Sessions, the analytics and the hand-offs. Never add `-v` unless you want them gone.
+- `docker compose up -d --wait` starts it again; a restart is healthy in about 10 s (the models and the search index are cached).
+- Logs: `docker compose logs -f api` (and `ollama`, `model-pull`, `embedder-pull`). Status: `docker compose ps`.
 
 **No NVIDIA GPU:** `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build --wait`.
 
