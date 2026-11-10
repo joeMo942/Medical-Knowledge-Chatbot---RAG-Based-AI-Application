@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import time
@@ -17,17 +19,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .admin import admin_guard
 from .analytics import ERROR, AnalyticsLog, Window
 from .answering import ChatResponse
-from .arabicnames import ArabicNames, arabic_common_words
 from .config import EMBEDDING_PLACEHOLDER, Settings
-from .drugs import DrugIndex
 from .gate import Busy, LLMGate
 from .ingest import kb_dir, kb_files_hash, load_knowledge_base
+from .kbmanager import Busy as KBBusy, KBManager, KBSnapshot, NotFound, NotReady, open_store
+from .kbstore import MAX_UPLOAD_BYTES, InvalidDocument, KBStore, check_kb_id
 from .language import detect_language
 from .llm import LLMClient, build_llm
-from .models import Section
+from .models import KBDocument, Section
 from .pipeline import respond
 from .retrieval import LexicalRetriever, Retriever
-from .support import SupportCheck
 from .routing import HISTORY_TURNS
 from .sessions import SessionStore, Turn
 from .usage import USAGE_HEADER, start_meter
@@ -87,6 +88,47 @@ async def _read_json(request: Request, max_chars: int) -> dict:
     return body
 
 
+class TooLarge(ValueError):
+    pass
+
+
+async def _read_upload(request: Request) -> dict:
+    """The JSON body of a document upload (the file as base64), read with a cap of the largest file plus its overhead."""
+    limit = MAX_UPLOAD_BYTES * 4 // 3 + 64 * 1024
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise TooLarge
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise TooLarge
+        chunks.append(chunk)
+    try:
+        body = json.loads(b"".join(chunks))
+    except ValueError:
+        raise InvalidDocument("request body must be JSON")
+    if not isinstance(body, dict):
+        raise InvalidDocument("request body must be a JSON object")
+    return body
+
+
+def _decode_file(body: dict) -> tuple[bytes, str]:
+    raw = body.get("content_base64")
+    if not isinstance(raw, str) or not raw:
+        raise InvalidDocument("'content_base64' is required: the .docx file, base64-encoded")
+    try:
+        content = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError):
+        raise InvalidDocument("'content_base64' is not valid base64")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise TooLarge
+    name = body.get("filename", "")
+    if not isinstance(name, str):
+        raise InvalidDocument("'filename' must be text")
+    return content, name.strip()[:200]  # shown in the list only; never used as a path
+
+
 def _validate_message(body: dict, max_chars: int) -> str:
     message = body.get("message")
     if not isinstance(message, str) or not message.strip():
@@ -122,15 +164,23 @@ def create_app(
     settings: Settings | None = None,
     embedding_name: str = EMBEDDING_PLACEHOLDER,
     retriever: Retriever | None = None,
+    kb_store: KBStore | None = None,
+    documents: tuple[KBDocument, ...] | None = None,
 ) -> FastAPI:
     """`retriever` is anything with `search(query, k)`; without one the Sections are searched by BM25 alone.
     A retriever that has to load (a model, an index) also has `ready`, `load()` and `model_id`: /health is 503
     and a /chat that needs search answers 500 until `ready` (escalations do not need it), and `load()` runs in a
-    worker thread at startup."""
+    worker thread at startup.
+
+    `kb_store` (see kbstore.py) turns on the admin document endpoints; `documents` are then the store's ingested KB
+    Documents (read from the store when not given) and `sections` / `retriever` must have been built from them.
+    The KB itself lives in a KBSnapshot that each /chat request reads once (kbmanager.py)."""
     settings = settings or Settings()
+    if kb_store is not None and documents is None:
+        documents = kb_store.load_documents()
+        sections = [s for d in documents for s in d.sections]
     retriever = retriever or LexicalRetriever(sections)
-    support = SupportCheck(sections)
-    names = ArabicNames(getattr(retriever, "drugs", None) or DrugIndex(sections), arabic_common_words(sections))
+    manager = KBManager(KBSnapshot.build(tuple(documents or ()), retriever, tuple(sections)), kb_store)
     store = SessionStore(settings.sessions_db)
     analytics = AnalyticsLog(store)
     admin = Depends(admin_guard(settings.admin_token))
@@ -141,7 +191,7 @@ def create_app(
     loader = getattr(retriever, "load", None)
 
     def search_ready() -> bool:
-        return bool(getattr(retriever, "ready", True))
+        return manager.snapshot.ready
 
     async def load_retriever() -> None:
         try:
@@ -158,7 +208,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         tasks = [asyncio.create_task(warm_up())] if not warmed["done"] else []
-        if loader and not search_ready():
+        if loader and not getattr(retriever, "ready", True):
             tasks.append(asyncio.create_task(load_retriever()))
         yield
         for task in tasks:
@@ -181,23 +231,28 @@ def create_app(
         # Not "ok" until the model is loaded: the first request must not pay for the load (it would
         # run into the routing timeout and the request budget).
         ok = warmed["done"] and search_ready() and ((await ready()) if ready else True)
+        snap = manager.snapshot
         body = {"status": "ok" if ok else "error", "llm": gate.model,
-                "embedding": getattr(retriever, "model_id", None) or embedding_name}
-        if getattr(retriever, "revision", ""):
-            body["embedding_revision"] = retriever.revision
+                "embedding": getattr(snap.retriever, "model_id", None) or embedding_name}
+        if manager.enabled:  # only with the writable KB store: the plain /health body is unchanged
+            body["kb_documents"] = len({s.kb_id for s in snap.sections})
+        if getattr(snap.retriever, "revision", ""):
+            body["embedding_revision"] = snap.retriever.revision
         return JSONResponse(body, status_code=200 if ok else 503)
 
     async def pipeline(message: str, deadline: float, history: list[Turn]) -> ChatResponse:
+        snap = manager.snapshot  # read once: this request answers from one KB even if an admin change lands meanwhile
+
         async def search(text: str) -> list[Section]:
-            if not search_ready():  # escalation (rules + routing) has already run: only a request that needs search waits
+            if not snap.ready:  # escalation (rules + routing) has already run: only a request that needs search waits
                 raise Loading("the search index is still loading")
             t0 = time.monotonic()
-            found = await asyncio.to_thread(retriever.search, text, settings.top_k)
+            found = await asyncio.to_thread(snap.retriever.search, text, settings.top_k)
             log.info("search: %d Sections in %.0f ms (embedding %.0f ms)", len(found), (time.monotonic() - t0) * 1000,
-                     getattr(retriever, "last_embed_ms", 0.0))
+                     getattr(snap.retriever, "last_embed_ms", 0.0))
             return found
 
-        return await respond(message, detect_language(message), search, gate, deadline, support, history, names)
+        return await respond(message, detect_language(message), search, gate, deadline, snap.support, history, snap.names)
 
     async def load_history(session_id: str) -> list[Turn]:
         """The last few turns, or none: a store problem never blocks a reply."""
@@ -231,6 +286,52 @@ def create_app(
             raise HTTPException(400, "'limit' must be between 1 and 1000")
         window = Window(_parse_time("since", since), _parse_time("until", until))
         return JSONResponse(await asyncio.to_thread(analytics.report, window, bucket, limit))
+
+    def need_store() -> None:
+        if not manager.enabled:
+            raise HTTPException(503, "KB store not configured: set MEDRAG_KB_STORE")
+
+    @app.get("/admin/documents", dependencies=[admin])
+    async def admin_documents() -> JSONResponse:
+        need_store()
+        return JSONResponse({"documents": await asyncio.to_thread(manager.listing)})
+
+    @app.post("/admin/documents", dependencies=[admin])
+    async def admin_upload(request: Request) -> JSONResponse:
+        need_store()
+        try:
+            body = await _read_upload(request)
+            content, file_name = _decode_file(body)
+            summary = await asyncio.to_thread(manager.upload, body.get("kb_id"), body.get("diseases"), content, file_name)
+        except TooLarge:
+            return _error(413, f"the file is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+        except InvalidDocument as exc:
+            return _error(400, str(exc))
+        except KBBusy as exc:
+            return _error(409, str(exc))
+        except NotReady as exc:
+            return _error(503, str(exc))
+        return JSONResponse(summary)
+
+    @app.delete("/admin/documents/{kb_id}", dependencies=[admin])
+    async def admin_delete(kb_id: str) -> JSONResponse:
+        need_store()
+        try:
+            check_kb_id(kb_id)
+            await asyncio.to_thread(manager.delete, kb_id)
+        except InvalidDocument as exc:
+            return _error(400, str(exc))
+        except NotFound:
+            return _error(404, f"no KB Document {kb_id}")
+        except KBBusy as exc:
+            return _error(409, str(exc))
+        except NotReady as exc:
+            return _error(503, str(exc))
+        return JSONResponse({"deleted": kb_id})
+
+    @app.get("/admin", include_in_schema=False)
+    async def admin_page() -> FileResponse:
+        return FileResponse(STATIC / "admin.html")
 
     @app.post("/chat")
     async def chat(request: Request) -> JSONResponse:
@@ -297,10 +398,17 @@ def build_retriever(sections, settings: Settings, files_hash: str = "") -> Retri
 
 
 def create_default_app() -> FastAPI:
-    """Entry point for uvicorn (`--factory`): KB from MEDRAG_KB_DIR, models from env."""
+    """Entry point for uvicorn (`--factory`): KB from MEDRAG_KB_DIR (or the writable store MEDRAG_KB_STORE), models from env."""
     logging.basicConfig(level=logging.INFO)
     settings = Settings.from_env()
-    docs = load_knowledge_base(kb_dir())
+    store = None
+    if settings.kb_store:
+        store, docs = open_store(settings.kb_store, kb_dir())
+        files_hash = ""  # the index key already covers every Section's text
+    else:
+        docs = load_knowledge_base(kb_dir())
+        files_hash = kb_files_hash()
     sections = [s for d in docs for s in d.sections]
     log.info("loaded %d Sections from %d KB Documents", len(sections), len(docs))
-    return create_app(sections, build_llm(settings), settings, retriever=build_retriever(sections, settings, kb_files_hash()))
+    return create_app(sections, build_llm(settings), settings, retriever=build_retriever(sections, settings, files_hash),
+                      kb_store=store, documents=tuple(docs))

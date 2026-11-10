@@ -44,7 +44,8 @@ No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml u
 | `MEDRAG_MIN_DENSE` | `0.5` | with no query word in any Section (BM25 finds nothing), a best dense similarity below this means nothing matches (Out of Scope without an LLM call). On the test set the 5 such questions, all not answerable, reach 0.36-0.49 |
 | `MEDRAG_EMBED_THREADS` | `4` | CPU threads for embedding one question (measured: 4 threads take about 50 ms, 24 take about 200 ms); the index build always uses all cores; `0` uses all cores for questions too |
 | `MEDRAG_EMBED_PATH`, `MEDRAG_INDEX_DIR`, `MEDRAG_EMBED_SEED` | `/models/bge-m3`, `/index`, empty (set by the Dockerfile and compose) | where the model files and the search index cache live, and an optional folder to copy the model files from |
-| `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker) |
+| `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker); with a KB store it is only the one-time seed |
+| `MEDRAG_KB_STORE` | unset (`/kb-store` in Docker, on the `kb-store` volume) | writable KB store of the admin page, see Admin page; unset makes the KB read-only and the document endpoints 503 |
 
 All of these except `MEDRAG_KB_DIR` and `MEDRAG_SESSIONS_DB` are passed through by `docker-compose.yml`, with the defaults above (`MEDRAG_ADMIN_TOKEN` from your shell, with no default) (the KB folder is the fixed `./data` mount, and the Sessions path is set by the Dockerfile to the `sessions` volume).
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
@@ -137,6 +138,29 @@ Query parameters, all optional: `since` (inclusive) and `until` (exclusive), ISO
 `python -m evaluation.run --label x --analytics-check` (with the same `MEDRAG_ADMIN_TOKEN` in the environment) calls the endpoint for the run's window afterwards and compares turns, unanswered, status counts and, with `MEDRAG_USAGE_HEADER=1`, the token totals against the run's own rows; p50 and p95 latency are shown for the client and the server side and are not expected to be equal.
 
 No real patient data is stored: this project has none, and the logged messages are test and demo questions about the Knowledge Base.
+
+## Admin page
+
+`/admin` is a page for uploading, replacing and deleting KB Documents without touching code; changes are in the next answer. The page itself needs no token: it asks for `MEDRAG_ADMIN_TOKEN`, keeps it in `sessionStorage` (this tab only) and sends it as the Bearer header.
+
+**KB store.** With `MEDRAG_KB_STORE` set (`/kb-store` on the `kb-store` volume in compose) the KB lives in that writable folder: on the first start it is seeded once from `MEDRAG_KB_DIR` (`./data`) and the bundled `kb_manifest.json` (each file copied as `<KB ID>.docx`, plus a `manifest.json` with the disease headings); after that the store is the source of truth and `./data` is not read again. Files are named from the KB ID and the file's content, never from a client-supplied name, and every write is atomic (temp file + rename, manifest last), so a crash leaves the old KB. Without `MEDRAG_KB_STORE` (tests, plain local runs) the KB is read-only as before and the document endpoints answer 503.
+
+| Endpoint | |
+| --- | --- |
+| `GET /admin/documents` | KB ID, title, number of Sections, file name as uploaded, updated time |
+| `POST /admin/documents` | JSON `{"kb_id": "KB-03", "diseases": ["1. Pain & Fever - ..."], "filename": "x.docx", "content_base64": "..."}`; adds the KB ID or replaces it. 413 above 10 MB |
+| `DELETE /admin/documents/{kb_id}` | removes it (404 if unknown) |
+
+All three need `Authorization: Bearer $MEDRAG_ADMIN_TOKEN` (503 when the token is unset, 401 when wrong). Example:
+`curl -X POST localhost:8000/admin/documents -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" -H 'content-type: application/json' -d "{\"kb_id\":\"KB-04\",\"content_base64\":\"$(base64 -w0 pharyngitis.docx)\"}"`.
+
+**Disease headings.** Word heading styles cannot tell a disease heading from a drug-class heading, so the upload carries the disease headings (a list, exactly as they appear in the file). They are required for a new KB ID; a replace without them keeps the current ones. A heading that is not in the file is rejected, naming it.
+
+**Validation.** The file goes through the real ingest in a temporary folder before anything is changed. Not a .docx, unreadable, no Sections, a missing heading, a malformed KB ID (`KB-` and two digits) or more than 10 MB gives 400/413 with the reason, and the store and the running KB are untouched.
+
+**What is rebuilt.** The changed KB Document is ingested again and a new immutable KB snapshot (Sections, search index, Trade Name index, support check, Arabic-letter names) replaces the old one in one step; a /chat request in flight finishes on the snapshot it started with. The hybrid index re-embeds only the changed KB Document's Sections and reuses the other vectors, then writes the index cache. One change at a time (a second gets 409); a change while the index is still loading gets 503. Deleting every KB Document is allowed: every question is then Out of Scope. Escalation does not depend on the KB and keeps working throughout.
+
+Changes survive restarts (the `kb-store` volume). To go back to `./data`: `docker compose down`, `docker volume rm <project>_kb-store`, start again (it is seeded afresh). `python -m evaluation.reupload_kb` deletes every KB Document through the API and uploads the originals again (used to check that the eval set still passes).
 
 ## Evaluation
 
