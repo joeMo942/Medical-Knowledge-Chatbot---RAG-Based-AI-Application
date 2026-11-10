@@ -72,4 +72,4 @@ A request to choose, switch, start or stop therapy for a specific person. A ques
 One conversation thread; its earlier turns only resolve references like "it", and are never a source of facts.
 
 **Answer Language**:
-The language of the reply: Arabic when the user writes Arabic or dialect, English when they write English, and Mixed only for Franco-Arabic. Drug names stay in English and do not make an answer Mixed.
+The language of the reply: Arabic when the user writes Arabic or dialect, English when they write English, and Mixed only for Franco-Arabic. Drug names stay in English and do not make an answer Mixed. A Mixed reply is written in Arabic script with the English drug and clinical terms the Knowledge Base itself uses; the label is decided once from the current message.
