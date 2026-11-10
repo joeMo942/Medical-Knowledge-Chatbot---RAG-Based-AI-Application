@@ -70,7 +70,11 @@ _Avoid_: referral, ticket, callback
 A request to decide what condition a specific person has.
 
 **Treatment Decision**:
-A request to choose, switch, start or stop therapy for a specific person. A question about what the Knowledge Base says for a group of patients (e.g. NSAIDs in pregnancy) is not a Treatment Decision.
+A request to choose, switch, start or stop therapy for a specific person. A question about what the Knowledge Base says for a group of patients (e.g. NSAIDs in pregnancy) is not a Treatment Decision, and neither is a first-person Self-care Question without a risk qualifier.
+
+**Self-care Question**:
+A first-person question about the user's own everyday symptom that asks what they can take ("I have a headache, what can I take?"). With no risk qualifier (pregnancy or breastfeeding, a child or an age under 18, an elderly person, kidney or liver disease or another chronic condition, other medicines being taken, an allergy, a severity or red-flag word, how long it has lasted, a Dose request, an Emergency) it is Answered with what the Knowledge Base lists for the condition and a fixed note that a pharmacist can say which suits the person; with one, or about another person, it is an Escalated Treatment Decision (ADR 0003).
+_Avoid_: self-medication question, OTC question
 
 **Session**:
 One conversation thread; its earlier turns only resolve references like "it", and are never a source of facts.

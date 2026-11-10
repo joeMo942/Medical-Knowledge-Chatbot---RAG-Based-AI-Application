@@ -1,16 +1,23 @@
 # Safety pipeline: escalation, Out of Scope and Citations
 
-Detail behind the README's safety policy. Code: `medrag/pipeline.py`, `rules.py`, `routing.py`, `answering.py`, `support.py`, `dosecheck.py`.
+Detail behind the README's safety policy. Code: `medrag/pipeline.py`, `rules.py`, `selfcare.py`, `typos.py`, `routing.py`, `answering.py`, `support.py`, `dosecheck.py`.
 
 ## Escalation
 
 Every message is checked before retrieval and before the answer call (`medrag/pipeline.py`): fixed rules for Emergency and Dose wording in English, Arabic, dialect and Franco-Arabic (`medrag/rules.py`; they can only raise a status, never treat "how much X is in product Y" as a Dose, and treat a reported overdose or a child who swallowed pills as an Emergency), then one short LLM routing call (`medrag/routing.py`) that also detects Diagnosis and Treatment Decision and rewrites the question. An emergency rule escalates at once; a dose rule is still routed, because the router may upgrade it to an Emergency, never downgrade it. A flagged message gets a fixed server-written reply (`medrag/escalation.py`: no drug facts, no Citations, Arabic for `ar` and `mixed`).
 
+- **Self-care exception (ADR 0003, `medrag/selfcare.py`).** After the rules and the routing call, a message that is first person, asks what to take and has no risk qualifier (pregnancy / breastfeeding, a child or an age under 18, elderly, kidney or liver disease or another chronic condition, other medicines, an allergy, a severity or red-flag word, a duration of days or more, a Dose request, another person; in English, Arabic, dialect and Franco-Arabic) has the router's `treatment_decision` lowered to none, and the reply is Answered from the KB with a fixed one-sentence pharmacist note appended by the server. Nothing else is ever lowered: the rules (emergency, dose) run on the raw message and on its typo-corrected form first, a router emergency / dose / diagnosis stays, and a qualifier in the corrected text, the router's rewrite or an earlier turn of the Session keeps the escalation. The answer call's backstop ignores a `treatment_decision` for a self-care question, not the other triggers.
 - The routing call queues in the gate ahead of answer calls and has its own duration estimate and a 4 s timeout. It is skipped only when the request's remaining budget cannot afford it; then the rules decide alone and the answer call also classifies the message (a `trigger` backstop in its schema).
 - The user text is fenced as data and its angle brackets are replaced, so it cannot close the fence.
 - Last check on every Answered reply (`medrag/dosecheck.py`): a dose-like amount (a number with mg, g, ml, tablets, ... or "three times a day") that is not in the cited Sections' text turns the reply into the fixed Dose escalation.
 - `/health` is `ok` only after the model has been loaded, so the first request does not pay for the load.
 - A rule-flagged emergency makes no LLM call; every other request makes one short extra call, counted in `X-Medrag-Usage`.
+
+## Typos and "Did you mean"
+
+`medrag/typos.py` builds a vocabulary from the KB's own text at start (and again after an admin change). Before search, a Latin-letter question word of five letters or more that is not a KB word, another form of one, a frame / aspect / Alternatives word, an everyday English word, a number or a Franco-Arabic word is looked up for KB words one Damerau edit away (insert, delete, substitute, swap two neighbours; two edits only from nine letters). It is corrected only when exactly one KB word (after stemming) qualifies, so "headace" -> "headache", "Brufin" -> "Brufen", and "inzection" (infection or injection) is left alone. A KB drug name is known, so it is never turned into another one. The corrected text is what search, the answer call and the support check see; the escalation rules run on the raw message and on the corrected one (escalation can only rise), and an Answered reply starts with "Did you mean: headache?" on its own line (Arabic: "هل تقصد: headache؟"). Out of Scope and Escalated replies keep their fixed texts exactly. Arabic-script words are not corrected (tried on the eval sets, the same rule turned ordinary words the KB lacks into other words, "اليوم" -> "النوم"); a Franco-Arabic message is never corrected; the Arabic Trade Name mapping (arabicnames.py) is unchanged and runs first. Each correction is logged.
+
+The support check also treats have / has / had / having / feel / feeling / got / suffer / suffering (and حاسس / حاسه / بعاني) as wording, not as medical terms: "what can i take if i have headache" used to be refused because "have" was looked for in the cited text.
 
 ## Out of Scope and Citations
 
