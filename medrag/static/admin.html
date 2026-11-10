@@ -70,6 +70,7 @@
   table { border-collapse: collapse; width: 100%; font-size: .9rem; }
   th, td { text-align: start; padding: .5rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
   th { font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 650; white-space: nowrap; }
+  td.nowrap, .btn { white-space: nowrap; }
   td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
   td.pre { white-space: pre-wrap; } td.mono { font-family: var(--mono); font-size: .8rem; }
   td.empty { color: var(--muted); text-align: center; padding: 1.4rem; }
@@ -94,8 +95,9 @@
   .kpi .v { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
   .kpi .l { font-size: .75rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .kpi .s { font-size: .75rem; color: var(--muted); }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+  .card { min-width: 0; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
   .chart { position: relative; width: 100%; }
   .chart svg { display: block; width: 100%; overflow: visible; }
   .chart text { font-family: var(--font); font-size: 11px; fill: var(--muted); }
@@ -148,10 +150,7 @@
     <section id="p-docs" role="tabpanel" aria-labelledby="tab-docs">
       <div class="card">
         <h2>KB Documents</h2>
-        <div class="tablewrap"><table>
-          <thead><tr><th>KB ID</th><th>Title</th><th class="num">Sections</th><th>File</th><th>Updated</th><th></th></tr></thead>
-          <tbody id="docs"></tbody>
-        </table></div>
+        <div class="tablewrap"><table id="docs"></table></div>
       </div>
       <form id="up" class="card">
         <h2>Upload or replace a KB Document</h2>
@@ -303,9 +302,9 @@ function range(prefix) {
 // ---- Documents
 async function refreshDocs() {
   const data = await call("GET", "/admin/documents");
-  const rows = data.documents.map((d) => [{v: d.kb_id, cls: "mono", dir: false}, {v: d.title}, {v: String(d.sections), cls: "num"}, {v: d.file_name || "-"}, {v: d.updated || "-"}]);
+  const rows = data.documents.map((d) => [{v: d.kb_id, cls: "mono nowrap", dir: false}, {v: d.title}, {v: String(d.sections), cls: "num"}, {v: d.file_name || "-"}, {v: d.updated ? when(d.updated) : "-", dir: false}]);
   table($("docs"), [["KB ID"], ["Title"], ["Sections", "num"], ["File"], ["Updated"], [""]], rows, "No KB Documents: every question is Out of Scope.");
-  const trs = $("docs").querySelectorAll("tr");
+  const trs = $("docs").querySelectorAll("tbody tr");
   data.documents.forEach((d, i) => {
     const td = h("td", {}, h("button", {type: "button", class: "btn danger", text: "Delete", onclick: async (ev) => {
       if (!confirm("Delete " + d.kb_id + " (" + d.title + ")? Its questions become Out of Scope.")) return;
@@ -359,7 +358,7 @@ function renderAnalytics() {
   const st = Object.entries(r.summary.by_status).map(([k, v]) => k + ": " + v).join("  ·  ");
   $("statuses").textContent = st ? "By status: " + st : "";
   drawVolume(); drawTokens();
-  const qrows = (list, withStatus) => list.map((x) => [{v: String(x.count), cls: "num"}, {v: x.question, cls: "pre"}, ...(withStatus ? [{v: x.status, dir: false}] : []), {v: when(x.last_asked), dir: false}]);
+  const qrows = (list, withStatus) => list.map((x) => [{v: String(x.count), cls: "num"}, {v: x.question, cls: "pre"}, ...(withStatus ? [{v: x.status, dir: false, cls: "nowrap"}] : []), {v: when(x.last_asked), dir: false}]);
   table($("top"), [["Count", "num"], ["Question"], ["Last asked"]], qrows(r.top_questions), "No questions in this window.");
   table($("unans"), [["Count", "num"], ["Question"], ["Status"], ["Last asked"]], qrows(r.unanswered_questions, true), "Nothing unanswered in this window.");
 }
