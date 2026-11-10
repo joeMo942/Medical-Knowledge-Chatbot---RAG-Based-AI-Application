@@ -208,7 +208,10 @@ def test_real_kb_no_expected_answer_is_downgraded_and_every_trap_is_caught(real_
             msg, expected, top = turn["message"], turn.get("expected_status"), search(turn["message"], 4)
             if expected == "answered" and top:
                 kb_ids = case.get("expected_kb_ids") or []
-                cited = [s for s in top if not kb_ids or s.kb_id in kb_ids] or top
+                # The lexical stand-in for retrieval has no alias or hybrid search (#6): when it misses the expected
+                # document ("hypertension" for an Arabic KB-08) the reply cites that document's own Sections.
+                cited = [s for s in top if not kb_ids or s.kb_id in kb_ids] or [
+                    s for s in sections if s.kb_id in kb_ids][:4] or top
                 if not check.supported(msg, cited):
                     wrongly_downgraded.append(case["id"])
             elif expected == "out_of_scope" and case["category"] in ("trap_out_of_scope", "off_topic", "dev") and top:
@@ -277,3 +280,83 @@ def test_a_citation_must_contain_the_drug_the_question_names():
         assert body["status"] == "out_of_scope" and body["citations"] == []
     # no drug name in the question (a follow-up), or none from the KB: nothing to hold against it
     assert ask("What are its side effects?", reply("Tremors.", SABA, "Tremors."))["status"] == "answered"
+
+
+# ------------------------------------------------------------------ indication questions (#23)
+
+TZD = Section(
+    "KB-06", "أدوية السكر – Antidiabetic Drugs", "Thiazolidinediones (TZDs)", "class",
+    (Line("Prescription Only"), Line("الاستخدام: علاج Type 2 Diabetes."),
+     Line("الأدوية الموجودة في السوق المصري"), products(("Actos", "Pioglitazone")),
+     Line("Side Effects"),
+     Table(Row.from_cells(["Side effect", "التوضيح"]),
+           (Row.from_cells(["Hypoglycemia", "انخفاض السكر عند الجمع مع أدوية أخرى"]),
+            Row.from_cells(["Bone fractures", "زيادة خطر الكسور"])), "side_effects"),
+     Line("Contraindications"), Line("Heart Failure NYHA Class III or IV: فشل القلب الشديد."),
+     Line("Active bladder cancer: سرطان المثانة النشط."), Line("Diabetic Ketoacidosis.")),
+)
+ACE = Section(
+    "KB-07", "Hypertension", "ACE inhibitors", "class",
+    (Line("Uses"), Line("علاج ارتفاع ضغط الدم."), products(("Capoten", "Captopril")),
+     Line("Common Side Effects:"), Line("Dry cough."),
+     Line("Contraindications / Cautions:"), Line("Pregnancy."), Line("الحذر في Renal impairment.")),
+)
+ONC_KB = [TZD, ACE]
+ONC_CHECK = SupportCheck(ONC_KB)
+
+CANCER_QUESTIONS = ["ادوية السرطان", "علاج سرطان الثدي", "مريض سرطان ياخد ايه", "Which drugs treat cancer?",
+                    "what treats bladder cancer"]
+
+
+@pytest.mark.parametrize("question", CANCER_QUESTIONS)
+@pytest.mark.parametrize("snippet", ["Hypoglycemia – انخفاض السكر عند الجمع مع أدوية أخرى",
+                                     "Active bladder cancer: سرطان المثانة النشط."])
+def test_a_condition_named_only_in_a_contraindication_or_side_effect_does_not_cover_an_indication_question(question, snippet):
+    assert not ONC_CHECK.supported(question, [TZD])
+    raw = reply("x", TZD, snippet)
+    gate = LLMGate(FakeLLM(raw))
+    body = asyncio.run(answer_question(question, "ar", ONC_KB, gate, support=ONC_CHECK)).model_dump()
+    assert body["status"] == "out_of_scope" and body["citations"] == [], question
+
+
+@pytest.mark.parametrize("question, section", [
+    ("ادوية السكر", TZD), ("علاج السكر", TZD), ("Which drugs treat Type 2 Diabetes?", TZD),
+    ("علاج الضغط", ACE), ("drugs for hypertension", ACE), ("what treats high blood pressure", ACE),
+    ("Which drugs treat high blood pressure and malaria?", ACE),
+])
+def test_an_indication_question_is_grounded_in_the_heading_and_usage_lines(question, section):
+    assert ONC_CHECK.supported(question, [section])
+
+
+@pytest.mark.parametrize("question", [
+    "Is Actos safe with bladder cancer?", "هل Actos آمن مع سرطان المثانة؟", "Contraindications of Actos in bladder cancer",
+    "What are the side effects of Actos: hypoglycemia?",
+])
+def test_questions_that_are_not_indication_questions_keep_the_plain_check(question):
+    assert ONC_CHECK.supported(question, [TZD])
+
+
+def test_indication_text_is_built_from_the_section_structure():
+    from medrag.support import indication_text
+    text = indication_text(TZD)
+    assert "Type 2 Diabetes" in text and "Thiazolidinediones" in text and "Actos" in text
+    for dropped in ("bladder", "Hypoglycemia", "Heart Failure", "Ketoacidosis"):
+        assert dropped not in text
+    ace = indication_text(ACE)
+    assert "ضغط الدم" in ace and "cough" not in ace and "Pregnancy" not in ace and "Renal" not in ace
+
+
+@pytest.mark.kb
+def test_real_kb_cancer_indication_questions_are_out_of_scope_for_the_tzd_section(real_kb):
+    sections = [s for d in real_kb.values() for s in d.sections]
+    check = SupportCheck(sections)
+    tzd = next(s for s in sections if "Thiazolidinediones" in s.section)
+    for question in CANCER_QUESTIONS[:3]:
+        assert not check.supported(question, [tzd]), question
+        for row in ("Hypoglycemia", "Active bladder cancer"):
+            snippet = next(t for t in (tzd.lines + tuple(r.text for r in tzd.rows)) if t.startswith(row))
+            raw = reply("x", tzd, snippet)
+            body = asyncio.run(answer_question(question, "ar", sections, LLMGate(FakeLLM(raw)), support=check)).model_dump()
+            assert body["status"] == "out_of_scope" and body["citations"] == [], (question, row)
+    assert check.supported("Is Actos safe with bladder cancer?", [tzd])
+    assert check.supported("ادوية السكر", [tzd])

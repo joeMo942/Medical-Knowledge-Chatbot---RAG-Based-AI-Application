@@ -34,7 +34,7 @@ import re
 
 from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
-from .models import Section
+from .models import Line, Section
 from .language import NOT_FRANCO, _is_franco_digit_word
 from .translit import same_word, skeleton, strict_same, strict_skeleton
 from .textnorm import normalize
@@ -177,6 +177,75 @@ def is_aspect(t: str) -> bool:
 
 # Words that introduce the condition a drug is for: the word after one is a disease, not a brand.
 INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج لعلاج يعالج بيعالج تعالج علاجات مرض امراض".split()}
+
+
+# A question that asks what treats a condition (or what is used for one). Its condition term must be grounded where the KB
+# says what a class is FOR, not where it says when NOT to use it or what it does wrong (`indication_text`).
+_INDICATION_EN = {"treat", "treats", "treated", "treating", "treatment", "treatments", "therapy", "dawa", "dawaa", "3elag", "3lag"}
+
+
+_PATIENT = {"patient", "patients", "مريض", "مرضي", "مريضه"}
+_TAKE = {"take", "takes", "taking", "ياخد", "اخد", "بياخد", "ياخدوا", "a5od", "ya5od"}
+_SAFE = {"safe", "safety", "امن", "امان", "آمن", "مسموح", "ينفع", "aman", "amaan"}
+
+
+def asks_indication(question: str, named_drug: bool = False) -> bool:
+    """Indication wording (دواء / علاج / لعلاج / treat / treatment / "drugs for" / "used for" ...) and no aspect word: a
+    side-effect, contraindication or alternatives question keeps the plain check. "What does a cancer patient take"
+    (a patient and what to take, no drug named, nothing about safety) asks the same thing."""
+    toks = tokens(question)
+    if any(is_aspect(t) for t in toks):
+        return False
+    if not named_drug and any(t in _PATIENT for t in toks) and any(t in _TAKE for t in toks)             and not any(t in _SAFE for t in toks):
+        return True
+    if any(t in _INDICATION_EN or stem(t) in INDICATION for t in toks):
+        return True
+    return any(a in ("drug", "drugs", "medicine", "medicines", "medication", "medications", "used", "use") and b == "for"
+              for a, b in zip(toks, toks[1:]))
+
+
+# The label lines that open a contraindication / caution / side-effect block, and what ends one.
+_RISK_LABEL = re.compile(r"^(?:common\s+)?(?:contraindications?|side\s+effects?|adverse|warnings?|precautions?|"
+                         r"موانع|تحذيرات|الاعراض|اعراض|مضاعفات)")
+_RISK_LINE = re.compile(r"^(?:الحذر|لا\s+يستخدم)")  # a caution on its own line
+_USAGE_LINE = re.compile(r"^(?:الاستخدام|الاستعمال|استخدام|uses?|indications?|used\s+for)")
+_SUB_LABEL = re.compile(r"^(?:[a-z]\.\s+\S|اولا|ثانيا|ثالثا|رابعا)")
+_CLAUSE_BREAK = re.compile("[,،;؛]")
+
+
+def _is_label(text: str) -> bool:
+    t = text.strip()
+    return len(t.split()) <= 7 and not _CLAUSE_BREAK.search(t) and (t.endswith((":", "؟", "?")) or not t.endswith("."))
+
+
+def indication_text(section: Section) -> str:
+    """The text of a Section a condition may be grounded in for an indication question: its heading (section name and
+    disease title), usage / indication lines and every other body line, but NOT a table of side effects or a line under a
+    contraindication / caution / side-effect label (the block that label opens runs to the next label, a usage line or a
+    products table). Read from the Section's structure, never from KB sentences."""
+    out = [f"{section.title} {section.section}" if section.heading_present else section.title]
+    risky = False
+    for item in section.items:
+        if not isinstance(item, Line):
+            if item.kind == "side_effects":
+                risky = True
+            elif item.kind in ("products", "otc"):
+                risky = False
+            if not risky:
+                out.extend(r.text for r in item.rows)
+            continue
+        t = normalize(item.text)
+        if _RISK_LABEL.match(t) and _is_label(item.text):
+            risky = True
+        elif _USAGE_LINE.match(t):
+            risky = False
+            out.append(item.text)
+        elif risky:
+            if _SUB_LABEL.match(t) or (item.text.strip().endswith(":") and _is_label(item.text)):
+                risky = False  # another label ("Trade Names في مصر:") closes the risk block
+        elif not _RISK_LINE.match(t):
+            out.append(item.text)
+    return "\n".join(out)
 
 
 _ALIAS_GROUPS = [{normalize(w) for w in g} for g in _ALIASES]
@@ -365,6 +434,8 @@ class SupportCheck:
         drugs = [t for t in qtokens if t in self.drug_names and t not in FRAME]
         if drugs and not any(text.has(d) for d in drugs):
             return False  # the Sections cited say nothing about the drug that was asked about
+        # An indication question grounds its condition only in what the Sections say a class is FOR.
+        grounded = _Text("\n".join(indication_text(s) for s in cited)) if asks_indication(question, bool(drugs)) else text
         if not self._topic(qtokens):
             return True
         # A partly covered question: an aspect the KB answers by structure, asked of a drug
@@ -377,7 +448,7 @@ class SupportCheck:
         for clause in _CLAUSES.split(question):
             toks = tokens(clause)
             topic = self._topic(toks)
-            if not topic or not any(text.has(w) for w in topic):
+            if not topic or not any(grounded.has(w) for w in topic):
                 continue
             unknown = [w for w in topic if not self._kb.has(w)]
             if all(self._brand_like(toks, toks.index(w)) for w in unknown):
