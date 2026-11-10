@@ -12,7 +12,7 @@ from medrag.answering import NOT_FOUND, SYSTEM_PROMPT, answer_question, build_ci
 from medrag.gate import LLMGate
 from medrag.models import Line, Row, Section, Table
 from medrag.retrieval import LexicalRetriever
-from medrag.support import SupportCheck
+from medrag.support import SupportCheck, alias_words
 
 PLAQUENIL_ROW = "Plaquenil – Hydroxychloroquine"
 
@@ -194,8 +194,12 @@ def test_prompt_forbids_outside_knowledge_and_asks_for_partial_answers():
 
 # ------------------------------------------------------------------ real KB (skipped without the .docx files)
 
-CASES = [c for name in ("cases.json", "cases_issue5.json")
+CASES = [c for name in ("cases.json", "cases_issue5.json", "cases_issue7.json", "cases_issue8.json")
          for c in json.loads((Path(__file__).resolve().parents[1] / "evaluation" / name).read_text(encoding="utf-8"))]
+
+
+# Raw Franco-Arabic: the pipeline rewrites it into Arabic letters before the support check; this test has no rewrite.
+NEEDS_REWRITE = {"franco7-pregnancy"}
 
 
 @pytest.mark.kb
@@ -205,13 +209,13 @@ def test_real_kb_no_expected_answer_is_downgraded_and_every_trap_is_caught(real_
     wrongly_downgraded, missed = [], []
     for case in CASES:
         for turn in case.get("turns") or [case]:
-            msg, expected, top = turn["message"], turn.get("expected_status"), search(turn["message"], 4)
+            msg, expected = turn["message"], turn.get("expected_status")
+            top = search(msg + " " + " ".join(alias_words(msg)), 4)  # as the hybrid search of #6 adds the alias words
+            if case["id"] in NEEDS_REWRITE:
+                continue
             if expected == "answered" and top:
                 kb_ids = case.get("expected_kb_ids") or []
-                # The lexical stand-in for retrieval has no alias or hybrid search (#6): when it misses the expected
-                # document ("hypertension" for an Arabic KB-08) the reply cites that document's own Sections.
-                cited = [s for s in top if not kb_ids or s.kb_id in kb_ids] or [
-                    s for s in sections if s.kb_id in kb_ids][:4] or top
+                cited = [s for s in top if not kb_ids or s.kb_id in kb_ids] or top
                 if not check.supported(msg, cited):
                     wrongly_downgraded.append(case["id"])
             elif expected == "out_of_scope" and case["category"] in ("trap_out_of_scope", "off_topic", "dev") and top:
@@ -360,3 +364,115 @@ def test_real_kb_cancer_indication_questions_are_out_of_scope_for_the_tzd_sectio
             assert body["status"] == "out_of_scope" and body["citations"] == [], (question, row)
     assert check.supported("Is Actos safe with bladder cancer?", [tzd])
     assert check.supported("ادوية السكر", [tzd])
+
+
+# ------------------------------------------------------------------ fix round of #23
+
+STEROID = Section(
+    "KB-06", "Allergic Diseases", "Corticosteroids", "class",
+    (Line("الاستخدام: علاج التهابات وحالات الحساسية."),
+     products(("Flixonase", "Fluticasone propionate")),
+     Line("Common side effects:"), Line("Intranasal:"), Line("Nasal irritation."), Line("Systemic:"), Line("Osteoporosis."),
+     Line("Increased blood pressure."),
+     Line("Contraindications / Cautions:"), Line("الاستخدام الطويل لا يتم إيقافه فجأة بسبب خطر Adrenal insufficiency.")),
+)
+JAK = Section(
+    "KB-09", "Arthritis", "JAK Inhibitors", "class",
+    (Line("الاستخدام:"), Line("علاج الروماتويد الشديد."), products(("Xeljanz", "Tofacitinib")),
+     Line("Serious Risks:"), Line("Malignancy."), Line("Trade Names في مصر:"), Line("VTE.")),
+)
+FIX_KB = [STEROID, JAK, ACE, TZD]
+FIX_CHECK = SupportCheck(FIX_KB)
+
+
+def test_sub_labels_and_usage_prefixed_sentences_do_not_reopen_a_risk_block():
+    from medrag.support import indication_text
+    text = indication_text(STEROID)
+    assert "حالات الحساسية" in text and "Flixonase" in text
+    for dropped in ("Osteoporosis", "Increased blood pressure", "Nasal irritation", "Adrenal insufficiency"):
+        assert dropped not in text
+    jak = indication_text(JAK)
+    assert "الروماتويد" in jak and "Malignancy" not in jak
+
+
+@pytest.mark.parametrize("question, section", [
+    ("Which drugs treat osteoporosis?", STEROID), ("drugs for adrenal insufficiency", STEROID),
+    ("Which drugs treat malignancy?", JAK),
+    # Arabic article and verb forms of the frame words are not the condition
+    ("ايه الادوية اللي بتعالج السرطان", TZD), ("الادويه لسرطان المثانة", TZD), ("العلاج لسرطان الثدي", TZD),
+    ("العلاج المناسب للسرطان", TZD),
+    # English wording with a drug word anywhere, "helps with", "used in"
+    ("cancer drugs", TZD), ("bladder cancer medicine", TZD), ("what helps with cancer", TZD),
+    ("anything for bladder cancer?", TZD), ("what is used in bladder cancer", TZD),
+    ("what can a bladder cancer patient take", TZD), ("عيان سرطان ياخد ايه", TZD),
+    ("ايه اللي ينفع لسرطان المثانة", TZD), ("مريض سرطان المثانة يستخدم ايه", TZD),
+    # class / group / active words do not switch the rule off when no drug is named
+    ("What treats active bladder cancer?", TZD), ("what drug class treats bladder cancer", TZD),
+    ("which group of drugs treats cancer", TZD), ("ادوية السرطان التجارية", TZD),
+    ("Which drugs treat NYHA class III heart failure?", TZD),
+])
+def test_indication_questions_not_grounded_in_risk_lines_are_not_supported(question, section):
+    assert not FIX_CHECK.supported(question, [section]), question
+
+
+@pytest.mark.parametrize("question, section", [
+    ("Which drugs cause dry cough?", ACE),
+    ("Can a pregnant patient take blood pressure drugs?", ACE), ("ادوية الضغط في الحمل", ACE), ("Which blood pressure drugs are used in pregnancy?", ACE),
+    ("is Actos used for bladder cancer", TZD), ("هل اكتوس بيعالج سرطان المثانة", TZD),
+    ("Can a bladder cancer patient take Actos?", TZD),
+    ("ادوية السكر", TZD), ("علاج الضغط", ACE), ("what helps with high blood pressure", ACE),
+])
+def test_questions_about_causes_populations_and_named_drugs_keep_the_plain_check(question, section):
+    assert FIX_CHECK.supported(question, [section]), question
+
+
+def test_asks_indication_rules():
+    from medrag.support import asks_indication
+    for q in ("cancer drugs", "what helps with cancer", "what can a cancer patient take", "ادوية السرطان", "مريض سرطان ياخد ايه"):
+        assert asks_indication(q), q
+    for q in ("Which drugs cause cough?", "Can a cancer patient take X", "side effects of cancer drugs", "ادوية تسبب رعشة",
+              "مريض الكلى ياخد مسكن ايه", "Is it safe in pregnancy?"):
+        assert not asks_indication(q), q
+    assert not asks_indication("cancer drugs", named_drug=True)
+
+
+@pytest.mark.kb
+def test_real_kb_indication_text_keeps_no_line_under_a_risk_label_and_every_usage_line(real_kb):
+    from medrag.support import _RISK_LABEL, _USAGE_LINE, _is_label, indication_text
+    from medrag.textnorm import normalize
+    sections = [s for d in real_kb.values() for s in d.sections]
+    for s in sections:
+        kept = set(indication_text(s).split("\n"))
+        lines = [i.text for i in s.items if isinstance(i, Line)]
+        for ln in lines:
+            if _USAGE_LINE.match(normalize(ln)):
+                assert ln in kept, (s.path, ln)
+        risk_lines = {ln for ln in lines if _RISK_LABEL.match(normalize(ln)) and _is_label(ln)}
+        for ln in risk_lines:
+            assert ln not in kept, (s.path, ln)
+    def kept_of(kb, name, title=None):
+        return "\n".join(indication_text(s) for s in sections if s.kb_id == kb and name in s.section
+                         and (title is None or title in s.title))
+    assert "Osteoporosis" not in kept_of("KB-06", "Corticosteroids", "Allergic")
+    assert "Malignancy" not in kept_of("KB-09", "JAK")
+    assert "Myopathy" not in kept_of("KB-08", "Statins")
+    assert "Insomnia" not in kept_of("KB-06", "Decongestants")
+    assert "Liver toxicity" not in kept_of("KB-06", "Analgesics")
+
+
+@pytest.mark.kb
+def test_real_kb_indication_questions_and_the_fix_round_repros(real_kb):
+    sections = [s for d in real_kb.values() for s in d.sections]
+    check = SupportCheck(sections)
+    pick = lambda kb, name, title=None: next(s for s in sections if s.kb_id == kb and name in s.section
+                                              and (title is None or title in s.title))
+    jak, tzd = pick("KB-09", "JAK"), pick("KB-07", "Thiazolidinediones")
+    for q, s in (("Which drugs treat malignancy?", jak), ("Which drugs treat osteoporosis?", pick("KB-06", "Corticosteroids", "Allergic")),
+                 ("drugs for insomnia", pick("KB-06", "Decongestants")), ("what treats rhabdomyolysis", pick("KB-08", "Statins")),
+                 ("ايه الادوية اللي بتعالج السرطان", tzd), ("cancer drugs", tzd), ("what is used in bladder cancer", tzd)):
+        assert not check.supported(q, [s]), q
+    for q, s in (("ادوية تسبب الكحة", pick("KB-08", "ACE")), ("ادوية بتسبب رعشة", pick("KB-01", "SABA", "Asthma")),
+                 ("Can a pregnant patient take antibiotics?", pick("KB-05", "Tetracyclines")),
+                 ("مريض الكلى ياخد مسكن ايه", pick("KB-03", "NSAIDs –")), ("ادوية مسكنة لمرضى الكلى", pick("KB-03", "NSAIDs –")),
+                 ("is Actos used for bladder cancer", tzd), ("هل اكتوس بيعالج سرطان المثانة", tzd)):
+        assert check.supported(q, [s]), q
