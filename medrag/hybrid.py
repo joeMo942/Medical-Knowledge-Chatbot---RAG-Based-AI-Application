@@ -45,8 +45,8 @@ from .drugs import DrugIndex, Mentions, tokens
 from .embedding import Embedder, Encoded, dense_score, sparse_score
 from .models import Line, Section
 from .retrieval import LexicalRetriever
-from .rules import normalize
-from .support import ABSENT, ASPECT, FRAME
+from .textnorm import normalize
+from .support import ABSENT, ASPECT, FRAME, alias_words
 
 log = logging.getLogger("medrag")
 
@@ -186,6 +186,11 @@ class HybridRetriever:
         if not self.ready or self._embedder is None:
             raise RuntimeError("the retriever is not loaded yet")
         mentions = self.drugs.mentions(query)
+        # An everyday or dialect word the KB writes differently ("سخونية" / fever / الحرارة) is searched together with the
+        # KB's words: they are part of the question itself (every ranking sees them), not a second variant of it.
+        aliases = alias_words(query)
+        if aliases:
+            query = f"{query} {' '.join(aliases)}"
         expanded = self._expand(query, mentions)
         variants = [query] + ([expanded] if expanded != query else [])
         t0 = time.monotonic()

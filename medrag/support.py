@@ -35,10 +35,19 @@ import re
 from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
 from .models import Section
-from .rules import normalize
+from .language import NOT_FRANCO, _is_franco_digit_word
+from .translit import same_word, skeleton, strict_same, strict_skeleton
+from .textnorm import normalize
 
 _ARABIC = re.compile(r"[؀-ۿ]")
-_NUMBERISH = re.compile(r"^\d+[a-z]*$")
+_NUMBER = re.compile(r"^\d+(?:[.,]\d+)?([a-z%]*)$")
+
+
+def is_number(t: str) -> bool:
+    """A number: digits, alone or with a unit or ordinal suffix ("500", "5mg", "2nd"). A Franco-Arabic word that starts with
+    a digit-letter ("7amel", "3ayan", "2alb", "7asasiya") is a word, never a number: it must be kept like any other."""
+    m = _NUMBER.match(t)
+    return bool(m) and not _is_franco_digit_word(t) and (m.group(1) == "" or m.group(1) in NOT_FRANCO)
 
 _AR_PREFIXES = ("وال", "بال", "كال", "فال", "لل", "ال", "و", "ب", "ل", "ف", "ك")
 _AR_SUFFIXES = ("ات", "ون", "ين", "ان", "ها", "هم", "ه", "ي")
@@ -85,6 +94,7 @@ _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
 beta3 beta3t beta3to bta3to bta3ty ba2a ba2 bta3et beta3et bta3at beta3at bet3a bta3 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
 bedail bedayel tegareya tegarya mamnoo3 mamno3 momken mawad3 mawane3 3ayez 3ayza 3ayzen ana enta
+3andy 3andi 3ndy 3ndi a5od a5d a5ood ya5od dawa dawaa edy ezay ezzay leh lih lel lil fel fil amaan aman bdayel bdail meen men feen fein emta
 """
 # Aspect words: what the KB answers by structure (a table column, a heading, a list), so a drug's
 # Section answers them without ever containing the word.
@@ -99,7 +109,8 @@ interact interaction interactions avoid otc prescription
 مانع موانع ممنوع ممنوعه تحذير تحذيرات تداخل تداخلات
 maada fa3ala a3rad gaanbeya ganbeya bedail bedayel tegareya mamnoo3 mamno3 mawane3
 """
-# KB vocabulary that appears in both languages: either side grounds the other.
+# KB vocabulary that appears in both languages (and everyday dialect words next to the KB's formal ones): either side
+# grounds the other, for the support check and, as extra query words, for search (hybrid.py: `alias_words`).
 _ALIASES = [
     {"pregnancy", "pregnant", "الحمل", "حمل", "حامل", "الحوامل"},
     {"breastfeeding", "lactation", "الرضاعه", "رضاعه", "الرضاعة"},
@@ -111,6 +122,7 @@ _ALIASES = [
     {"asthma", "الربو", "ربو"},
     {"pneumonia", "رئوي"},
     {"hypertension", "antihypertensive", "الضغط", "ضغط"},
+    {"fever", "feverish", "antipyretic", "antipyretics", "الحراره", "حراره", "سخونه", "سخونيه", "السخونه"},
     {"diabetes", "السكر", "سكر", "antidiabetic"},
     {"cough", "كحه", "السعال", "سعال"},
     {"pain", "الم", "الالم", "ألم"},
@@ -130,6 +142,10 @@ def _words(block: str) -> set[str]:
 
 FRAME = _words(_FRAME_EN) | _words(_FRAME_AR) | _words(_FRAME_FRANCO) | ALT_WORDS
 ASPECT = _words(_ASPECT) | ALT_WORDS
+# A Franco-Arabic word that is the transliteration of an Arabic frame word ("3andy" ~ عندي, "emta" ~ امتي, "ezay" ~ ازاي)
+# is frame too: a rewrite into Arabic letters may drop or keep it (rewrite_ok).
+_FRAME_AR_WORDS = [w for w in _words(_FRAME_AR) if len(strict_skeleton(w)) >= 3 and _ARABIC.search(w)]
+_LATIN = re.compile(r"[a-z0-9]+")
 
 
 def stem(word: str) -> str:
@@ -151,6 +167,14 @@ def stem(word: str) -> str:
     return w
 
 
+_ASPECT_STEMS = frozenset(stem(w) for w in ASPECT)
+
+
+def is_aspect(t: str) -> bool:
+    """An aspect word, with its article or clitic ("المادة" for "مادة")."""
+    return t in ASPECT or stem(t) in _ASPECT_STEMS
+
+
 # Words that introduce the condition a drug is for: the word after one is a disease, not a brand.
 INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج لعلاج يعالج بيعالج تعالج علاجات مرض امراض".split()}
 
@@ -164,6 +188,40 @@ def _aliases_of(w: str) -> set[str]:
     for group, stems in zip(_ALIAS_GROUPS, _ALIAS_STEMS):
         if w in group or stem(w) in stems:
             out |= group
+    return out
+
+
+# Phrases (not bare words) that name a KB topic in another language: "pressure" alone is eye or intracranial pressure or a
+# pressure ulcer, so only the whole phrase counts as the KB's hypertension.
+_PHRASES = tuple((normalize(p), w) for p, w in (
+    ("high blood pressure", "hypertension"), ("blood pressure", "hypertension"), ("ضغط الدم", "hypertension"),
+    ("الضغط العالي", "hypertension"), ("ضغط عالي", "hypertension")))
+
+
+def with_phrases(text: str) -> str:
+    """`text` normalised, with each alias PHRASE replaced by the one KB word that stands for it."""
+    t = normalize(text)
+    for phrase, word in _PHRASES:
+        t = t.replace(phrase, word)
+    return t
+
+
+def alias_words(question: str) -> list[str]:
+    """The other members of every alias group that a word of the question belongs to ("سخونية" -> fever, الحرارة ...),
+    for search: an everyday or dialect word the KB writes differently still finds its Sections. Never a word that is
+    already in the question."""
+    toks = tokens(with_phrases(question))
+    seen = {stem(t) for t in toks}  # one word per stem: a repeated stem would count twice in BM25
+    out: list[str] = []
+    for t in toks:
+        if t in FRAME:
+            continue
+        for group, stems in zip(_ALIAS_GROUPS, _ALIAS_STEMS):
+            if t in group or stem(t) in stems:
+                for w in sorted(group):
+                    if stem(w) not in seen:
+                        seen.add(stem(w))
+                        out.append(w)
     return out
 
 
@@ -202,31 +260,92 @@ class SupportCheck:
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}
         self._kb = _Text("\n".join(s.render() for s in sections))
 
-    def rewrite_ok(self, message: str, rewrite: str) -> bool:
-        """True when a standalone rewrite of `message` adds nothing but what the Session may bring in:
-        every number of the rewrite is in the message, and every content word it does not share with
-        the message (frame and aspect words aside) is a KB drug name (Trade Name or Active Ingredient)
-        or a Drug Class name. A rewrite that carries any other word (a price, a symptom, a claim from an
-        earlier reply) is refused, so the earlier turns can resolve "it" but never add a fact."""
-        have = {stem(t) for t in tokens(message)}
-        for t in tokens(rewrite):
-            if _NUMBERISH.match(t):
-                if t not in tokens(message):
+    def rewrite_ok(self, message: str, rewrite: str, *, from_history: bool = True, translate: bool = False) -> bool:
+        """True when a standalone rewrite of `message` adds nothing it may not.
+
+        Every number of the rewrite is in the message. Every content word of the rewrite that the message does not
+        have (frame and aspect words aside) must be one the use allows:
+          - `from_history` (a Session): a KB drug name (Trade Name or Active Ingredient) or a Drug Class name, which is
+            what resolves "it" / "its"; any other word (a price, a symptom, a claim from an earlier reply) is refused,
+            so the earlier turns can resolve a reference but never add a fact;
+          - `translate` (a Franco-Arabic message rewritten into Arabic letters for search and for this check): a word that
+            is the SAME word as one of the message's in another script (translit.same_word: "so5oneya" -> "سخونية",
+            "daghT" -> "ضغط"). A translation into a different word ("so5oneya" -> "ملاريا", or -> "حمى") is refused,
+            so a rewrite cannot bring in a condition the user did not name. A first-turn rewrite (not `from_history`)
+            gets no drug-name exemption either: its drug and class names must be the message's own.
+        With `translate`, the rewrite must also keep every content word of the message (a word dropped from "dawa el
+        malaria eh" would turn it into a question that has no topic to be denied) and what is asked: an aspect word
+        (side effects, alternatives, contraindications ...) is translated like any other word, never swapped for
+        another ("a3rad gaanbeya" -> "بدائل" is refused)."""
+        mtoks = tokens(message)
+        have = {stem(t) for t in mtoks}
+        rtoks = tokens(rewrite)
+
+        def same(t: str, others: list[str]) -> bool:
+            # with and without the stem: the stemmer strips a letter that is part of the word as often as a clitic (بدايل)
+            # The aspect words are a closed list (ingredient, side effects, alternatives ...): between two of them the
+            # lenient comparison is enough ("maada" ~ "المادة"); every other word needs the strict one.
+            return translate and any(
+                (same_word if (is_aspect(t) and is_aspect(o)) else strict_same)(a, b)
+                for o in others for a in {t, stem(t)} for b in {o, stem(o)})
+
+        for t in rtoks:
+            if is_number(t):
+                if t not in mtoks:
                     return False
                 continue
-            if len(t) < 3 or t in FRAME or t in ASPECT or stem(t) in have:
+            if len(t) < 2 or stem(t) in have:  # a single letter is a clitic's remnant; two letters (سل, دم, مش) are words
                 continue
-            if t in self.drug_names or t in self.class_names:
+            if is_aspect(t):  # what is asked (side effects, alternatives ...): a translation may not change it
+                if translate and not same(t, mtoks):
+                    return False
+                continue
+            if t in FRAME:
+                continue
+            if from_history and (t in self.drug_names or t in self.class_names):
+                continue
+            if same(t, mtoks):
                 continue
             return False
+        if translate:
+            kept = {stem(t) for t in rtoks}
+            for m in mtoks:
+                if is_number(m) or len(m) < 3 or stem(m) in kept or (m in FRAME and not is_aspect(m)):
+                    continue
+                if same(m, rtoks) or (_LATIN.fullmatch(m) is not None and any(strict_same(m, w) for w in _FRAME_AR_WORDS)):
+                    continue
+                return False
         return True
+
+    def translated(self, message: str, rewrite: str, *, from_history: bool = False) -> str | None:
+        """A Franco-Arabic message's rewrite into Arabic letters, cleaned, or None when it cannot be used.
+
+        Every word of the rewrite that is not the message's own word in Arabic letters is DELETED, not accepted: a gloss
+        the model adds ("ضغط الدم" for "daghT", "الحلق" after "eltehab") could bring in a condition the user did not
+        name, and deleting a word can never add a fact. Frame words and the aspect the user asked (side effects,
+        alternatives ...) stay when they are the message's own (rewrite_ok decides); in a Session the KB drug and Drug
+        Class names of the history stay too. The cleaned text must then pass `rewrite_ok(translate=True)`: every number
+        and content word of the message is kept, and what is asked has not changed. So a rewrite that swaps the user's
+        word for another is refused (the word it would keep is missing), one that only decorates it is trimmed."""
+        mtoks = tokens(message)
+        have = {stem(t) for t in mtoks}
+        kept = []
+        for m in re.finditer(r"[^\W_]+", rewrite):
+            t = normalize(m.group())
+            drop = (len(t) >= 2 and not is_number(t) and stem(t) not in have and not is_aspect(t) and t not in FRAME
+                    and not (from_history and (t in self.drug_names or t in self.class_names))
+                    and not any(strict_same(a, b) for o in mtoks for a in {t, stem(t)} for b in {o, stem(o)}))
+            if not drop:
+                kept.append(m.group())
+        cleaned = " ".join(kept)
+        return cleaned if cleaned and self.rewrite_ok(message, cleaned, from_history=from_history, translate=True) else None
 
     def topic_terms(self, question: str) -> list[str]:
         return self._topic(tokens(question))
 
     def _topic(self, toks: list[str]) -> list[str]:
         return [t for t in toks
-                if not (t in FRAME or t in ABSENT or t in self.drug_names or len(t) < 3 or _NUMBERISH.match(t))]
+                if not (t in FRAME or t in ABSENT or t in self.drug_names or len(t) < 3 or is_number(t))]
 
     def _brand_like(self, toks: list[str], i: int) -> bool:
         """An unknown Arabic word that may be a brand written in Arabic letters (بروفين, لكتافلام):
@@ -240,6 +359,7 @@ class SupportCheck:
     def supported(self, question: str, cited: list[Section]) -> bool:
         """True when the cited Sections cover (part of) what the question asks. Out of Scope only when
         nothing asked is covered: a covered half keeps the reply Answered, whatever the other half is."""
+        question = with_phrases(question)
         text = _Text("\n".join(s.render() for s in cited))
         qtokens = tokens(question)
         drugs = [t for t in qtokens if t in self.drug_names and t not in FRAME]

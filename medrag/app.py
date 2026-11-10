@@ -13,7 +13,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .answering import ChatResponse
+from .arabicnames import ArabicNames, arabic_common_words
 from .config import EMBEDDING_PLACEHOLDER, Settings
+from .drugs import DrugIndex
 from .gate import Busy, LLMGate
 from .ingest import kb_dir, kb_files_hash, load_knowledge_base
 from .language import detect_language
@@ -113,6 +115,7 @@ def create_app(
     settings = settings or Settings()
     retriever = retriever or LexicalRetriever(sections)
     support = SupportCheck(sections)
+    names = ArabicNames(getattr(retriever, "drugs", None) or DrugIndex(sections), arabic_common_words(sections))
     store = SessionStore(settings.sessions_db)
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
@@ -177,7 +180,7 @@ def create_app(
                      getattr(retriever, "last_embed_ms", 0.0))
             return found
 
-        return await respond(message, detect_language(message), search, gate, deadline, support, history)
+        return await respond(message, detect_language(message), search, gate, deadline, support, history, names)
 
     async def load_history(session_id: str) -> list[Turn]:
         """The last few turns, or none: a store problem never blocks a reply."""

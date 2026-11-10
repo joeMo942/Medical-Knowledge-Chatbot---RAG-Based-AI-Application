@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from .rules import normalize
+from .textnorm import normalize
 
 _WORDS = {"half": "0.5", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
           "seven": "7", "eight": "8", "nine": "9", "ten": "10", "once": "1", "twice": "2", "thrice": "3",
