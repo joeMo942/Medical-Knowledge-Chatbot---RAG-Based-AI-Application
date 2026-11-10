@@ -43,7 +43,7 @@ from .language import detect_language, refine
 from .models import Section
 from .routing import Route, route_message
 from .rules import check
-from .selfcare import escalates_with_qualifier, is_self_care, pharmacist_note
+from .selfcare import escalates_other_person, escalates_with_qualifier, is_self_care, pharmacist_note
 from .sessions import Turn
 from .support import SupportCheck
 from .typos import Corrected, TypoCorrector, did_you_mean
@@ -100,7 +100,7 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     if self_care and trigger == "treatment_decision":
         log.info("self-care question: the router's treatment_decision is lowered to none")
         trigger = None
-    elif trigger is None and escalates_with_qualifier(message, *also):
+    elif trigger is None and (escalates_with_qualifier(message, *also) or escalates_other_person(message, *also)):
         log.info("self-care attempt with a risk qualifier: escalated as a treatment_decision")
         trigger = "treatment_decision"
     return Decision(trigger, route, self_care)

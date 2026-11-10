@@ -175,3 +175,19 @@ def test_ordinary_wording_is_not_raised_by_a_qualifier_that_is_not_there(message
 ])
 def test_these_are_self_care(message):
     assert is_self_care(message)
+
+
+@pytest.mark.parametrize("message", ["ماما عندها صداع تاخد ايه", "ebny 3ando sora3 edeeh eh", "my wife has a headache, what can she take?",
+                                     "My son has a headache, what can I give him?", "he has a fever, what can he take"])
+def test_a_specific_other_person_asking_what_to_take_is_raised(message):
+    from medrag.selfcare import escalates_other_person
+
+    assert escalates_other_person(message)
+
+
+@pytest.mark.parametrize("message", ["مريض سرطان ياخد ايه", "What can patients with asthma take?", "Which drugs can a patient with hypertension use?",
+                                     "I have a headache, what can I take?"])
+def test_group_level_and_own_questions_are_not_raised_as_another_person(message):
+    from medrag.selfcare import escalates_other_person
+
+    assert not escalates_other_person(message)

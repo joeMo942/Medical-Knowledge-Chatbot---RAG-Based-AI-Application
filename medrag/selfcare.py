@@ -250,6 +250,26 @@ def is_self_care(message: str, *also: str, context: tuple[str, ...] = ()) -> boo
 
 
 
+# Another SPECIFIC person (a relative or a pronoun, not "patients" in general) asking what to take / give: the router's job as before,
+# but a router miss must not turn it into an answer ("ماما عندها صداع تاخد ايه").
+_SPECIFIC_OTHER = _rx(
+    r"\b(my|his|her)\s+(wife|husband|son|daughter|mother|mom|mum|father|dad|brother|sister|friend|baby|child|kid|patient|grand\w+|cousin|uncle|aunt)\b",
+    r"\b(he|she|him|her|his)\b",
+    r"\b[لوبف]?(ماما|بابا|امي|ابويا|ابوي|والدي|والدتي|ابني|ابنتي|بنتي|ولدي|زوجي|زوجتي|جوزي|مراتي|اخويا|اخي|اختي|صاحبي|جدي|جدتي|عنده|عندها)\b",
+    r"\b(mama|baba|ommy|abouya|ebny|ebni|bnty|binty|gozy|merati|a5oya|o5ty|sa7by|3ando|3andaha)\b",
+)
+_OTHER_ASK = _rx(
+    r"\bwhat\b[^.?!]{0,40}\b(take|use|give|giving|try)\b",
+    r"(?<!\w)(ياخد|تاخد|ياخدوا|اخد|اديه|اديها|اديله|اديلها|اعطيه|اعطيها|اديلو)\s+(ايه|اي|ايش)\b",
+    r"\b(ya5od|ta5od|a5od|edeeh|edeha|edeelo|edeela|edih|edi)\s+(eh|ay|ey)\b",
+)
+
+
+def escalates_other_person(message: str, *also: str) -> bool:
+    """A question that asks what a specific OTHER person (my wife, my son, she, ماما, ebny) can take or be given. Raises only."""
+    return any(_SPECIFIC_OTHER.search(normalize(x)) and _OTHER_ASK.search(normalize(x)) for x in (message, *also))
+
+
 def escalates_with_qualifier(message: str, *also: str) -> bool:
     """True when the message asks in the first person what to take AND carries a risk qualifier or another person, in the message
     or in `also` (its typo-corrected form): "عندي صداع جامد اخد ايه", "I take warfarin, what can I take for a headache?".
