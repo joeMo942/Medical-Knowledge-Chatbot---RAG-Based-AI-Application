@@ -76,7 +76,7 @@ curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"messa
 | `qwen3.5:4b` (4.2 B parameters, Q4_K_M) | 3.3 GB | Ollama, into the `ollama-models` volume (`docker compose logs -f model-pull`) | download time of 3.3 GB |
 | BGE-M3, pinned revision, each file checked by size and SHA-256 | 2.3 GB | Hugging Face, into the `embed-models` volume (`docker compose logs -f embedder-pull`) | download time of 2.3 GB; the copy and check alone took 26 s from a local folder |
 | `api` image (CPU `torch`, `transformers`, ...) | 1.65 GB on disk (`docker images`) | built from the `Dockerfile` | build plus pip downloads |
-| `ollama/ollama` image | about 3.4 GB download, 8.5 GB on disk (`docker images`) | Docker Hub | pull time |
+| `ollama/ollama` image | 8.5 GB on disk (`docker images`); the compressed download is smaller | Docker Hub | pull time |
 | search index of the 113 Sections | small | built by the API on the first start | **42.7 s** measured (embedder load 7.7 s), cached afterwards |
 
 How the times were measured: **the downloads themselves were not timed on a clean machine** (the author's connection is slow and flaky; see `docs/submission-checks.md`), so the time of the three big downloads is just
