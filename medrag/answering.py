@@ -23,7 +23,7 @@ from .llm import LLMTruncated
 from .models import PATH_SEPARATOR, Line, Section
 from .retrieval import STOP_WORDS, tokenize
 from .routing import TRIGGERS, effective_trigger
-from .rules import normalize
+from .textnorm import normalize
 from .support import SupportCheck, stem
 from .support import tokens as support_tokens
 

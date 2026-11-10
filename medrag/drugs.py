@@ -29,7 +29,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .models import Section, Table
-from .rules import normalize
+from .textnorm import normalize
 
 _WORD = re.compile(r"[^\W_]+", re.UNICODE)
 _ARABIC = re.compile(r"[؀-ۿ]")

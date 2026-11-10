@@ -6,7 +6,7 @@ the word), not as an unknown topic that would make the reply Out of Scope. Engli
 """
 from __future__ import annotations
 
-from .rules import normalize
+from .textnorm import normalize
 
 ALT_WORDS = frozenset(normalize(w) for w in """
 alternative alternatives alternate substitute substitutes substitution equivalent equivalents

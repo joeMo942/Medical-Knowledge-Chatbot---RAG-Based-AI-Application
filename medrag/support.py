@@ -35,7 +35,7 @@ import re
 from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
 from .models import Section
-from .rules import normalize
+from .textnorm import normalize
 
 _ARABIC = re.compile(r"[؀-ۿ]")
 _NUMBERISH = re.compile(r"^\d+[a-z]*$")

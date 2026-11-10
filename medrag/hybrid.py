@@ -45,7 +45,7 @@ from .drugs import DrugIndex, Mentions, tokens
 from .embedding import Embedder, Encoded, dense_score, sparse_score
 from .models import Line, Section
 from .retrieval import LexicalRetriever
-from .rules import normalize
+from .textnorm import normalize
 from .support import ABSENT, ASPECT, FRAME
 
 log = logging.getLogger("medrag")

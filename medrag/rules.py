@@ -12,25 +12,11 @@ Diagnosis and Treatment Decision need judgement and are left to the routing call
 from __future__ import annotations
 
 import re
-import unicodedata
 from typing import Literal
 
+from .textnorm import normalize  # noqa: F401  (re-exported: the one shared normaliser)
+
 RuleTrigger = Literal["emergency", "dose"]
-
-_AR_DIACRITICS = re.compile("[\u064B-\u065F\u0670\u0640]")  # harakat, dagger alef, tatweel
-_AR_MAP = str.maketrans({
-    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي", "ة": "ه", "ؤ": "و", "ئ": "ي",
-    **{chr(0x660 + i): str(i) for i in range(10)},  # Arabic-Indic digits
-    **{chr(0x6F0 + i): str(i) for i in range(10)},  # Persian digits
-})
-
-
-def normalize(text: str) -> str:
-    """Lower-case, fold Arabic letter variants, drop harakat and tatweel, unify quotes and spaces."""
-    t = unicodedata.normalize("NFKC", text).lower()
-    t = _AR_DIACRITICS.sub("", t).translate(_AR_MAP)
-    t = t.replace("’", "'").replace("‘", "'").replace("`", "'")
-    return re.sub(r"\s+", " ", t).strip()
 
 
 def _rx(*parts: str) -> re.Pattern[str]:
