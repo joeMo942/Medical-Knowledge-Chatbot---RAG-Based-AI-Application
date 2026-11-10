@@ -38,6 +38,7 @@
   header h1 { margin: 0; font-size: 1.15rem; font-weight: 650; display: flex; flex-wrap: wrap; gap: .1rem .7rem; align-items: baseline; }
   header h1 span { font-size: 1rem; font-weight: 500; color: var(--muted); }
   .scope { margin: .25rem 0 0; font-size: .82rem; color: var(--muted); }
+  .scope [lang=ar] { display: block; }
   .scope strong { color: var(--danger-ink); font-weight: 650; }
 
   #log { flex: 1; overflow-y: auto; position: relative; padding: 1rem; }
@@ -50,8 +51,7 @@
   .bot.st-out_of_scope { background: var(--info-bg); color: var(--info-ink); border-style: dashed; }
   .bot.st-escalated { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
   .bot.st-escalated.emergency { background: var(--danger-bg); border: 2px solid var(--danger-line); color: var(--danger-ink); font-size: 1.05rem; padding: .85rem 1rem; }
-  .bot.st-escalated.emergency::first-line { font-weight: 700; font-size: 1.15em; }
-  .bot.st-escalated:not(.emergency)::first-line { font-weight: 650; }
+  .bot.st-escalated.emergency strong { font-size: 1.15em; font-weight: 700; }
   .bot.st-error { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
 
   .typing { display: inline-flex; gap: .3rem; align-items: center; height: 1.4rem; }
@@ -95,12 +95,12 @@
 
   #f { flex: none; background: var(--surface); border-top: 1px solid var(--line); padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); }
   #f .row { max-width: 48rem; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
-  #q { flex: 1; min-width: 0; resize: none; max-height: 9rem; padding: .6rem .8rem; font-size: 1rem; line-height: 1.4; background: var(--bg); border: 1px solid var(--line); border-radius: .75rem; }
+  #q { flex: 1; min-width: 0; resize: none; overflow-y: hidden; max-height: 9rem; padding: .6rem .8rem; font-size: 1rem; line-height: 1.4; background: var(--bg); border: 1px solid var(--line); border-radius: .75rem; }
   #q:disabled { opacity: .6; }
   #f .send { flex: none; min-height: 2.9rem; padding: 0 1.2rem; border: 0; border-radius: .75rem; background: var(--accent); color: var(--accent-ink); font-weight: 650; cursor: pointer; }
   #f .send:disabled { opacity: .5; cursor: default; }
   .hint { max-width: 48rem; margin: .3rem auto 0; font-size: .72rem; color: var(--muted); }
-  @media (max-width: 480px) { .hint { display: none; } header h1 { font-size: 1.05rem; } }
+  @media (max-width: 480px) { .scope { font-size: .76rem; } .hint { display: none; } header h1 { font-size: 1.05rem; } }
 </style>
 </head>
 <body>
@@ -122,7 +122,7 @@
 
 <form id="f">
   <div class="row">
-    <textarea id="q" rows="1" dir="auto" autocomplete="off" aria-label="Your question / سؤالك" placeholder="Ask about a drug / اسأل عن دواء"></textarea>
+    <textarea id="q" rows="1" dir="auto" autocomplete="off" aria-label="Your question / سؤالك" placeholder="Ask about a drug / اسأل" style="text-overflow:ellipsis"></textarea>
     <button class="send" type="submit">Send / إرسال</button>
   </div>
   <div class="hint">Enter to send, Shift+Enter for a new line</div>
@@ -208,7 +208,7 @@ function citationBlock(citations, tx) {
   }
   return box;
 }
-function autosize() { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 144) + "px"; }
+function autosize() { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 144) + "px"; q.style.overflowY = q.scrollHeight > 144 ? "auto" : "hidden"; }
 q.addEventListener("input", autosize);
 q.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); document.getElementById("f").requestSubmit(); }
@@ -238,8 +238,13 @@ document.getElementById("f").addEventListener("submit", async (e) => {
     bot.textContent = data.answer;
     const tx = STATUS_TEXT[isAr(data.language) ? "ar" : "en"];
     if (["answered", "out_of_scope", "escalated"].includes(data.status)) bot.classList.add("st-" + data.status);
-    if (data.status === "escalated" && /123/.test(data.answer)) bot.classList.add("emergency");
-    const meta = document.createElement("div"); meta.className = "meta";
+    if (data.status === "escalated" && /123/.test(data.answer)) {
+      bot.classList.add("emergency");  // the instruction (the first sentence through "123") in bold; the text itself is unchanged
+      const lead = /^[\s\S]*?123[\s\S]*?[.!؟。]/.exec(data.answer);
+      if (lead) { const strong = document.createElement("strong"); strong.textContent = lead[0];
+                  bot.replaceChildren(strong, document.createTextNode(data.answer.slice(lead[0].length))); }
+    }
+    const meta = document.createElement("div"); meta.className = "meta"; meta.dir = isAr(data.language) ? "rtl" : "ltr";
     if (data.status === "out_of_scope" || data.status === "escalated") {
       const mark = document.createElement("span"); mark.className = "mark"; mark.textContent = data.status === "escalated" ? "!" : "i"; meta.appendChild(mark);
     }
