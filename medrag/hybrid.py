@@ -186,6 +186,11 @@ class HybridRetriever:
         if not self.ready or self._embedder is None:
             raise RuntimeError("the retriever is not loaded yet")
         mentions = self.drugs.mentions(query)
+        # An everyday or dialect word the KB writes differently ("سخونية" / fever / الحرارة) is searched together with the
+        # KB's words: they are part of the question itself (every ranking sees them), not a second variant of it.
+        aliases = alias_words(query)
+        if aliases:
+            query = f"{query} {' '.join(aliases)}"
         expanded = self._expand(query, mentions)
         variants = [query] + ([expanded] if expanded != query else [])
         t0 = time.monotonic()
@@ -238,7 +243,6 @@ class HybridRetriever:
         if not m.trade:  # named by ingredient: add its Trade Names
             for ing in m.ingredients:
                 extra.extend(self.drugs.display(t) for t in self.drugs.trade_names_of(ing)[:MAX_EXPANSION_NAMES])
-        extra.extend(alias_words(query))  # an everyday or dialect word the KB writes differently ("سخونية" / fever / الحرارة)
         return f"{query} {' '.join(dict.fromkeys(extra))}".strip() if extra else query
 
     def _fuse(self, rankings: list[tuple[float, list[int]]]) -> list[int]:

@@ -1,0 +1,273 @@
+[
+  {
+    "id": "franco7-fever-no-drug",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "3andy so5oneya a5od eh",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04"
+    ],
+    "anchors": [
+      "Paracetamol"
+    ],
+    "answer_must_mention": [
+      "Paracetamol",
+      "باراسيتامول",
+      "Panadol",
+      "Ibuprofen"
+    ],
+    "note": "Franco-Arabic, no drug name: so5oneya (fever) must be rewritten into Arabic letters and found (KB-03 Paracetamol, KB-04 Antipyretics) by its alias words; the first-turn rewrite path of #7."
+  },
+  {
+    "id": "franco7-bdayel-brufen",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "bdayel brufen eh?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "answer_must_mention": [
+      "Nurofen",
+      "Ibuflam",
+      "Profinal"
+    ],
+    "note": "The 4B model once answered this with the ingredient (Ibuprofen) instead of the Alternatives: the Franco rewrite and the Alternatives note fix it."
+  },
+  {
+    "id": "franco7-malaria-trap",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "dawa el malaria eh",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "malaria",
+      "ملاريا"
+    ],
+    "note": "A Franco trap: the KB never mentions malaria; a rewrite must not bring in a different topic and the support check must refuse it."
+  },
+  {
+    "id": "franco7-blood-pressure",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "dawa lel daghT el 3aly",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-08"
+    ],
+    "anchors": [
+      "Beta Blockers",
+      "ACE Inhibitors"
+    ],
+    "answer_must_mention": [
+      "Bisoprolol",
+      "Concor",
+      "Beta",
+      "ACE",
+      "Amlodipine",
+      "Lisinopril",
+      "Losartan",
+      "ضغط"
+    ],
+    "note": "Franco-Arabic, no drug name: high blood pressure (KB-08)."
+  },
+  {
+    "id": "franco7-ventolin-contraindications",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "Ventolin mamnoo3 le meen?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-01"
+    ],
+    "anchors": [
+      "Ventolin"
+    ],
+    "answer_must_mention": [
+      "Hypersensitivity",
+      "Arrhythmias",
+      "Hyperthyroidism",
+      "حساسية",
+      "الحذر"
+    ],
+    "note": "Franco-Arabic contraindications of a KB drug."
+  },
+  {
+    "id": "franco7-dose-escalated",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "ebny 3ayez ya5od kam 7abba men Brufen?",
+    "expected_status": "escalated",
+    "note": "A Franco Dose request is Escalated on the raw message (the answer is the fixed Arabic text, labelled mixed)."
+  },
+  {
+    "id": "arabic-names7-brufen-alternatives",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "بدائل البروفين",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "answer_must_mention": [
+      "Nurofen",
+      "Ibuflam",
+      "Profinal"
+    ],
+    "note": "Article ال + Brufen in Arabic letters + an Alternatives word."
+  },
+  {
+    "id": "arabic-names7-panadol-alternatives",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "ايه بدايل البنادول؟",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04"
+    ],
+    "anchors": [
+      "Panadol"
+    ],
+    "answer_must_mention": [
+      "Cetal",
+      "Adol",
+      "Paramol",
+      "Fevadol",
+      "Abimol",
+      "Calpol"
+    ],
+    "note": "Dialect Alternatives word (بدايل) and the article."
+  },
+  {
+    "id": "arabic-names7-brufen-contraindications",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "البروفين ممنوع لمين؟",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "answer_must_mention": [
+      "active peptic ulcer",
+      "history of GI bleeding",
+      "heart failure",
+      "allergy",
+      "hypersensitivity",
+      "حساسية",
+      "قرحة",
+      "قصور القلب",
+      "فشل القلب"
+    ],
+    "note": "Article + Brufen in Arabic letters, contraindications asked in dialect."
+  },
+  {
+    "id": "arabic-names7-voltaren-contraindications",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "إيه موانع استخدام فولتارين؟",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Voltaren",
+      "Diclofenac"
+    ],
+    "answer_must_mention": [
+      "ulcer",
+      "bleeding",
+      "heart failure",
+      "allergy",
+      "hypersensitivity",
+      "حساسية",
+      "قرحة",
+      "قصور القلب",
+      "فشل القلب",
+      "Contraindicat",
+      "موانع"
+    ],
+    "note": "Voltaren in Arabic letters, contraindications."
+  },
+  {
+    "id": "arabic-names7-dose-escalated",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "كام قرص بروفين آخد في اليوم؟",
+    "expected_status": "escalated",
+    "note": "A Dose request with the drug in Arabic letters is still Escalated."
+  },
+  {
+    "id": "arabic-names7-malaria-trap",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "بروفين بيعالج الملاريا؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "ملاريا",
+      "malaria"
+    ],
+    "note": "A mapped brand does not make a malaria question answerable: the KB never mentions malaria."
+  },
+  {
+    "id": "multi7-franco-follow-up-after-arabic",
+    "category": "multi_turn",
+    "note": "A Franco follow-up after an Arabic first turn: the history is Arabic, the current message is Franco-Arabic, so the answer and the label are decided from the current message (mixed), whatever the rewrite or the history was written in.",
+    "turns": [
+      {
+        "message": "Concor ده مادته الفعالة إيه؟",
+        "language": "ar",
+        "expected_status": "answered",
+        "expected_kb_ids": [
+          "KB-08"
+        ],
+        "anchors": [
+          "Concor"
+        ],
+        "expected_sections": [
+          "Beta Blockers"
+        ],
+        "answer_must_mention": [
+          "Bisoprolol"
+        ]
+      },
+      {
+        "message": "w el a3rad el gaanbeya bta3to eh?",
+        "language": "mixed",
+        "expected_status": "answered",
+        "expected_kb_ids": [
+          "KB-08"
+        ],
+        "anchors": [
+          "Concor"
+        ],
+        "expected_sections": [
+          "Beta Blockers"
+        ]
+      }
+    ]
+  }
+]

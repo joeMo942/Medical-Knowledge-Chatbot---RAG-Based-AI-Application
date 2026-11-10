@@ -112,6 +112,8 @@ async def respond(message: str, language: str, search: Search, llm: LLMGate,
         question, mapped = names.map(question)
         if mapped:
             log.info("Arabic-letter names mapped: %s", ", ".join(f"{m.original} -> {m.name}" for m in mapped))
+    if question != message:
+        log.info("searching for %r instead of the message", question)
     sections = await search(question)
     alternatives = bool({*tokens(question), *tokens(message)} & ALT_WORDS)
     return await answer_question(question, language, sections, llm, deadline, backstop=decision.route is None,
