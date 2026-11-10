@@ -90,6 +90,7 @@ Zyrtec mamnoo3 emta? -> {"specific_person":false,"trigger":"none","language":"mi
 fe bedail le Zestril? -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"ما البدائل التجارية لـ Zestril؟"}
 Which drugs are in the same class as Zestril? -> {"specific_person":false,"trigger":"none","language":"en","is_drug_question":true,"question":"Which drugs are in the same class as Zestril?"}
 eh el a3rad el gaanbeya le Zyrtec? -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"ما الأعراض الجانبية لـ Zyrtec؟"}
+dawa lel sokkar eh -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"دواء للسكر إيه"}
 3andy so5oneya a5od eh -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"عندي سخونية آخذ إيه"}
 bdayel brufen eh? -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"ما بدائل Brufen؟"}
 dawa el malaria eh -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"ما دواء الملاريا؟"}

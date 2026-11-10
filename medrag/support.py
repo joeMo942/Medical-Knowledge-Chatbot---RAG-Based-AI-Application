@@ -243,20 +243,29 @@ class SupportCheck:
             so a rewrite cannot bring in a condition the user did not name. A first-turn rewrite (not `from_history`)
             gets no drug-name exemption either: its drug and class names must be the message's own.
         With `translate`, the rewrite must also keep every content word of the message (a word dropped from "dawa el
-        malaria eh" would turn it into a question that has no topic to be denied)."""
+        malaria eh" would turn it into a question that has no topic to be denied) and what is asked: an aspect word
+        (side effects, alternatives, contraindications ...) is translated like any other word, never swapped for
+        another ("a3rad gaanbeya" -> "بدائل" is refused)."""
         mtoks = tokens(message)
         have = {stem(t) for t in mtoks}
         rtoks = tokens(rewrite)
 
         def same(t: str, others: list[str]) -> bool:
-            return translate and any(same_word(stem(t), stem(o)) for o in others)
+            # with and without the stem: the stemmer strips a letter that is part of the word as often as a clitic (بدايل)
+            return translate and any(same_word(a, b) for o in others for a in {t, stem(t)} for b in {o, stem(o)})
 
         for t in rtoks:
             if _NUMBERISH.match(t):
                 if t not in mtoks:
                     return False
                 continue
-            if len(t) < 3 or t in FRAME or t in ASPECT or stem(t) in have:
+            if len(t) < 3 or stem(t) in have:
+                continue
+            if t in ASPECT:  # what is asked (side effects, alternatives ...): a translation may not change it
+                if translate and not same(t, mtoks):
+                    return False
+                continue
+            if t in FRAME:
                 continue
             if from_history and (t in self.drug_names or t in self.class_names):
                 continue
@@ -266,7 +275,7 @@ class SupportCheck:
         if translate:
             kept = {stem(t) for t in rtoks}
             for m in mtoks:
-                if _NUMBERISH.match(m) or len(m) < 3 or m in FRAME or m in ASPECT or stem(m) in kept:
+                if _NUMBERISH.match(m) or len(m) < 3 or stem(m) in kept or (m in FRAME and m not in ASPECT):
                     continue
                 if same(m, rtoks) or (_LATIN.fullmatch(m) is not None and skeleton(m) in _FRAME_SKELETONS):
                     continue

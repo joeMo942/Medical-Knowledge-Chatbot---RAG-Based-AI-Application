@@ -107,6 +107,8 @@ def test_a_word_for_word_arabic_rewrite_of_franco_is_accepted():
     assert ok("3andy so5oneya a5od eh", "عندي سخونية آخذ إيه")
     assert ok("dawa lel daghT el 3aly", "دواء للضغط العالي")
     assert ok("bdayel brufen eh?", "ما بدائل Brufen؟")
+    assert ok("Ventolin mamnoo3 le meen?", "ما موانع استعمال Ventolin؟")
+    assert ok("fe bedail tegareya le Brufen?", "ما البدائل التجارية لـ Brufen؟")
     assert ok("eh el a3rad el gaanbeya bta3t Concor?", "ما الأعراض الجانبية لـ Concor؟")
 
 
@@ -119,6 +121,9 @@ def test_a_word_for_word_arabic_rewrite_of_franco_is_accepted():
     ("bdayel brufen eh?", "ما بدائل Voltaren؟"),  # a drug name that is not the message's own
     ("bdayel brufen eh?", "ما بدائل Brufen بسعر 5 جنيه؟"),  # a number that is not in the message
     ("3andy so5oneya a5od eh", "q"),
+    ("eh el a3rad el gaanbeya bta3t Ventolin?", "ما بدائل Ventolin؟"),  # what is asked changed: side effects -> alternatives
+    ("Ventolin mamnoo3 le meen?", "ما الأعراض الجانبية لـ Ventolin؟"),  # contraindications -> side effects
+    ("dawa lel daghT el 3aly", "ما دواء ضغط الدم العالي؟"),  # a gloss the message does not have (الدم): refused, the raw message is used
 ])
 def test_a_rewrite_that_adds_drops_or_swaps_a_word_is_refused(message, rewrite):
     assert not ok(message, rewrite)
