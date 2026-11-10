@@ -46,7 +46,7 @@ from .embedding import Embedder, Encoded, dense_score, sparse_score
 from .models import Line, Section
 from .retrieval import LexicalRetriever
 from .textnorm import normalize
-from .support import ABSENT, ASPECT, FRAME
+from .support import ABSENT, ASPECT, FRAME, alias_words
 
 log = logging.getLogger("medrag")
 
@@ -238,6 +238,7 @@ class HybridRetriever:
         if not m.trade:  # named by ingredient: add its Trade Names
             for ing in m.ingredients:
                 extra.extend(self.drugs.display(t) for t in self.drugs.trade_names_of(ing)[:MAX_EXPANSION_NAMES])
+        extra.extend(alias_words(query))  # an everyday or dialect word the KB writes differently ("سخونية" / fever / الحرارة)
         return f"{query} {' '.join(dict.fromkeys(extra))}".strip() if extra else query
 
     def _fuse(self, rankings: list[tuple[float, list[int]]]) -> list[int]:

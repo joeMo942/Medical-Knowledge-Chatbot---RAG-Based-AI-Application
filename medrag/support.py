@@ -35,6 +35,7 @@ import re
 from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
 from .models import Section
+from .translit import same_word, skeleton
 from .textnorm import normalize
 
 _ARABIC = re.compile(r"[؀-ۿ]")
@@ -85,6 +86,7 @@ _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
 beta3 beta3t beta3to bta3to bta3ty ba2a ba2 bta3et beta3et bta3at beta3at bet3a bta3 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
 bedail bedayel tegareya tegarya mamnoo3 mamno3 momken mawad3 mawane3 3ayez 3ayza 3ayzen ana enta
+3andy 3andi 3ndy 3ndi a5od a5d a5ood ya5od dawa dawaa edy ezay ezzay leh lel lil fel fil bdayel bdail
 """
 # Aspect words: what the KB answers by structure (a table column, a heading, a list), so a drug's
 # Section answers them without ever containing the word.
@@ -99,7 +101,8 @@ interact interaction interactions avoid otc prescription
 مانع موانع ممنوع ممنوعه تحذير تحذيرات تداخل تداخلات
 maada fa3ala a3rad gaanbeya ganbeya bedail bedayel tegareya mamnoo3 mamno3 mawane3
 """
-# KB vocabulary that appears in both languages: either side grounds the other.
+# KB vocabulary that appears in both languages (and everyday dialect words next to the KB's formal ones): either side
+# grounds the other, for the support check and, as extra query words, for search (hybrid.py: `alias_words`).
 _ALIASES = [
     {"pregnancy", "pregnant", "الحمل", "حمل", "حامل", "الحوامل"},
     {"breastfeeding", "lactation", "الرضاعه", "رضاعه", "الرضاعة"},
@@ -110,7 +113,8 @@ _ALIASES = [
     {"liver", "hepatic", "الكبد", "كبد"},
     {"asthma", "الربو", "ربو"},
     {"pneumonia", "رئوي"},
-    {"hypertension", "antihypertensive", "الضغط", "ضغط"},
+    {"hypertension", "antihypertensive", "pressure", "الضغط", "ضغط"},
+    {"fever", "feverish", "antipyretic", "antipyretics", "الحراره", "حراره", "سخونه", "سخونيه", "السخونه", "الحمي", "حمي"},
     {"diabetes", "السكر", "سكر", "antidiabetic"},
     {"cough", "كحه", "السعال", "سعال"},
     {"pain", "الم", "الالم", "ألم"},
@@ -130,6 +134,10 @@ def _words(block: str) -> set[str]:
 
 FRAME = _words(_FRAME_EN) | _words(_FRAME_AR) | _words(_FRAME_FRANCO) | ALT_WORDS
 ASPECT = _words(_ASPECT) | ALT_WORDS
+# A Franco-Arabic word that is the transliteration of an Arabic frame word ("3andy" ~ عندي, "emta" ~ امتي, "ezay" ~ ازاي)
+# is frame too: a rewrite into Arabic letters may drop or keep it (rewrite_ok).
+_FRAME_SKELETONS = {sk for sk in (skeleton(w) for w in _words(_FRAME_AR)) if len(sk) >= 2}
+_LATIN = re.compile(r"[a-z0-9]+")
 
 
 def stem(word: str) -> str:
@@ -164,6 +172,25 @@ def _aliases_of(w: str) -> set[str]:
     for group, stems in zip(_ALIAS_GROUPS, _ALIAS_STEMS):
         if w in group or stem(w) in stems:
             out |= group
+    return out
+
+
+def alias_words(question: str) -> list[str]:
+    """The other members of every alias group that a word of the question belongs to ("سخونية" -> fever, الحرارة ...),
+    for search: an everyday or dialect word the KB writes differently still finds its Sections. Never a word that is
+    already in the question."""
+    toks = tokens(question)
+    seen = {stem(t) for t in toks}  # one word per stem: a repeated stem would count twice in BM25
+    out: list[str] = []
+    for t in toks:
+        if t in FRAME:
+            continue
+        for group, stems in zip(_ALIAS_GROUPS, _ALIAS_STEMS):
+            if t in group or stem(t) in stems:
+                for w in sorted(group):
+                    if stem(w) not in seen:
+                        seen.add(stem(w))
+                        out.append(w)
     return out
 
 
@@ -202,23 +229,48 @@ class SupportCheck:
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}
         self._kb = _Text("\n".join(s.render() for s in sections))
 
-    def rewrite_ok(self, message: str, rewrite: str) -> bool:
-        """True when a standalone rewrite of `message` adds nothing but what the Session may bring in:
-        every number of the rewrite is in the message, and every content word it does not share with
-        the message (frame and aspect words aside) is a KB drug name (Trade Name or Active Ingredient)
-        or a Drug Class name. A rewrite that carries any other word (a price, a symptom, a claim from an
-        earlier reply) is refused, so the earlier turns can resolve "it" but never add a fact."""
-        have = {stem(t) for t in tokens(message)}
-        for t in tokens(rewrite):
+    def rewrite_ok(self, message: str, rewrite: str, *, from_history: bool = True, translate: bool = False) -> bool:
+        """True when a standalone rewrite of `message` adds nothing it may not.
+
+        Every number of the rewrite is in the message. Every content word of the rewrite that the message does not
+        have (frame and aspect words aside) must be one the use allows:
+          - `from_history` (a Session): a KB drug name (Trade Name or Active Ingredient) or a Drug Class name, which is
+            what resolves "it" / "its"; any other word (a price, a symptom, a claim from an earlier reply) is refused,
+            so the earlier turns can resolve a reference but never add a fact;
+          - `translate` (a Franco-Arabic message rewritten into Arabic letters for search and for this check): a word that
+            is the SAME word as one of the message's in another script (translit.same_word: "so5oneya" -> "سخونية",
+            "daghT" -> "ضغط"). A translation into a different word ("so5oneya" -> "ملاريا", or -> "حمى") is refused,
+            so a rewrite cannot bring in a condition the user did not name. A first-turn rewrite (not `from_history`)
+            gets no drug-name exemption either: its drug and class names must be the message's own.
+        With `translate`, the rewrite must also keep every content word of the message (a word dropped from "dawa el
+        malaria eh" would turn it into a question that has no topic to be denied)."""
+        mtoks = tokens(message)
+        have = {stem(t) for t in mtoks}
+        rtoks = tokens(rewrite)
+
+        def same(t: str, others: list[str]) -> bool:
+            return translate and any(same_word(stem(t), stem(o)) for o in others)
+
+        for t in rtoks:
             if _NUMBERISH.match(t):
-                if t not in tokens(message):
+                if t not in mtoks:
                     return False
                 continue
             if len(t) < 3 or t in FRAME or t in ASPECT or stem(t) in have:
                 continue
-            if t in self.drug_names or t in self.class_names:
+            if from_history and (t in self.drug_names or t in self.class_names):
+                continue
+            if same(t, mtoks):
                 continue
             return False
+        if translate:
+            kept = {stem(t) for t in rtoks}
+            for m in mtoks:
+                if _NUMBERISH.match(m) or len(m) < 3 or m in FRAME or m in ASPECT or stem(m) in kept:
+                    continue
+                if same(m, rtoks) or (_LATIN.fullmatch(m) is not None and skeleton(m) in _FRAME_SKELETONS):
+                    continue
+                return False
         return True
 
     def topic_terms(self, question: str) -> list[str]:

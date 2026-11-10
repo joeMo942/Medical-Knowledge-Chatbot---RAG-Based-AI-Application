@@ -87,7 +87,8 @@ SYSTEM_PROMPT = (
     "Never use outside knowledge, even for a drug you know well, and never state doses. "
     "A drug name appearing in a section is not enough: the sections must state the fact that was asked "
     "(a drug listed in a section is not shown to treat a disease unless the section says so). "
-    "Reply in the language of the question (Arabic or English); keep drug names in English. "
+    "Write the answer in the language given under ANSWER LANGUAGE (the question may be in another script); "
+    "keep drug names in English. "
     "Be concise: answer only what was asked, in at most about 120 words; keep any list short "
     "(the most relevant items only) and do not repeat the sections back. "
     "Exception: when asked for alternatives (other Trade Names of the same drug), list EVERY Trade Name "
@@ -107,8 +108,22 @@ SYSTEM_PROMPT = (
 NOT_FOUND: dict[str, str] = {
     "en": "I could not find this in the approved knowledge base.",
     "ar": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
-    "mixed": "I could not find this in the approved knowledge base.",
+    "mixed": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة. (I could not find this in the approved knowledge base.)",
 }
+
+# The Answer Language is decided once, from the current message (language.py, pipeline.respond), and is handed to the
+# answer call as the language to write in, so the reply text and the `language` label agree. `mixed` is Franco-Arabic:
+# the user writes Arabic in Latin letters; the reply is in Arabic script with the English terms the KB itself uses
+# (drug names, clinical terms) kept in English, which is how the KB's own text reads.
+LANGUAGE_INSTRUCTION: dict[str, str] = {
+    "en": "English. Write the whole answer in English.",
+    "ar": "Arabic. Write the whole answer in clear Arabic (Arabic script); only drug names stay in English letters.",
+    "mixed": ("Arabic mixed with English. The user writes Arabic in Latin letters (Franco-Arabic). Write the answer in "
+              "Arabic script, keeping drug names and clinical terms the sections give in English in English letters; "
+              "do not write Arabic in Latin letters."),
+}
+ALTERNATIVES_HINT = ("The question asks for ALTERNATIVES: the other Trade Names that have the SAME Active Ingredient as "
+                     "the drug it names. List them from the sections. Do not just name the Active Ingredient.")
 
 
 class Citation(BaseModel):
@@ -129,10 +144,13 @@ class ChatResponse(BaseModel):
     language: Language
 
 
-def build_prompt(question: str, sections: list[Section]) -> str:
-    # Context is the Sections' render() text and section_id only, never `path`.
+def build_prompt(question: str, sections: list[Section], language: str = "en", alternatives: bool = False) -> str:
+    # Context is the Sections' render() text and section_id only, never `path`. The question comes last.
     blocks = [f"[section_id: {s.section_id}]\n{s.render()}" for s in sections]
-    return "KNOWLEDGE BASE SECTIONS\n\n" + "\n\n".join(blocks) + f"\n\nQUESTION\n{question}"
+    hint = f"\n\nNOTE\n{ALTERNATIVES_HINT}" if alternatives else ""
+    return ("KNOWLEDGE BASE SECTIONS\n\n" + "\n\n".join(blocks)
+            + f"\n\nANSWER LANGUAGE\n{LANGUAGE_INSTRUCTION.get(language, LANGUAGE_INSTRUCTION['en'])}{hint}"
+            + f"\n\nQUESTION\n{question}")
 
 
 def _units(section: Section) -> list[tuple[str, bool]]:
@@ -359,16 +377,19 @@ async def answer_question(
     deadline: float | None = None,
     backstop: bool = False,
     support: SupportCheck | None = None,
+    alternatives: bool = False,
 ) -> ChatResponse:
     """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller).
     `backstop`: the routing call did not run, so the answer call also classifies the message.
-    `support`: the support check (support.py); without it every valid Citation is accepted."""
+    `support`: the support check (support.py); without it every valid Citation is accepted.
+    `language`: the Answer Language, written into the prompt as the language to reply in and returned as the label.
+    `alternatives`: the question asks for Alternatives (a hint to the model, which is told to list the other Trade Names)."""
     if not sections:  # nothing related: no reason to ask the model
         log.info("out_of_scope: nothing retrieved")
         return out_of_scope(language)
     system = SYSTEM_PROMPT + BACKSTOP_PROMPT if backstop else SYSTEM_PROMPT
     try:
-        result = await llm.complete_json(system, build_prompt(question, sections), answer_schema(backstop), deadline)
+        result = await llm.complete_json(system, build_prompt(question, sections, language, alternatives), answer_schema(backstop), deadline)
     except LLMTruncated:
         # The reply hit the output cap: it is incomplete, so nothing of it is shown.
         log.info("out_of_scope: the reply hit the output cap")

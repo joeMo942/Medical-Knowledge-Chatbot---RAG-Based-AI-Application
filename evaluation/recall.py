@@ -54,6 +54,13 @@ def build(kind: str, sections, cache_dir: str | None):
     return r
 
 
+def build_names(sections):
+    from medrag.arabicnames import ArabicNames, arabic_common_words
+    from medrag.drugs import DrugIndex
+
+    return ArabicNames(DrugIndex(sections), arabic_common_words(sections))
+
+
 def section_hit(got, want: set[str]) -> bool:
     return any(norm(s.section) in want or norm(f"{s.title}{PATH_SEPARATOR}{s.section}") in want for s in got)
 
@@ -61,8 +68,9 @@ def section_hit(got, want: set[str]) -> bool:
 class Item:
     """One thing to retrieve for: the message and what makes a Section right for it."""
 
-    def __init__(self, category, id_, message, kb_ids, sections=(), anchors=(), mentions=()):
+    def __init__(self, category, id_, message, kb_ids, sections=(), anchors=(), mentions=(), rewrite=None):
         self.category, self.id, self.message = category, id_, message
+        self.rewrite = rewrite  # what the routing call's rewrite would be (recall_queries.json only): see query_of
         self.kb_ids, self.sections = set(kb_ids), {norm(x) for x in sections}
         self.anchors, self.mentions = tuple(anchors), tuple(mentions)
 
@@ -86,14 +94,25 @@ def items_from(cases: list[Case], queries: list[dict]) -> list[Item]:
                 continue
             out.append(Item(case.category, case.id, turn.message, turn.expected_kb_ids, turn.expected_sections,
                             turn.anchors, turn.answer_must_mention))
-    out += [Item("queries", q["id"], q["message"], q["expected_kb_ids"], q.get("expected_sections", ())) for q in queries]
+    out += [Item("queries", q["id"], q["message"], q["expected_kb_ids"], q.get("expected_sections", ()),
+                 rewrite=q.get("rewrite")) for q in queries]
     return out
 
 
-def evaluate(retriever, items: list[Item], cases: list[Case], k: int):
+def make_query_of(names, use_rewrites: bool):
+    """What the pipeline searches for a message: the routing call's rewrite for a Franco-Arabic question (recall has no LLM,
+    so `recall_queries.json` carries the rewrite a router would give: Arabic letters, word for word), then the Arabic-letter
+    Trade Names mapped to the KB's spelling (arabicnames.py). Without `names` the raw message, as before #7."""
+    def query_of(message: str, rewrite: str | None = None) -> str:
+        text = rewrite if (use_rewrites and rewrite) else message
+        return names.map(text)[0] if names is not None else text
+    return query_of
+
+
+def evaluate(retriever, items: list[Item], cases: list[Case], k: int, query_of=lambda m, r=None: m):
     rows = []  # (category, id, kb, relevant, section|None, mention|None, precision, retrieved ids)
     for it in items:
-        got = retriever.search(it.message, k)
+        got = retriever.search(query_of(it.message, it.rewrite), k)
         kb = bool({s.kb_id for s in got} & it.kb_ids)
         rel = [s for s in got if it.relevant(s)]
         sec = section_hit([s for s in got if s.kb_id in it.kb_ids], it.sections) if it.sections else None
@@ -107,7 +126,7 @@ def evaluate(retriever, items: list[Item], cases: list[Case], k: int):
             if (case.multi_turn and n > 1) or turn.expected_status == "answered":
                 continue
             quiet["n"] += 1
-            quiet["empty"] += not retriever.search(turn.message, k)
+            quiet["empty"] += not retriever.search(query_of(turn.message), k)
     return rows, quiet
 
 
@@ -152,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--k", nargs="*", type=int, default=[1, 2, 4])
     ap.add_argument("--details", help="print each turn of this category")
     ap.add_argument("--cache-dir", default=None, help="where the hybrid index is cached (default: not cached)")
+    ap.add_argument("--raw", action="store_true", help="search the message as typed (no Arabic-letter name mapping, no rewrites): the numbers before #7")
     args = ap.parse_args(argv)
     sys.path.insert(0, str(HERE.parent))
     from medrag.ingest import kb_dir, load_knowledge_base
@@ -160,13 +180,14 @@ def main(argv: list[str] | None = None) -> int:
     cases = [c for p in args.cases for c in load_cases(p)]
     queries = json.loads(Path(args.queries).read_text(encoding="utf-8")) if args.queries else []
     items = items_from(cases, queries)
+    query_of = make_query_of(None if args.raw else build_names(sections), not args.raw)
     for kind in args.retrievers:
         t0 = time.time()
         retriever = build(kind, sections, args.cache_dir)
         print(f"# {kind}: ready in {time.time() - t0:.1f}s", flush=True)
         for k in args.k:
             t0 = time.time()
-            rows, quiet = evaluate(retriever, items, cases, k)
+            rows, quiet = evaluate(retriever, items, cases, k, query_of)
             print("\n".join(report(kind, k, rows, quiet, args.details)))
             print(f"(search time over {len(items) + quiet['n']} turns: {time.time() - t0:.1f}s)\n", flush=True)
     return 0

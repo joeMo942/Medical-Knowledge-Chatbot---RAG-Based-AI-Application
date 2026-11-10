@@ -15,14 +15,14 @@ from __future__ import annotations
 import re
 import unicodedata
 
-_AR_DIACRITICS = re.compile("[ً-ٰٟـ]")  # harakat, dagger alef, tatweel
+_AR_DIACRITICS = re.compile(r"[\u064B-\u065F\u0670\u0640]")  # harakat, dagger alef, tatweel
 _AR_MAP = str.maketrans({
     "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي", "ی": "ي", "ة": "ه", "ؤ": "و", "ئ": "ي", "ک": "ك",
     **{chr(0x660 + i): str(i) for i in range(10)},  # Arabic-Indic digits
     **{chr(0x6F0 + i): str(i) for i in range(10)},  # Persian digits
 })
 # Arabic script blocks, including the presentation forms (detected as Arabic even before NFKC).
-ARABIC_LETTER = re.compile("[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]")
+ARABIC_LETTER = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
 
 
 def normalize(text: str) -> str:
