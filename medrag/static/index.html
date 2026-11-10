@@ -40,21 +40,23 @@ const HANDOFF_TEXT = {
        fail: "تعذّر الإرسال: "},
 };
 // The hand-off form of an Escalated reply: built after the reply is on the page, appended below it, never focused.
-function handoffForm(language) {
+let formCount = 0;
+function handoffForm(language, session) {  // `session`: the Session of the reply this form belongs to
+  const n = ++formCount;  // unique ids: a later Escalated reply gets its own labels
   const t = HANDOFF_TEXT[language === "ar" || language === "mixed" ? "ar" : "en"];
   const form = document.createElement("form"); form.className = "handoff"; form.dir = t.dir;
   const el = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
-  const area = el("textarea"); area.id = "hs"; area.maxLength = SUMMARY_MAX; area.dir = "auto";
+  const area = el("textarea"); area.id = "hs" + n; area.maxLength = SUMMARY_MAX; area.dir = "auto";
   area.value = typed.join("\n").slice(-SUMMARY_MAX);  // newest last; the oldest is cut when too long
-  const contact = el("input"); contact.id = "hc"; contact.dir = "auto"; contact.maxLength = 200; contact.autocomplete = "off";
-  const sum = el("label", t.summary); sum.htmlFor = "hs";
-  const con = el("label", t.contact); con.htmlFor = "hc";
+  const contact = el("input"); contact.id = "hc" + n; contact.dir = "auto"; contact.maxLength = 200; contact.autocomplete = "off";
+  const sum = el("label", t.summary); sum.htmlFor = area.id;
+  const con = el("label", t.contact); con.htmlFor = contact.id;
   const err = el("div", "", "err"), send = el("button", t.send); send.type = "submit";
   form.append(el("div", t.intro), sum, area, con, contact, el("div", t.note, "note"), err, send);
   form.addEventListener("submit", async (e) => {
     e.preventDefault(); err.textContent = ""; send.disabled = true; send.textContent = t.sending;
     try {
-      const r = await fetch("/handoff", {method: "POST", headers: {"Content-Type": "application/json", "X-Session-Id": sid},
+      const r = await fetch("/handoff", {method: "POST", headers: {"Content-Type": "application/json", "X-Session-Id": session},
                                          body: JSON.stringify({summary: area.value, contact: contact.value})});
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || r.status);
@@ -63,7 +65,7 @@ function handoffForm(language) {
   });
   return form;
 }
-const log = document.getElementById("log"), q = document.getElementById("q");
+const log = document.getElementById("log"), q = document.getElementById("q"), sendBtn = document.querySelector("#f button");
 function add(cls, text) {
   const d = document.createElement("div"); d.className = "msg " + cls; d.dir = "auto";
   d.textContent = text; log.appendChild(d); return d;
@@ -72,6 +74,7 @@ document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = q.value.trim(); if (!message) return;
   q.value = ""; add("user", message); typed.push(message);
+  q.disabled = sendBtn.disabled = true;  // one /chat request at a time
   const bot = add("bot", "...");
   try {
     const r = await fetch("/chat", {
@@ -79,7 +82,8 @@ document.getElementById("f").addEventListener("submit", async (e) => {
       headers: Object.assign({"Content-Type": "application/json"}, sid ? {"X-Session-Id": sid} : {}),
       body: JSON.stringify(sid ? {message, session_id: sid} : {message}),
     });
-    sid = r.headers.get("X-Session-Id") || sid;
+    const rsid = r.headers.get("X-Session-Id") || sid;  // this reply's own Session, for its hand-off form
+    sid = rsid;
     const data = await r.json();
     if (!r.ok) { bot.textContent = "Error: " + (data.error || r.status); return; }
     bot.textContent = data.answer;
@@ -90,8 +94,9 @@ document.getElementById("f").addEventListener("submit", async (e) => {
       b.textContent = c.doc_id + " - " + c.title + " > " + c.section + ": " + c.snippet;
       bot.appendChild(b);
     }
-    if (data.status === "escalated") log.appendChild(handoffForm(data.language));
+    if (data.status === "escalated") log.appendChild(handoffForm(data.language, rsid));
   } catch (err) { bot.textContent = "Error: " + err; }
+  finally { q.disabled = sendBtn.disabled = false; }
 });
 </script>
 </body>

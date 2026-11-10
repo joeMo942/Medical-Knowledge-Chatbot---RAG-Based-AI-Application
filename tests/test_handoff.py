@@ -230,3 +230,21 @@ def test_page_form_is_arabic_for_ar_and_mixed_never_autofocused_and_capped():
     assert 'language === "ar" || language === "mixed"' in PAGE
     assert "رقم الهاتف" in PAGE and "ملخص" in PAGE and "textContent" in PAGE
     assert "SUMMARY_MAX = 2000" in PAGE and "X-Session-Id" in PAGE
+
+
+def test_page_form_posts_the_session_of_its_own_reply_and_has_unique_ids():
+    assert "function handoffForm(language, session)" in PAGE
+    assert '"X-Session-Id": session}' in PAGE and "handoffForm(data.language, rsid)" in PAGE
+    assert 'const rsid = r.headers.get("X-Session-Id") || sid' in PAGE
+    assert 'id = "hs" + n' in PAGE and 'id = "hc" + n' in PAGE and "++formCount" in PAGE
+    assert "sendBtn.disabled = true" in PAGE and "finally" in PAGE  # one /chat request at a time
+
+
+def test_deeply_nested_json_is_400_not_500(tmp_path):
+    api = Api(tmp_path)
+    sid = escalated_session(api)
+    deep = b"[" * 8000
+    r = api.request("POST", "/handoff", content=deep, headers={"X-Session-Id": sid})
+    assert r.status_code == 400 and r.json() == {"error": "request body must be JSON"}
+    r = api.request("POST", "/chat", content=deep, headers={"X-Session-Id": sid})
+    assert r.status_code == 400 and r.json() == {"error": "request body must be JSON"}
