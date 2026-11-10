@@ -123,16 +123,48 @@ def test_a_word_for_word_arabic_rewrite_of_franco_is_accepted():
     ("3andy so5oneya a5od eh", "q"),
     ("eh el a3rad el gaanbeya bta3t Ventolin?", "ما بدائل Ventolin؟"),  # what is asked changed: side effects -> alternatives
     ("Ventolin mamnoo3 le meen?", "ما الأعراض الجانبية لـ Ventolin؟"),  # contraindications -> side effects
-    ("dawa lel daghT el 3aly", "ما دواء ضغط العين العالي؟"),  # a gloss that is not a phrase of the KB next to the user's word
+    ("dawa lel daghT el 3aly", "ما دواء ضغط الدم العالي؟"),  # a gloss the message does not have: rewrite_ok is strict, `translated` trims
     ("so5oneya", "سخونية الدم"),
 ])
 def test_a_rewrite_that_adds_drops_or_swaps_a_word_is_refused(message, rewrite):
     assert not ok(message, rewrite)
 
 
-def test_a_gloss_the_kb_itself_puts_next_to_the_users_word_is_accepted():
-    # "ضغط الدم" is the KB's own phrase (the Beta Blockers line): the router's usual rendering of "daghT"
-    assert ok("dawa lel daghT el 3aly", "ما دواء ضغط الدم العالي؟")
+def test_a_gloss_the_message_does_not_have_is_deleted_never_accepted():
+    clean = SUPPORT.translated("dawa lel daghT el 3aly", "ما دواء ضغط الدم العالي؟")  # الدم is the KB's phrase, but not the user's word
+    assert clean is not None and "ضغط" in clean and "الدم" not in clean and "العالي" in clean
+    # "inflammation" must not become "throat inflammation" because the KB has that phrase
+    clean = SUPPORT.translated("3andy eltehab dawa eh", "عندي التهاب الحلق دواء إيه")
+    assert clean is not None and "التهاب" in clean and "الحلق" not in clean
+    assert SUPPORT.translated("3andy so5oneya a5od eh", "عندي سخونية آخذ إيه") == "عندي سخونية آخذ إيه"
+
+
+@pytest.mark.parametrize("message,rewrite", [
+    ("3andy so5oneya a5od eh", "عندي ملاريا آخذ إيه"),  # the user's word is replaced: nothing of it is left
+    ("3andy so5oneya a5od eh", "عندي حمى آخذ إيه"),
+    ("dawa el malaria eh", "ما الدواء؟"),
+    ("eh el a3rad el gaanbeya bta3t Ventolin?", "ما بدائل Ventolin؟"),  # what is asked changed
+    ("bdayel brufen eh?", "ما بدائل Voltaren؟"),
+    ("3andy so5oneya a5od eh", "q"),
+])
+def test_translated_refuses_a_swapped_word(message, rewrite):
+    assert SUPPORT.translated(message, rewrite) is None
+
+
+def test_the_trimmed_rewrite_is_what_is_searched_and_still_answers_the_blood_pressure_question():
+    rec = Recorder()
+    llm = FakeLLM(answered("Concor – Bisoprolol", BETA.section_id), route=route("ما دواء ضغط الدم؟"))
+    r = chat("dawa lel daghT", llm, rec)
+    assert "الدم" not in rec.queries[0] and "ضغط" in rec.queries[0]
+    assert r.json()["status"] == "answered" and r.json()["language"] == "mixed"
+
+
+def test_rules_run_on_the_rewrite_when_the_router_made_the_message_mixed():
+    # one lexicon word and no digit: `en` by the heuristic, `mixed` once the router agrees; the rewrite then stands in for
+    # the message, so the rules must see it
+    rec = Recorder()
+    r = chat("ezay astakhdem Panadol", FakeLLM(answered(), route=route("ابني ابتلع علبة كاملة من Panadol")), rec)
+    assert r.json()["status"] == "escalated" and r.json()["language"] == "mixed" and rec.queries == []
 
 
 def test_a_first_turn_rewrite_gets_no_drug_name_exemption():

@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--k", nargs="*", type=int, default=[1, 2, 4])
     ap.add_argument("--details", help="print each turn of this category")
     ap.add_argument("--cache-dir", default=None, help="where the hybrid index is cached (default: not cached)")
-    ap.add_argument("--raw", action="store_true", help="search the message as typed (no Arabic-letter name mapping, no rewrites): the numbers before #7")
+    ap.add_argument("--raw", action="store_true", help="search the message as typed (no Arabic-letter name mapping, no rewrites). BM25 then reproduces the numbers before #7; the hybrid retriever still adds the alias words of support._ALIASES itself")
     args = ap.parse_args(argv)
     sys.path.insert(0, str(HERE.parent))
     from medrag.ingest import kb_dir, load_knowledge_base

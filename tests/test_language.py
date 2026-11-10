@@ -25,7 +25,7 @@ def test_franco_is_mixed(message):
 @pytest.mark.parametrize("message", [
     "What is the active ingredient of Controloc?", "Is Zyrtec safe in pregnancy?", "How much caffeine is in Panadol Extra?",
     "Is Omega3 safe? Type2 diabetes, H2 blockers, vitamin B12 and D3", "Brufen 400 mg, 5mcg, 2nd line, 3rd dose, CYP3A4, PCSK9, SGLT2",
-    "KB-03 side effects of Ventolin", "Which drug class is Zestril in?",
+    "KB-03 side effects of Ventolin", "Which drug class is Zestril in?", "Can I take 2tablets or 3times a day for 5days?",
 ])
 def test_english_with_drug_names_and_digits_is_en(message):
     assert detect_language(message) == "en"

@@ -17,7 +17,9 @@ from .textnorm import has_arabic, normalize
 
 # A word with one Franco digit-letter followed by letters: "3andy", "a5od", "so5oneya", "7aga", "bta3t". A digit that ends
 # a word ("omega3", "type2") or a unit or ordinal ("5mcg", "2nd", "3ml") is not one.
-_NOT_FRANCO = frozenset("mg mgs mcg mgm ml gm kg iu nd rd th st mmol".split())
+_NOT_FRANCO = frozenset("""mg mgs mcg mgm ml gm kg iu nd rd th st mmol tablet tablets tab tabs pill pills cap caps capsule capsules
+time times day days hour hours week weeks month months year years dose doses drop drops puff puffs unit units sachet
+sachets box boxes bottle bottles strip strips pack packs ampoule ampoules injection injections""".split())
 _WORD = re.compile(r"[a-z0-9]+")
 # Words that are Franco-Arabic and not English; two of them make a message mixed.
 FRANCO_WORDS = frozenset("""

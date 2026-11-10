@@ -64,7 +64,10 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     if flagged == "emergency":
         return Decision("emergency", None)
     route = await route_message(message, llm, deadline, history)
-    rewrite_flag = check(route.question) if (history or detect_language(message) == "mixed") and route and route.question else None
+    # The rewrite is rule-checked exactly when it may stand in for the message (see standalone_question): in a Session, or
+    # when the Answer Language, as refined by the router, is Franco-Arabic.
+    franco = refine(detect_language(message), message, route.language if route else None) == "mixed"
+    rewrite_flag = check(route.question) if (history or franco) and route and route.question else None
     if rewrite_flag == "emergency" or (route and route.trigger == "emergency"):
         return Decision("emergency", route)
     if flagged or rewrite_flag:
@@ -79,10 +82,11 @@ def standalone_question(message: str, decision: Decision, history: Sequence[Turn
     The rewrite is used in two cases, and only when it passes `SupportCheck.rewrite_ok`:
       - in a Session: it resolves "it" / "its" (it adds nothing but KB drug or Drug Class names to the message), so a
         fact from an earlier reply cannot enter the question through it;
-      - for a Franco-Arabic message (`language == "mixed"`): it is the message in Arabic letters, word for word (a word
-        that is not the SAME word as one of the message's is refused, and every content word of the message must be
-        kept), because neither the KB nor the support check reads Latin-letter Arabic. A translation into a different
-        word is how a condition the user never named would be smuggled in, so it is refused.
+      - for a Franco-Arabic message (`language == "mixed"`): it is the message in Arabic letters, word for word, because
+        neither the KB nor the support check reads Latin-letter Arabic (`SupportCheck.translated`): every word of it
+        that is not the message's own word in Arabic letters is deleted (an added gloss could name a condition the user did
+        not), and what is left must keep every content word of the message and what it asks. A translation into a
+        different word is how a condition the user never named would be smuggled in, so that rewrite is refused.
     Otherwise, or when the rewrite is refused, the raw message is used."""
     if not (decision.route and decision.route.question):
         return message
@@ -90,11 +94,15 @@ def standalone_question(message: str, decision: Decision, history: Sequence[Turn
     if not (history or franco):
         return message
     rewrite = decision.route.question
-    if support is None or not support.rewrite_ok(message, rewrite, from_history=bool(history), translate=franco):
+    if support is not None and franco:
+        usable = support.translated(message, rewrite, from_history=bool(history))
+    else:
+        usable = rewrite if support is not None and support.rewrite_ok(message, rewrite) else None
+    if usable is None:
         log.info("standalone rewrite refused (it carries words that are not in the message%s)",
                  "" if franco else " or the KB's drug names")
         return message
-    return rewrite
+    return usable
 
 
 async def respond(message: str, language: str, search: Search, llm: LLMGate,
