@@ -82,7 +82,7 @@ async def _read_json(request: Request, max_chars: int) -> dict:
         chunks.append(chunk)
     try:
         body = json.loads(b"".join(chunks))
-    except ValueError:
+    except (ValueError, RecursionError):  # deeply nested JSON raises RecursionError on Python 3.12
         raise BadRequest("request body must be JSON")
     if not isinstance(body, dict):
         raise BadRequest("request body must be a JSON object")
@@ -107,7 +107,7 @@ async def _read_upload(request: Request) -> dict:
         chunks.append(chunk)
     try:
         body = json.loads(b"".join(chunks))
-    except ValueError:
+    except (ValueError, RecursionError):
         raise InvalidDocument("request body must be JSON")
     if not isinstance(body, dict):
         raise InvalidDocument("request body must be a JSON object")
@@ -314,7 +314,7 @@ def create_app(
             chunks.append(chunk)
         try:
             body = json.loads(b"".join(chunks))
-        except ValueError:
+        except (ValueError, RecursionError):
             return _error(400, "request body must be JSON", session_id)
         if not isinstance(body, dict):
             return _error(400, "request body must be a JSON object", session_id)
