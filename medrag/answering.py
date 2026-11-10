@@ -126,7 +126,8 @@ LANGUAGE_INSTRUCTION: dict[str, str] = {
 }
 SELF_CARE_HINT = ("The user asks what THEY can take for their own everyday symptom. Answer with general information only: the "
                   "drug classes and drugs the sections list for that condition (the most relevant ones), as information and "
-                  "not as advice for this person. No doses and no recommendation to take a particular one.")
+                  "not as advice for this person. No doses and no recommendation to take a particular one. Keep it very short: at most 60 words "
+                  "and at most four drugs or classes.")
 ALTERNATIVES_HINT = ("The question asks for ALTERNATIVES: the other Trade Names that have the SAME Active Ingredient as "
                      "the drug it names. List them from the sections. Do not just name the Active Ingredient.")
 

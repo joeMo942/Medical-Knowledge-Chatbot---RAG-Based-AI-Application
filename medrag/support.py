@@ -128,6 +128,7 @@ _ALIASES = [
     {"diabetes", "السكر", "سكر", "antidiabetic"},
     {"cough", "كحه", "السعال", "سعال"},
     {"pain", "الم", "الالم", "ألم"},
+    {"headache", "headaches", "صداع", "الصداع", "soda3", "sodaa3", "sod3", "sora3", "soraa3"},  # sora3: how a Franco-Arabic user writes it
 ]
 
 
