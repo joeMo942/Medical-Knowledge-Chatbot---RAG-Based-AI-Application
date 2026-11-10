@@ -192,10 +192,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"WARNING: {w}", file=sys.stderr)
     if report is not None:
         lines, matched = compare(rows, report)
-        print("
-Analytics check (GET /admin/analytics since the run start):")
-        print("
-".join(lines))
+        print(chr(10) + "Analytics check (GET /admin/analytics since the run start):")
+        print(chr(10).join(lines))
         print("analytics check: " + ("all exact numbers match" if matched else "MISMATCH (see DIFF lines)"))
     commit, dirty = git_info()
     today = dt.date.today().isoformat()
