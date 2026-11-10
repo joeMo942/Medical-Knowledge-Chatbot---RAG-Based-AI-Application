@@ -439,3 +439,64 @@ def test_seeding_fails_loudly_when_the_folder_lacks_files(tmp_path):
     with pytest.raises(FileNotFoundError):
         open_store(str(tmp_path / "store"), tmp_path / "empty")
     assert not (tmp_path / "store" / "manifest.json").exists()  # left unseeded: the next start tries again
+
+
+# ------------------------------------------------------------------ unpacked-size limits and ASCII-only KB IDs
+def zip_with(document_xml_size=10, extra_entries=0):
+    """A real docx whose word/document.xml is padded (with trailing whitespace) to a size, plus filler entries."""
+    import zipfile
+    src = zipfile.ZipFile(io.BytesIO(make_docx()))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            if info.filename == "word/document.xml":
+                data += b" " * max(0, document_xml_size - len(data))
+            z.writestr(info.filename, data)
+        for n in range(extra_entries):
+            z.writestr(f"extra/{n}.txt", b"x")
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("label,patch,content,fragment", [
+    ("xml bomb", {"MAX_DOCUMENT_XML_BYTES": 50_000}, zip_with(document_xml_size=2_000_000), "document text is larger"),
+    ("unpacks too much", {"MAX_UNPACKED_BYTES": 50_000}, zip_with(document_xml_size=2_000_000), "unpacks to more than"),
+    ("too many entries", {"MAX_ZIP_ENTRIES": 5}, zip_with(extra_entries=20), "too many parts"),
+    ("too many blocks", {"MAX_BLOCKS": 3}, make_docx(classes={"A": [("a", "b")] * 4}), "too many paragraphs"),
+    ("section too long", {"MAX_SECTION_CHARS": 30}, make_docx(), "too long"),
+], ids=["xml-bomb", "unpacks-too-much", "too-many-entries", "too-many-blocks", "section-too-long"])
+def test_oversized_uploads_are_rejected_and_change_nothing(admin, monkeypatch, label, patch, content, fragment):
+    import medrag.kbstore as kbstore
+    for name, value in patch.items():
+        monkeypatch.setattr(kbstore, name, value)
+    before_files, before_docs = admin.files(), admin.docs()
+    r = admin.upload("KB-10", content, diseases=[DISEASE])
+    assert r.status_code == 400 and fragment in r.json()["error"], r.text
+    assert admin.files() == before_files and admin.docs() == before_docs
+
+
+def test_a_decompression_bomb_is_refused_before_it_is_unpacked(admin, monkeypatch):
+    """The check reads only the zip directory: parsing is never reached."""
+    import medrag.kbstore as kbstore
+    monkeypatch.setattr(kbstore, "read_blocks", lambda path: pytest.fail("the bomb was parsed"))
+    r = admin.upload("KB-10", zip_with(document_xml_size=30 * 1024 * 1024), diseases=[DISEASE])  # compresses to ~30 KB
+    assert r.status_code == 400 and "document text is larger" in r.json()["error"]
+
+
+def test_the_default_limits_pass_a_normal_document(admin):
+    assert admin.upload("KB-10", make_docx(), diseases=[DISEASE]).status_code == 200
+
+
+def test_the_real_kb_files_pass_validation(real_kb, tmp_path):
+    from medrag.ingest import kb_dir
+    store = KBStore(tmp_path)
+    for e in load_manifest():
+        doc = store.validate(e.kb_id, e.diseases, (kb_dir() / e.file).read_bytes())
+        assert doc.sections
+
+
+@pytest.mark.parametrize("kb_id", ["KB-٠١", "KB-۰۱", "KB-０１"])
+def test_kb_ids_with_non_ascii_digits_are_rejected(admin, kb_id):
+    r = admin.upload(kb_id, make_docx(), diseases=[DISEASE])
+    assert r.status_code == 400 and "'kb_id'" in r.json()["error"]
+    assert admin.api.request("DELETE", f"/admin/documents/{kb_id}", headers=AUTH).status_code == 400

@@ -13,10 +13,12 @@ new one, never a mix. Files the manifest does not name are removed at the next s
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,11 +26,19 @@ from pathlib import Path
 from .ingest import IngestError, load_document, read_blocks
 from .manifest import KB_ID_PATTERN, ManifestEntry, load_manifest, parse_manifest
 from .models import KBDocument
-from .splitter import ParagraphBlock, strip_numbering
+from .splitter import ParagraphBlock, TableBlock, strip_numbering
 
 MANIFEST = "manifest.json"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-_STORED = re.compile(r"^KB-\d{2}(\.[0-9a-f]{12})?\.docx$")
+_STORED = re.compile(r"^KB-[0-9]{2}(\.[0-9a-f]{12})?\.docx$")
+# Limits on what an upload may unpack to (a small zip can inflate to gigabytes). Measured on the real KB: largest
+# file 1.2 MB unpacked in 14 entries, word/document.xml 0.6 MB, 519 blocks (paragraphs + table rows) in a document,
+# 2055 characters in a Section; each cap is 20x or more above that.
+MAX_UNPACKED_BYTES = 50 * 1024 * 1024
+MAX_DOCUMENT_XML_BYTES = 20 * 1024 * 1024
+MAX_ZIP_ENTRIES = 1000
+MAX_BLOCKS = 10_000
+MAX_SECTION_CHARS = 40_000
 
 
 class InvalidDocument(ValueError):
@@ -127,12 +137,28 @@ class KBStore:
             for d in sorted(docs, key=lambda d: d.entry.kb_id)]}
         _atomic_write(self.manifest_path, (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
+    @staticmethod
+    def _check_zip(content: bytes) -> None:
+        """Reject a zip that would unpack to too much, from its directory alone (nothing is decompressed)."""
+        try:
+            infos = zipfile.ZipFile(io.BytesIO(content)).infolist()
+        except Exception as exc:
+            raise InvalidDocument(f"not a readable .docx file ({type(exc).__name__}: {exc})") from exc
+        if len(infos) > MAX_ZIP_ENTRIES:
+            raise InvalidDocument(f"the file has too many parts ({len(infos)}; the limit is {MAX_ZIP_ENTRIES})")
+        if sum(i.file_size for i in infos) > MAX_UNPACKED_BYTES:
+            raise InvalidDocument(f"the file unpacks to more than {MAX_UNPACKED_BYTES // (1024 * 1024)} MB")
+        for i in infos:
+            if i.filename == "word/document.xml" and i.file_size > MAX_DOCUMENT_XML_BYTES:
+                raise InvalidDocument(f"the document text is larger than {MAX_DOCUMENT_XML_BYTES // (1024 * 1024)} MB unpacked")
+
     def validate(self, kb_id: str, diseases: tuple[str, ...], content: bytes) -> KBDocument:
         """Run the real ingest on the upload, in a temporary folder; the store is not touched."""
         if not content:
             raise InvalidDocument("the file is empty")
         if len(content) > MAX_UPLOAD_BYTES:
             raise InvalidDocument(f"the file is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
+        self._check_zip(content)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "upload.docx"
             path.write_bytes(content)
@@ -140,6 +166,9 @@ class KBStore:
                 blocks = read_blocks(path)
             except Exception as exc:
                 raise InvalidDocument(f"not a readable .docx file ({type(exc).__name__}: {exc})") from exc
+            n_blocks = sum(len(b.rows) if isinstance(b, TableBlock) else 1 for b in blocks)
+            if n_blocks > MAX_BLOCKS:
+                raise InvalidDocument(f"the file has too many paragraphs and table rows ({n_blocks}; the limit is {MAX_BLOCKS})")
             present = {strip_numbering(b.text) for b in blocks if isinstance(b, ParagraphBlock) and b.text.strip()}
             for heading in diseases:
                 if strip_numbering(heading) not in present:
@@ -148,6 +177,9 @@ class KBStore:
                 doc = load_document(ManifestEntry(kb_id, path.name, diseases), Path(tmp))
             except IngestError as exc:
                 raise InvalidDocument(str(exc)) from exc
+        for sec in doc.sections:
+            if len(sec.render()) > MAX_SECTION_CHARS:
+                raise InvalidDocument(f"Section {sec.section!r} is too long (over {MAX_SECTION_CHARS} characters)")
         if not doc.sections:
             raise InvalidDocument("the file has no Sections (no drug-class headings under the disease headings)")
         return doc
