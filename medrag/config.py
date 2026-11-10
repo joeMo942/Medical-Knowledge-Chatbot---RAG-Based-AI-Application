@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # What /health reports as "embedding" when search has no embedding model (BM25 only, MEDRAG_RETRIEVER=bm25
 # and the unit tests); the hybrid retriever reports its model ID instead.
@@ -53,6 +53,8 @@ class Settings:
     # five such questions (all not answerable: off-topic, an injection, a malaria trap) reach 0.36-0.49; no answerable
     # question is BM25-empty, so the test set cannot say how high the threshold may go.
     min_dense: float = 0.5
+    # Bearer token of the /admin endpoints; empty disables them (503). Only from the environment, never in the repo.
+    admin_token: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         if self.budget_s <= self.llm_est_s:
@@ -87,5 +89,6 @@ class Settings:
             index_dir=e("MEDRAG_INDEX_DIR") or d.index_dir,
             embed_threads=int(e("MEDRAG_EMBED_THREADS") or d.embed_threads),
             min_dense=float(e("MEDRAG_MIN_DENSE") or d.min_dense),
+            admin_token=e("MEDRAG_ADMIN_TOKEN") or d.admin_token,
             usage_header=(e("MEDRAG_USAGE_HEADER") or str(int(d.usage_header))).strip().lower() in TRUE_VALUES,
         )

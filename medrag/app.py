@@ -6,12 +6,16 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .admin import admin_guard
+from .analytics import ERROR, AnalyticsLog, Window
 from .answering import ChatResponse
 from .arabicnames import ArabicNames, arabic_common_words
 from .config import EMBEDDING_PLACEHOLDER, Settings
@@ -42,10 +46,21 @@ class Loading(RuntimeError):
 
 
 def _error(status: int, message: str, session_id: str | None = None,
-           extra_headers: dict[str, str] | None = None) -> JSONResponse:
+           extra_headers: dict[str, str] | None = None, background: BackgroundTask | None = None) -> JSONResponse:
     headers = {"X-Session-Id": session_id} if session_id else {}
     headers.update(extra_headers or {})
-    return JSONResponse({"error": message}, status_code=status, headers=headers or None)
+    return JSONResponse({"error": message}, status_code=status, headers=headers or None, background=background)
+
+
+def _parse_time(name: str, value: str | None) -> float | None:
+    """An ISO 8601 date or date-time as epoch seconds; no zone means UTC. A bad value is a 400."""
+    if value is None or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(400, f"'{name}' must be an ISO 8601 date or date-time")
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).timestamp()
 
 
 async def _read_json(request: Request, max_chars: int) -> dict:
@@ -117,6 +132,8 @@ def create_app(
     support = SupportCheck(sections)
     names = ArabicNames(getattr(retriever, "drugs", None) or DrugIndex(sections), arabic_common_words(sections))
     store = SessionStore(settings.sessions_db)
+    analytics = AnalyticsLog(store)
+    admin = Depends(admin_guard(settings.admin_token))
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
@@ -196,8 +213,28 @@ def create_app(
         except Exception:
             log.exception("could not store the turn; the reply is sent anyway")
 
+    def write_log(session_id: str, message: str, status: str, language: str | None, kb_ids: list[str],
+                  latency_s: float, calls: list) -> None:
+        """Runs after the response is sent, in a worker thread. A logging problem is reported and swallowed:
+        it must never make a /chat request fail."""
+        try:
+            analytics.record(session_id, message, status, language, kb_ids, latency_s, calls)
+        except Exception:
+            log.exception("could not write the conversation log; the reply was sent anyway")
+
+    @app.get("/admin/analytics", dependencies=[admin])
+    async def admin_analytics(since: str | None = None, until: str | None = None, bucket: str = "day",
+                              limit: int = 10) -> JSONResponse:
+        if bucket not in ("hour", "day"):
+            raise HTTPException(400, "'bucket' must be hour or day")
+        if not 1 <= limit <= 1000:
+            raise HTTPException(400, "'limit' must be between 1 and 1000")
+        window = Window(_parse_time("since", since), _parse_time("until", until))
+        return JSONResponse(await asyncio.to_thread(analytics.report, window, bucket, limit))
+
     @app.post("/chat")
     async def chat(request: Request) -> JSONResponse:
+        started = time.monotonic()
         try:
             body = await _read_json(request, settings.max_message_chars)
             message = _validate_message(body, settings.max_message_chars)
@@ -208,6 +245,12 @@ def create_app(
         history = await load_history(session_id)
         meter = start_meter()  # before the pipeline task exists, so the gate adds to this meter
         usage = lambda: {USAGE_HEADER: meter.header_value()} if settings.usage_header else None  # noqa: E731
+
+        def logged(status: str, result: ChatResponse | None = None) -> BackgroundTask:
+            """The log write, to run once the response is decided: the latency is fixed here, the write comes after it."""
+            kb_ids = list(dict.fromkeys(c.doc_id for c in result.citations)) if result else []
+            return BackgroundTask(write_log, session_id, message, status, result.language if result else None, kb_ids,
+                                  time.monotonic() - started, list(meter.calls))
         try:
             result = await asyncio.wait_for(
                 _run_unless_disconnected(request, pipeline(message, deadline, history)),
@@ -215,19 +258,20 @@ def create_app(
             )
         except asyncio.TimeoutError:
             log.error("chat timed out after %.1fs", settings.budget_s)
-            return _error(500, "the request timed out", session_id, usage())
+            return _error(500, "the request timed out", session_id, usage(), logged(ERROR))
         except Loading:
-            return _error(500, "the search index is still loading, try again shortly", session_id, usage())  # 500: the contract has no 503
+            return _error(500, "the search index is still loading, try again shortly", session_id, usage(), logged(ERROR))  # 500: the contract has no 503
         except Busy as exc:
             log.warning("chat rejected, LLM busy: %s", exc)
-            return _error(500, "the server is busy, try again shortly", session_id, usage())
+            return _error(500, "the server is busy, try again shortly", session_id, usage(), logged(ERROR))
         except Exception as exc:
             log.exception("chat failed")
-            return _error(500, f"internal error: {type(exc).__name__}", session_id, usage())
+            return _error(500, f"internal error: {type(exc).__name__}", session_id, usage(), logged(ERROR))
         if result is None:  # client disconnected; nobody is listening
-            return _error(499, "client closed the request", session_id, usage())
+            return _error(499, "client closed the request", session_id, usage(), logged(ERROR))
         await save_turn(session_id, message, result)
-        return JSONResponse(result.model_dump(), headers={"X-Session-Id": session_id, **(usage() or {})})
+        return JSONResponse(result.model_dump(), headers={"X-Session-Id": session_id, **(usage() or {})},
+                            background=logged(result.status, result))
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:

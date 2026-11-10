@@ -23,6 +23,7 @@ from .modelstore import MODEL_ID, REVISION
 class Encoded:
     dense: tuple[float, ...]
     sparse: dict[int, float]
+    tokens: int = 0  # tokens the model read for this text (after truncation, special tokens included); 0 if unreported
 
 
 class Embedder(Protocol):
@@ -93,5 +94,5 @@ class BGEM3Embedder:
                             continue
                         if w > sparse.get(tid, 0.0):
                             sparse[tid] = w
-                    out[i] = Encoded(tuple(dense[row].tolist()), sparse)
+                    out[i] = Encoded(tuple(dense[row].tolist()), sparse, int(enc["attention_mask"][row].sum()))
         return out  # type: ignore[return-value]
