@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # directory's owner the first time it is created. The same goes for /models and /index below.
 # BGE-M3's files (about 2.3 GB) are not in the image: `embedder-pull` (python -m medrag.modelstore) puts them in the
 # /models volume on the first start; the API reads them from there and keeps its search index in /index.
-RUN mkdir -p /var/lib/medrag /models /index && chown medrag /var/lib/medrag /models /index
+RUN mkdir -p /var/lib/medrag /models /index /kb-store && chown medrag /var/lib/medrag /models /index /kb-store
 # HF_HOME: the system user has no home directory, and the Hub client needs a writable cache/lock folder.
 ENV MEDRAG_SESSIONS_DB=/var/lib/medrag/sessions.db MEDRAG_EMBED_PATH=/models/bge-m3 MEDRAG_INDEX_DIR=/index HF_HOME=/tmp/hf
 USER medrag

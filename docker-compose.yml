@@ -77,7 +77,8 @@ services:
       embedder-pull:
         condition: service_completed_successfully
     environment:
-      MEDRAG_KB_DIR: /kb
+      MEDRAG_KB_DIR: /kb  # read-only seed: copied into the kb-store volume once, on the first start
+      MEDRAG_KB_STORE: /kb-store
       MEDRAG_LLM_BACKEND: ${MEDRAG_LLM_BACKEND:-ollama}
       MEDRAG_OLLAMA_URL: http://ollama:11434
       MEDRAG_LLM_MODEL: ${MEDRAG_LLM_MODEL:-qwen3.5:4b}
@@ -103,6 +104,7 @@ services:
       MEDRAG_EMBED_THREADS: ${MEDRAG_EMBED_THREADS:-4}
     volumes:
       - ./data:/kb:ro
+      - kb-store:/kb-store        # the KB Documents the admin page uploads, replaces and deletes; the source of truth after seeding
       - sessions:/var/lib/medrag  # Sessions (SQLite) survive restarts and rebuilds of the api
       - embed-models:/models:ro   # BGE-M3 files, put there once by embedder-pull
       - index:/index              # the search index, rebuilt only when a KB Document or the model changes
@@ -121,3 +123,4 @@ volumes:
   sessions:
   embed-models:
   index:
+  kb-store:
