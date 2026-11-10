@@ -1,26 +1,278 @@
 # Drug Information Assistant
 
-RAG chatbot answering pharmacy staff and doctors strictly from the approved Knowledge Base (see GLOSSARY.md).
+A chatbot for pharmacy staff and doctors in Egypt. It answers **only** from an approved Knowledge Base of nine drug-information documents, shows the
+document, section and verbatim line each answer came from, and declines or escalates everything else. Questions can be in Arabic (formal or Egyptian dialect), English,
+Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with open-weights models (`qwen3.5:4b` through Ollama, `BAAI/bge-m3` for search); no API key is needed.
 
-## Run
+| Read | |
+| --- | --- |
+| [Run it](#run-it) | prerequisites, the one start command, first-download sizes |
+| [API](#api) | `POST /chat`, `GET /health`, examples |
+| [Safety policy](#safety-policy) | Answered / Out of Scope / Escalated, Dose vs Strength, why this suits pharmacists and doctors |
+| [Architecture](#architecture) | the pipeline, services, volumes |
+| [Evaluation](#evaluation) and [Test results](#test-results) | how to run the eval; where the recorded results go |
+| [`MODEL_DECISION.md`](MODEL_DECISION.md), [`TOKEN_USAGE.md`](TOKEN_USAGE.md) | why these models; tokens and speed per model call |
+| [Known limitations](#known-limitations) | what a user will notice |
+| [`docs/adr/`](docs/adr), [`GLOSSARY.md`](GLOSSARY.md) | decisions and the domain vocabulary used here (Section, Citation, Dose, Strength, ...) |
+| [`docs/submission-checks.md`](docs/submission-checks.md) | secrets scan and clean-run check, what was and was not verified |
 
-1. Put the nine KB `.docx` files in `./data` (not committed to git).
-2. `docker compose up -d --build` (add `--wait` to block until healthy). Needs Docker with an NVIDIA GPU (ADR 0001).
-   The first start downloads the model (about 3.3 GB) into the `ollama-models` volume; watch it with
-   `docker compose logs -f model-pull`. Later starts skip the download. The API reports healthy only after the model is present.
-   The first start also fetches the search model, BGE-M3 (about 2.3 GB, pinned revision, verified by SHA-256), into the `embed-models` volume
-   (`docker compose logs -f embedder-pull`), then loads it and builds the search index (about 40 s on 24 CPU threads; see Search). `/health` is 503 until then.
-3. Open http://localhost:8000 (chat page), or `curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"What is the active ingredient in Cataflam?"}'`.
-4. `docker compose down` stops it and keeps the model and Sessions volumes (never add `-v` unless you want them gone).
+## What it does
+
+- Answers a question about a drug, a drug class, trade names, ingredients, side effects, contraindications and alternatives from the Knowledge Base, with **Citations** (KB ID, title, section, snippet).
+- Says so when the Knowledge Base does not cover it (**Out of Scope**), and answers the covered half of a partly covered question.
+- **Escalates** emergencies and requests for a dose, a diagnosis or a treatment decision about a specific person: a fixed reply says what to do next and gives no medical advice.
+- Keeps conversations (Sessions) so a follow-up like "and its side effects?" works; remembers nothing as a source of facts.
+- Extras: a chat page (`/`), an admin page to upload, replace and delete KB documents (`/admin`), conversation logging and analytics, a hand-off form after an escalation, and its own evaluation harness.
+
+## Run it
+
+### Prerequisites
+
+- **Docker** with Compose v2 (tested with Docker 29.4 and Compose 5.1 on Windows 11, Docker Desktop).
+- **An NVIDIA GPU with 8 GB of VRAM** and the NVIDIA Container Toolkit (on Windows, Docker Desktop with GPU support), because the default compose file requests the GPU for the LLM (ADR 0001).
+  The author's test machine: RTX 5070 Laptop GPU, 8 GB. **No GPU:** use the CPU override `docker-compose.cpu.yml` (below); it works but is far slower and answers will exceed the 30 s limit.
+- About **16 GB of free disk** for the images and models, and about 2.5 GB of RAM for the search model.
+- **The Knowledge Base files.** They are not in git. Put the nine `.docx` files in `./data` with exactly these file names (they are listed in `medrag/kb_manifest.json`):
+
+  | KB ID | file in `./data` |
+  | --- | --- |
+  | KB-01 | `asthma w copd.docx` |
+  | KB-02 | `gerd& vomiting.docx` |
+  | KB-03 | `pain headache ibs arthritis.docx` |
+  | KB-04 | `pharyngitis.docx` |
+  | KB-05 | `أدوية الالتهاب الرئوي.docx` |
+  | KB-06 | `ادويه الحساسيه و الجيوب الانفيه.docx` |
+  | KB-07 | `ادويه السكر.docx` |
+  | KB-08 | `ادويه الضغط و الكوليسترول.docx` |
+  | KB-09 | `ادويه القولون و التهابات المفاصل.docx` |
+
+  A missing file stops the API at start with the list of the names it did not find.
+- **Python 3.12+ on the host**, only to run the evaluation (not needed to run the system).
+
+### Start
+
+```
+git clone <this repository> && cd <this repository>
+# put the nine .docx files in ./data  (see above)
+export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)     # optional: enables /admin and the analytics endpoint; keep it in your shell, never in a file
+docker compose up -d --build --wait
+```
+
+That is the whole start: one command builds the `api` image, starts Ollama, downloads the models on the first run, and (with `--wait`) returns when `GET /health` is `ok`.
+Then open <http://localhost:8000> (the chat page) or:
+
+```
+curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"What is the active ingredient in Cataflam?"}'
+```
+
+`docker compose down` stops it and keeps the models, the KB store and the Sessions (never add `-v` unless you want them gone). Logs: `docker compose logs -f api`.
+
+**No NVIDIA GPU:** `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build --wait`.
+
+### What the first start downloads
+
+| what | size | where | how long |
+| --- | ---: | --- | --- |
+| `qwen3.5:4b` (4.2 B parameters, Q4_K_M) | 3.3 GB | Ollama, into the `ollama-models` volume (`docker compose logs -f model-pull`) | download time of 3.3 GB |
+| BGE-M3, pinned revision, each file checked by size and SHA-256 | 2.3 GB | Hugging Face, into the `embed-models` volume (`docker compose logs -f embedder-pull`) | download time of 2.3 GB; the copy and check alone took 26 s from a local folder |
+| `api` image (CPU `torch`, `transformers`, ...) | 1.65 GB on disk (`docker images`) | built from the `Dockerfile` | build plus pip downloads |
+| `ollama/ollama` image | 8.5 GB on disk (`docker images`) | Docker Hub | pull time |
+| search index of the 113 Sections | small | built by the API on the first start | **42.7 s** measured (embedder load 7.7 s), cached afterwards |
+
+How the times were measured: **the downloads themselves were not timed on a clean machine** (the author's connection is slow and flaky; see `docs/submission-checks.md`), so the time of the three big downloads is just
+size divided by your bandwidth (3.3 GB + 2.3 GB at 100 Mbit/s, about 12 MB/s, is roughly 8 minutes; the images come on top). What was measured, on the test machine, from a fresh clone with fresh volumes, the images already built, and both models
+seeded from local copies (so nothing large was downloaded): **121 s** from `docker compose up -d --build --wait` to `healthy`, of which the model copy and check was 26 s and the one-time index build 43 s.
+A later restart is healthy in about 8 s, because the index is cached in the `index` volume and the models are already there. The API reports healthy only when both models are present, BGE-M3 is loaded and the index is ready; until then `/health` is 503.
 
 Slow or offline network (optional; both default to an empty folder, which means "download"):
-`MEDRAG_WHEELS_DIR=<folder of wheels>` makes the image build install torch (CPU), transformers and their dependencies from there instead of downloading
-(the pins of `constraints.txt` found in the folder are installed first with no network access), and `MEDRAG_EMBED_SRC=<folder with the BGE-M3 files>` makes
-`embedder-pull` copy (and verify) them into the volume instead of downloading. Example: `MEDRAG_WHEELS_DIR=~/.cache/medrag/wheelhouse/linux-py312 MEDRAG_EMBED_SRC=~/.cache/medrag/bge-m3 docker compose up -d --build --wait`.
+`MEDRAG_WHEELS_DIR=<folder of wheels>` makes the image build install torch (CPU), transformers and their dependencies from that folder instead of downloading them, and
+`MEDRAG_EMBED_SRC=<folder with the BGE-M3 files>` makes `embedder-pull` copy (and verify) them into the volume instead of downloading. Example:
+`MEDRAG_WHEELS_DIR=~/.cache/medrag/wheelhouse/linux-py312 MEDRAG_EMBED_SRC=~/.cache/medrag/bge-m3 docker compose up -d --build --wait`.
 
-No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up` (far slower; answers will exceed the 30 s limit).
+### Windows and Git Bash notes
+
+- Docker Desktop with the WSL 2 backend and GPU support. In Git Bash, put `MSYS_NO_PATHCONV=1` in front of any `docker ... exec/run` command that passes a Linux path (`/tmp/x.py`), or Git Bash rewrites it into a Windows path.
+- **Arabic or other non-ASCII text in a `curl` command line is mangled on Windows** (it arrives as `?`): the server then sees question marks and answers something else. Put the JSON in a UTF-8 file and send it with
+  `curl -X POST localhost:8000/chat -H 'content-type: application/json' --data-binary @question.json`. The chat page and the Python eval runner are not affected.
+- The `curl` and `export` examples are for Git Bash / Linux / macOS. In PowerShell use `curl.exe` (not the `curl` alias), `$env:MEDRAG_ADMIN_TOKEN = '...'`, and a file for the JSON body.
+
+## API
+
+Exactly the brief's contract; an extra field would break a strict schema check, so the Session ID is in a header (ADR 0002).
+
+### `POST /chat`
+
+Request body (JSON): `message` (required, plain text, at most 2000 characters) and `session_id` (optional; a missing value starts a new Session).
+
+Response, HTTP 200:
+
+```json
+{
+  "answer": "The active ingredient in Cataflam is Diclofenac potassium.",
+  "citations": [
+    {"doc_id": "KB-04", "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+     "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs", "snippet": "Cataflam – Diclofenac potassium"}
+  ],
+  "status": "answered",
+  "language": "en"
+}
+```
+
+| field | rule |
+| --- | --- |
+| `answer` | text in the answer language |
+| `citations` | at least one entry when `status` is `answered`; an empty list otherwise. `doc_id` is the KB ID (`KB-01` ... `KB-09`), `snippet` is one line or table row of the Section, word for word |
+| `status` | `answered`, `out_of_scope` or `escalated` (see [Safety policy](#safety-policy)) |
+| `language` | `ar`, `en` or `mixed` (`mixed` means Franco-Arabic): the language of the answer |
+
+- **Response header `X-Session-Id`**: the Session of this conversation. Send it back as `session_id` in the next request to continue the thread (the chat page does).
+  An unusable `session_id` (not 1 to 128 characters of `A-Za-z0-9._:-`) gets a fresh Session, not an error.
+- **Errors:** HTTP 400 `{"error": "..."}` for a bad request (no message, too long, not JSON); HTTP 500 `{"error": "..."}` on any failure, including the server being busy, the search index still loading, or a request that cannot finish within the time budget (25 s).
+- **Timing:** every request is answered within 30 s (the server stops at 25 s); on the test GPU the p95 is about 6 s.
+
+Examples (real replies from the test run; Arabic example in a file, see the Windows notes):
+
+```
+$ curl -s -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"How many mg of Voltaren can an adult take per day?"}'
+{"answer":"I cannot give doses. Please check the approved leaflet of the product, or ask the prescriber or a pharmacist.","citations":[],"status":"escalated","language":"en"}
+
+$ curl -s -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"Write me a cover letter for a job application."}'
+{"answer":"I could not find this in the approved knowledge base.","citations":[],"status":"out_of_scope","language":"en"}
+
+$ curl -s -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"He took 30 pills of panadol and is vomiting and confused"}'
+{"answer":"This may be an emergency. Call 123 (ambulance in Egypt) or go to the nearest emergency department now. Do not wait for medication advice from this assistant.","citations":[],"status":"escalated","language":"en"}
+
+# a conversation: read the Session from the header, send it back
+$ SID=$(curl -si -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"What is the active ingredient in Controloc?"}' | tr -d '\r' | grep -i '^x-session-id' | cut -d' ' -f2)
+$ curl -s -X POST localhost:8000/chat -H 'content-type: application/json' -d "{\"session_id\":\"$SID\",\"message\":\"Which drug class is it in?\"}"
+{"answer":"Pantoprazole belongs to the Proton Pump Inhibitors (PPIs) drug class.","citations":[{"doc_id":"KB-02","title":"أدوية قرحة المعدة والحموضة – Peptic Ulcer & GERD","section":"Proton Pump Inhibitors (PPIs)","snippet":"الاستخدام: تقليل إفراز حمض المعدة، وعلاج GERD وPeptic Ulcers، وتدخل ضمن أنظمة علاج H. pylori."}],"status":"answered","language":"en"}
+```
+
+### `GET /health`
+
+```
+$ curl -s localhost:8000/health
+{"status":"ok","llm":"qwen3.5:4b","embedding":"BAAI/bge-m3","kb_documents":9,"embedding_revision":"5617a9f61b028005a4858fdac845db406aefb181"}
+```
+
+HTTP 200 when ready. 503 `{"status":"error", ...}` when the LLM backend is unreachable or the model is missing, or the embedding model and index are not loaded yet.
+
+### Other endpoints (not part of the scored contract)
+
+| endpoint | what | detail |
+| --- | --- | --- |
+| `GET /`, `GET /admin` | chat page, admin page | [docs/operations.md](docs/operations.md) |
+| `GET /admin/analytics`, `GET /admin/handoffs` | analytics and hand-offs, `Authorization: Bearer $MEDRAG_ADMIN_TOKEN` | [Logging and analytics](#logging-and-analytics), [Hand-off](#hand-off) |
+| `GET/POST /admin/documents`, `DELETE /admin/documents/{kb_id}` | list, upload or replace, delete a KB Document | [Admin page](#admin-page) |
+| `POST /handoff` | leave a summary and contact after an escalation | [Hand-off](#hand-off) |
+
+The `/admin` endpoints answer 503 until `MEDRAG_ADMIN_TOKEN` is set, and 401 for a wrong token.
+
+## Safety policy
+
+The users are pharmacists and doctors, and the system is a lookup in approved text, not a clinician. The terms are defined in [`GLOSSARY.md`](GLOSSARY.md).
+
+| status | when | what the reply is |
+| --- | --- | --- |
+| **`answered`** | the Knowledge Base supports what was asked, or part of it | the answer, with at least one Citation; a partly covered question gets the covered part plus one sentence naming what the Knowledge Base does not contain |
+| **`out_of_scope`** | nothing that was asked is covered, or the question is not about drug information (a cover letter, a recipe, a drug the Knowledge Base does not list) | a fixed server-written message in the reply language, no Citations; the model's own text is never shown |
+| **`escalated`** | an **Emergency** (red-flag symptoms, an acutely unwell person, a reported overdose or a child who swallowed pills), or a request for a **Dose**, a **Diagnosis** or a **Treatment Decision** about a specific person | a fixed server-written reply that says what to do next and gives no medical advice (an Emergency: call 123 or go to the emergency department; a Dose: check the approved leaflet or ask the prescriber or a pharmacist; a Diagnosis or Treatment Decision: ask the treating doctor); no drug facts, no Citations. Takes precedence over the other two |
+
+**Dose vs Strength.** A **Strength** is the amount of an Active Ingredient in one unit of a product, as the Knowledge Base writes it ("Paracetamol 500 mg in a Panadol tablet"): that is a fact about the product and may be answered.
+A **Dose** is how much to give, how often, or to whom ("how many tablets a day", "units of Lantus at night", "a child's dose"): the assistant **never states one**, even when the question is wrapped in "ignore your rules", even
+for a drug the Knowledge Base does not list. "How much caffeine is in Panadol Extra?" is a Strength question; "how many mg of Voltaren can an adult take per day?" is a Dose request and is escalated. As a last check on every Answered reply, a dose-like amount
+("500 mg", "three times a day", "2 tablets") that is not in the cited Sections' own text turns the reply into the fixed Dose escalation, so a model that invents a number cannot get it to the user.
+A question about what the Knowledge Base says for a group of patients ("are NSAIDs allowed in pregnancy?", "is Doxycycline suitable for children under 8?") is answered; deciding for one named patient is a Treatment Decision and is escalated.
+
+**Why this policy suits pharmacists and doctors.**
+
+- Their questions are lookups ("what is in this product, what are the contraindications, which brands share this ingredient"); a wrong confident answer costs more than a refusal, so **the answer must come from the approved text and show where**: each Citation is a real Section that was retrieved for this question and a snippet that is a line of it, word for word, so the professional can check the source in seconds.
+- Doses, diagnoses and treatment choices for a person are the professional's own judgement and need information the Knowledge Base does not have (weight, history, other drugs); a 4B model must not guess them, and the Knowledge Base itself holds no doses. The assistant therefore routes them to the treating doctor instead.
+- **Failing safe:** an error, a timeout, a cut-off reply, a Citation that does not check out, or a topic the cited text does not support all end as Out of Scope, never as an invented answer; Escalated is decided by fixed rules first and the model can only raise a status, never lower one; Emergency and Dose wording is caught by fixed rules that need neither search nor the model, so those are escalated even while the search index is still loading.
+- An escalation can be followed up by a human: the chat page offers a **hand-off** (summary and contact) that a pharmacist or physician can read through the admin endpoints.
+- No real patient data is used anywhere; the test data is synthetic.
+
+Detail and the checks behind it: [docs/safety-pipeline.md](docs/safety-pipeline.md).
+
+## Architecture
+
+```
+ browser / script
+      |  POST /chat {message, session_id?}
+      v
+ +---------------------------------- api  (FastAPI, one container) --------------------------------------+
+ | 1 rules          fixed Emergency / Dose wording rules (EN, AR, dialect, Franco)  --> Escalated, no LLM   |
+ | 2 routing call   LLM, one short JSON call: trigger, language, standalone question  --> may raise to Escalated |
+ | 3 escalation     fixed server-written reply (no drug facts, no Citations)                                |
+ | 4 hybrid search  BGE-M3 dense + sparse + BM25, fused; top 4 Sections          (CPU, in the api process)  |
+ | 5 answer call    LLM, JSON: answer, citations (Section ID + snippet), status                             |
+ | 6 citations      keep only retrieved Sections; snippet must be a real line of the Section                |
+ | 7 dose check     an amount not in the cited text  --> Escalated (Dose)                                    |
+ | 8 support check  the question's topic words must be in the cited Sections --> else Out of Scope           |
+ +------------------------------------------------------------------------------------------------------+
+      |  {answer, citations, status, language}  + X-Session-Id header
+      v
+ browser / script
+
+ api  --HTTP-->  ollama  (qwen3.5:4b, on the GPU)         volumes: ollama-models
+ api  reads      embed-models (BGE-M3 files, read-only), kb-store (KB Documents), index (search index)
+ api  writes     sessions (SQLite: Sessions, turn log, call log, hand-offs)
+```
+
+Services in `docker-compose.yml`, in start order: **`ollama`** (healthy) then **`model-pull`** (downloads the LLM once, exits) and **`embedder-pull`** (puts the BGE-M3 files in the `embed-models` volume once, exits), then **`api`**
+(healthy only when both models are present and the search index is ready). `./data` is mounted read-only at `/kb` and copied into the `kb-store` volume on the first start; after that the store is the source of truth
+(the admin page changes it). The embedding model runs on the CPU so the GPU stays free for the LLM (ADR 0001). The LLM has a concurrency of one: a request that cannot be served within its time budget fails fast (HTTP 500 "busy") rather than queueing.
+Why each choice: [MODEL_DECISION.md](MODEL_DECISION.md), [docs/adr/](docs/adr).
+
+## Features
+
+### Search
+
+Hybrid search over whole Sections: BGE-M3 gives a dense and a sparse vector per Section and per question, BM25 (with Arabic folding) is a third scorer, and the three rankings are fused by weighted reciprocal rank. A question that names a
+Trade Name is also searched with its Active Ingredient and the other way round; an Alternatives question ("bedail Brufen", "alternatives to Panadol") gets the Sections that list every other Trade Name of the same Active Ingredient.
+Offline recall (`python -m evaluation.recall`; relevant Section among the top 4, 75 questions): BM25 62, improved BM25 71, **hybrid 75**; on the 26 everyday questions with no drug name, 17, 23 and **26**. The index (113 Sections) builds in about 43 s on the first start and is cached.
+Detail, the full recall table and the known limits: [docs/search-and-arabic.md](docs/search-and-arabic.md).
+
+### Arabic, dialect and Franco-Arabic
+
+One normaliser is used everywhere (alef, yaa and taa marbuta variants, harakat, tatweel, Arabic-Indic digits). The answer language is decided once from the message: Arabic script is `ar`, English is `en`, Franco-Arabic is `mixed`
+(Arabic script with the English drug names and clinical terms the KB uses). Franco-Arabic questions are rewritten into Arabic letters before search, but the server deletes any word of the rewrite that is not the user's own word, so the model cannot
+swap a word for another one; Trade Names written in Arabic letters ("بروفين") are mapped to the KB's Latin spelling. Detail and limits: [docs/search-and-arabic.md](docs/search-and-arabic.md).
+
+### Sessions
+
+`POST /chat` takes an optional `session_id`; the reply returns it in `X-Session-Id`. Sessions live in SQLite on the `sessions` volume and survive restarts (last 20 turns per Session, 10,000 Sessions). The last 3 turns are given to the routing call only, to rewrite a follow-up
+("and its side effects?") into a standalone question that must pass a deterministic check; earlier turns are never a source of facts and every turn is checked for escalation on its own. Detail: [docs/operations.md](docs/operations.md).
+
+### Logging and analytics
+
+Every `/chat` turn and every model call is logged (status, language, cited KB IDs, latency, prompt and completion tokens per call kind). `GET /admin/analytics` (Bearer `MEDRAG_ADMIN_TOKEN`) returns volume over time, top and unanswered questions,
+tokens per call type and per turn, and latency p50 and p95; `python -m evaluation.run ... --analytics-check` cross-checks it against a run. The log is written off the request path and a write failure never fails `/chat`. No real patient data is stored.
+
+```
+export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)   # before docker compose up
+curl -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" "localhost:8000/admin/analytics?since=2026-11-10&bucket=hour&limit=10"
+```
+
+Parameters and fields: [docs/operations.md](docs/operations.md). The measured token numbers are in [TOKEN_USAGE.md](TOKEN_USAGE.md).
+
+### Hand-off
+
+After an Escalated reply the chat page shows a form (a summary pre-filled from what the user typed, a contact field, a note that only what they type is stored); it never delays the escalation advice. `POST /handoff` stores it with the Session
+(accepted only if the Session has an Escalated turn, at most 5 per Session) and `GET /admin/handoffs` lists them. Detail: [docs/operations.md](docs/operations.md).
+
+```
+curl -X POST localhost:8000/handoff -H "Content-Type: application/json" -H "X-Session-Id: $SID" -d '{"summary": "Synthetic test: child swallowed tablets", "contact": "test@example.invalid"}'
+```
+
+### Admin page
+
+`/admin` uploads, replaces and deletes KB Documents without touching code; the change is in the next answer. The page asks for `MEDRAG_ADMIN_TOKEN`. The KB lives in the `kb-store` volume (seeded once from `./data`); every upload is validated by the real ingest
+before anything changes and applied atomically. To go back to `./data`: `docker compose down`, `docker volume rm <project>_kb-store`, start again. Detail and the three endpoints: [docs/operations.md](docs/operations.md).
 
 ## Configuration (environment variables)
+
+No secrets are stored in the repository or the images: the only secret-like values, `MEDRAG_ADMIN_TOKEN` and the optional `MEDRAG_OPENAI_API_KEY`, come from the operator's shell at start (or an untracked `.env`, which is gitignored). `docker-compose.yml` passes them through with no default.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -51,146 +303,61 @@ All of these except `MEDRAG_KB_DIR` and `MEDRAG_SESSIONS_DB` are passed through 
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing, or the embedding model and index are not loaded yet; when ready it reports `"embedding":"BAAI/bge-m3"` and `embedding_revision`. A `/chat` that needs search answers 500 `{"error": ...}` until then; Emergency and Dose messages are still escalated (that needs no search).
 
-## Escalation
-
-Every message is checked before retrieval and before the answer call (`medrag/pipeline.py`): fixed rules for Emergency and Dose wording in English, Arabic, dialect and Franco-Arabic (`medrag/rules.py`; they can only raise a status, never treat "how much X is in product Y" as a Dose, and treat a reported overdose or a child who swallowed pills as an Emergency), then one short LLM routing call (`medrag/routing.py`) that also detects Diagnosis and Treatment Decision and rewrites the question. An emergency rule escalates at once; a dose rule is still routed, because the router may upgrade it to an Emergency, never downgrade it. A flagged message gets a fixed server-written reply (`medrag/escalation.py`: no drug facts, no Citations, Arabic for `ar` and `mixed`).
-
-- The routing call queues in the gate ahead of answer calls and has its own duration estimate and a 4 s timeout. It is skipped only when the request's remaining budget cannot afford it; then the rules decide alone and the answer call also classifies the message (a `trigger` backstop in its schema).
-- The user text is fenced as data and its angle brackets are replaced, so it cannot close the fence.
-- Last check on every Answered reply (`medrag/dosecheck.py`): a dose-like amount (a number with mg, g, ml, tablets, ... or "three times a day") that is not in the cited Sections' text turns the reply into the fixed Dose escalation.
-- `/health` is `ok` only after the model has been loaded, so the first request does not pay for the load.
-- A rule-flagged emergency makes no LLM call; every other request makes one short extra call, counted in `X-Medrag-Usage`.
-
-## Out of Scope and Citations
-
-After the model answers, the server checks the Citations (`medrag/answering.py`, `medrag/support.py`). Model text is never shown on `out_of_scope`; that reply is a fixed message in the reply language.
-
-- A Citation must point to a Section that was retrieved for this question (others are dropped); `doc_id`, `title` and `section` come from the Section. A snippet must be one body line or data row of it, word for word; a paraphrase is replaced by the closest real line (most words in common with what the model wrote, never a heading, table header or label line such as "Common side effects:").
-- Support check (deterministic, no extra LLM call): the question's topic words (the question minus frame words like "which drugs are used to treat", numbers and KB drug names) must be found in the cited Sections' text, with Arabic folding, stemming and a few English/Arabic pairs. "Which drugs treat malaria?" cites real Plaquenil/Doxycycline rows but the KB never says malaria, so it becomes Out of Scope with `citations: []`. A word the whole KB lacks also fails the check unless the question asks an aspect of a covered drug (ingredient, class, alternatives, side effects, contraindications), which is a partly covered question and stays Answered.
-- Indication questions ("what treats / is used for / helps with X", "cancer drugs", "مريض سرطان ياخد ايه") ground their condition only in a Section's heading, its usage line and body lines, never under a Contraindications / Cautions / Serious Risks label or in a side-effect table (`support.indication_text`, read from the Section structure), so a disease that a drug only warns about (bladder cancer in the TZD contraindications) does not make "cancer drugs" Answered. Who a drug is for (pregnancy, children, kidney, liver ...) is still grounded in the whole text. Known limits: side-effect, contraindication, interaction and cause questions about a condition's drugs ("cancer drugs and their side effects") and any question that names a KB drug (a Latin Trade Name / Active Ingredient, or an Arabic-letter one the #7 mapper knows; "هل في دوا / برشام / اعشاب للسرطان؟" and "is there a drug for cancer?" name none, so they are indication questions, and a name the mapper does not know, like اكتوس, is not guessed at), or a Session follow-up that the rewrite turns into one keep the plain check; a condition that contains a population word ("liver toxicity") counts as grounded by that word.
-- Partly covered questions are Answered: the prompt asks for the covered part with Citations plus one sentence naming what the knowledge base does not contain. Out of Scope only when nothing asked is covered. The prompt forbids outside knowledge, and the model writes its Citations before it picks the status (a status chosen first made it call a partly covered question out of scope).
-- Known limits: a question whose only unsupported topic is a generic word the cited text happens to contain (for example "children" in a question about a drug the KB lists, but not for that use) is left to the model; a word the KB writes in another language or spelling counts as found only through the few alias groups of `support._ALIASES` (pregnancy / الحمل, pressure / ضغط, fever / الحرارة / سخونة ...), so "hypertension and malaria" keeps the covered half, but a pair that is not listed there is refused. A Trade Name in Arabic letters is mapped to the KB's spelling before search (see Arabic, dialect and Franco-Arabic).
-
-## Search
-
-Hybrid search over whole Sections (`medrag/hybrid.py`; the pipeline only needs `search(query, k)`, the `Retriever` protocol of `medrag/retrieval.py`, and runs it, with the embedding, in a worker thread so the event loop stays free).
-
-- **Scorers and fusion:** BGE-M3 (`BAAI/bge-m3`, on the CPU inside the API container: the GPU belongs to the LLM, ADR 0001) gives a dense vector and a sparse token-weight vector per Section and per question; BM25 is kept as a third scorer. BM25 folds Arabic like the rest of the code (alef, yaa, taa marbuta, harakat, the article ال and clitics) and drops the support check's frame words (`support.FRAME`: "which", "drugs", "ايه", "عندي", "bedail", ...) from the question, so everyday words do not outvote the topic. Each scorer ranks every Section and the ranks are fused by weighted reciprocal rank (`sum w/(60+rank)`, no calibration between cosine, token weights and BM25 needed); the weights are dense 3, sparse 1, BM25 1: the meaning outvotes either lexical list alone but not both together, so a name the embedding cannot read is still found lexically. They were chosen on the recall grid below (12 settings, differences of 2-4 questions out of 225: a mild preference, not a sharp optimum). The Section is the search unit: a Citation needs the whole Section.
-- **Index:** one dense and one sparse vector per Section, built in the API process at start (about 35 s for the 113 Sections), cached as JSON in the `index` volume under a key made of the SHA-256 of the KB `.docx` files and of the Sections' text, the model ID and revision and a format version. A changed Document or model rebuilds it; an unchanged restart loads it (a restart is healthy in about 8 s).
-- **Model weights:** not in git, not in the image. `embedder-pull` (`python -m medrag.modelstore`) puts the files of one pinned revision into the `embed-models` volume on the first start, each file checked against its size and SHA-256; a failed download is retried with a growing pause and resumed. First-start download rather than build-time: the image stays small, a flaky 2 GB download does not fail the build, a rebuild never repeats it, and the volume survives rebuilds. `MEDRAG_EMBED_SRC` seeds the volume from a local folder instead.
-- **Trade Name <-> Active Ingredient index** (`medrag/drugs.py`, also the drug-name source of the support check): derived from the products tables, nothing hard-coded. A question that names a Trade Name is also searched with its Active Ingredient(s), and one that names an Active Ingredient with its Trade Names (separate lists in the fusion). A Trade Name cell with several brands is split; strengths and parentheticals are dropped from ingredients; a brand in Arabic letters or equal to its ingredient is not indexed; a combination is its own Active Ingredient set, so it is never an Alternative of a part, and "Diclofenac sodium" and "Diclofenac potassium" are different ingredients.
-- **Alternatives:** an Alternative is another Trade Name with the same Active Ingredient. A question with an alternatives word ("alternatives", "بدائل", "bedail", ...) that names a drug (or "trade names of <ingredient>") gets, ahead of anything else, the fewest Sections that between them list every such Trade Name, each cut down to those product rows (rows verbatim, same Section ID, so snippet and support checks are unchanged); the prompt says to list every one and never another drug. If the question also asks something the Section lines answer (side effects, pregnancy), the whole Sections and the best other Sections with that ingredient are given instead. Plain top-k cannot do this: Flabu and Spididol are only in KB-03's headache Section.
-- **Thinning:** the KB repeats tables across Documents (the NSAID products are in KB-03, 04, 06 and 09). Walking down the fused list, a Section whose lines and rows are at least 60% already in the chosen ones is passed over; passed-over Sections only fill free slots.
-- **No match:** with no query word in any Section and a best dense similarity under `MEDRAG_MIN_DENSE`, nothing is retrieved and the reply is Out of Scope with no LLM call, as with BM25 alone.
-- **Cost:** a question is embedded on the CPU in about 50 ms (4 threads; one or two short texts, up to 0.3 s for a first or long one), the whole search adds under 0.4 s. The model needs about 2.5 GB of memory.
-- **Offline recall:** `python -m evaluation.recall` runs BM25 and hybrid in-process (no stack, no LLM; needs the model files and torch, see the script docstring), per category, over the Answered turns of `cases.json` and `cases_issue5.json` (49 turns) and `evaluation/recall_queries.json` (26 everyday questions with no drug name, in English, Arabic, dialect and Franco-Arabic, each with the KB IDs and Sections that answer it; written before the retrievers were measured on them). It reports "relevant" (a retrieved Section is in an expected Document AND is an expected Section or holds an expected anchor or term: the honest metric; the loose "any Section of an expected KB ID" is also printed), plus section, mention and precision. Numbers with the shipped settings (`MEDRAG_MIN_DENSE` 0.5, k as in the API is 4):
-
-  | retrieved Sections that are relevant | k=1 | k=2 | k=4 |
-  | --- | --- | --- | --- |
-  | all 75 questions: BM25, walking skeleton tokenizer | 47 | 55 | 62 |
-  | all 75: BM25 with Arabic folding and frame words (#6) | 55 | 66 | 66 |
-  | all 75: hybrid (#6) | 58 | 65 | 70 |
-  | all 75: BM25, with the Arabic-letter names mapped and the Franco rewrite (#7) | 61 | 71 | 71 |
-  | all 75: hybrid (#7) | 66 | 73 | 75 |
-  | the 26 everyday questions: skeleton BM25 | 12 | 14 | 17 |
-  | the 26 everyday questions: BM25 normalised (#6) | 15 | 22 | 22 |
-  | the 26 everyday questions: hybrid (#6) | 18 | 21 | 24 |
-  | the 26 everyday questions: hybrid (#7) | 20 | 24 | 26 |
-
-  The #6 BM25 rows are the message as typed (`--raw`; the #6 hybrid rows were measured on main before #7, and `--raw` hybrid is not the same thing, because the alias words are now added inside `HybridRetriever.search`); the #7 rows search what the pipeline searches: Arabic-letter Trade Names mapped to the KB's spelling (`medrag/arabicnames.py`), the Franco-Arabic questions of `recall_queries.json` through the `rewrite` the router would give (the script has no LLM; the field is a hand-written stand-in for the router's output, added to those two entries of `recall_queries.json`, and recall never runs it through `rewrite_ok`, so these two rows say what a good rewrite would find, not that the router produces it), and the alias words of `support._ALIASES` added to the query. At the API's k=4 hybrid beats both BM25s (75 vs 71 and 62 of 75; 26 vs 23 and 17 of 26 everyday questions). The five Arabic-letter Trade Name questions were 0 of 5 relevant at k=1 and are 5 of 5 now at every k; "3andy so5oneya a5od eh" (Franco-Arabic fever: nothing matched lexically and the dense similarity was under the 0.5 gate) is found, because the rewrite and the alias words give it lexical hits and the dense similarity of the Arabic rewrite is 0.55. Adding the alias words to the query itself (one ranking) rather than as a second query variant moved Antipyretics from rank 8 to rank 1 for "عندي سخونية". Still weak: an everyday question whose words the KB does not use at all and that has no alias group (the gate then returns nothing for a question with no lexical hit and a best dense similarity under 0.5: "ازاي اعمل كبسة" and "dawa el malaria eh" are such, and are right to return nothing).
-- Known limits: Alternatives compare the ingredient as the KB spells it, so a drug whose salt is spelled differently is not listed. An everyday word with no alias group and no match in the KB's Arabic is not found by name; the embedding then decides.
-
-## Arabic, dialect and Franco-Arabic
-
-- **One normaliser** (`medrag/textnorm.py`) for questions and Sections, used by the rules, the support check, BM25, the drug-name index, the language decision and the Arabic-name matcher: NFKC (Arabic presentation forms U+FB50-FDFF and U+FE70-FEFF, which text copied from a PDF extracts as, become plain letters), lower case, alef variants to ا, ى and ی to ي, ة to ه, ؤ and ئ to و and ي, Persian ک to ك, harakat and tatweel dropped, Arabic-Indic and Persian digits to 0-9. Each variant has a unit test.
-- **Answer Language is decided once**, from the current message (`medrag/language.py`): Arabic script is `ar` (a Latin drug name does not change that), English is `en`, and `mixed` is Franco-Arabic only: a digit-letter word (3 = ع, 7 = ح, 5 = خ, 2 = ء, 9 = ق: "3andy", "a5od", "so5oneya") or two unambiguous Franco words ("el", "eh", "emta", "bedail" ...). Units, ordinals, times, ages and names with a digit ("5mcg", "2nd", "3pm", "6hrs", "6yo", "5lbs", "Omega3", "CYP3A4", "PCSK9") are not Franco; a word that starts with a digit counts only when what follows has a vowel ("3andy", "7amel", "2alb"). The routing call's own language guess can only turn an `en` into `mixed` when the message also carries a Franco mark; it never relabels English. The value is fixed once and used for the escalation text, the answer call and the returned `language`, so a Franco follow-up in a Session whose earlier turns were Arabic is still `mixed`.
-- **The reply text agrees with the label.** The answer call is told the language to write in (`ANSWER LANGUAGE` in the prompt, before the question): English for `en`, Arabic for `ar` (only drug names in Latin letters). For `mixed` the reply is Arabic script with the drug names and clinical terms the Sections give in English kept in English, which is how the KB's own text reads; it is never Arabic in Latin letters. The fixed Out of Scope text for `mixed` carries both an Arabic and an English sentence, and the fixed Escalated text is Arabic for `ar` and `mixed`, English for `en`. A question that asks for Alternatives also gets a one-line note in the prompt saying so (the 4B model had answered "bdayel brufen eh?" with the Active Ingredient).
-- **Franco-Arabic is rewritten before search, on the first turn too** (`pipeline.standalone_question`, `SupportCheck.translated`). The routing call writes the question in Arabic letters, word for word. The server then DELETES every word of it that is not the user's own word in Arabic letters (the same word in another script, by a strict consonant skeleton comparison, `medrag/translit.py`: "so5oneya" ~ "سخونية", "daghT" ~ "ضغط", "malaria" ~ "ملاريا"; the skeleton needs three consonants (two only with a Franco digit-letter: "3aly"), and keeps ق (q / 9 / 2, never k), خ (x / 5 / kh), ظ (dh) and ع (3) apart, so "kalb" is not "القلب" and "zohry" is not "الظهر" - it compares consonant classes, so some three-consonant words of different meaning can still collide; frame words and the Alternatives / side effects / contraindications words that the message itself asked stay; a drug or Drug Class name must be the message's own on the first turn, the history exemption of a Session does not apply) and accepts what is left only when it still passes `rewrite_ok`: every number is the message's own, every content word of the message is kept (a word that starts with a Franco digit-letter, "7amel" pregnant, "3ayan" sick, "2alb" heart, is a word, never a number), and what is asked has not changed. A glossed word is trimmed, never accepted ("ضغط الدم" for "daghT" becomes "ضغط", "عندي التهاب الحلق" for "eltehab" becomes "التهاب": a phrase the KB happens to contain must not narrow what the user asked); a swapped word leaves its original missing and the rewrite is refused ("so5oneya" -> "ملاريا" or "حمى", "dawa el malaria eh" -> "ما الدواء؟", "a3rad gaanbeya" -> "بدائل"). A refused rewrite falls back to the raw message, as before. The Escalation rules run on the raw message first and then on the rewrite whenever it may stand in for the message (a Session, or an Answer Language that is `mixed` after the router's say), and can only raise a status; the support check and Citations are the same as for any question.
-- **Trade Names and Active Ingredients in Arabic letters** (`medrag/arabicnames.py`): the KB writes every name in Latin letters, so "بروفين" is mapped to "Brufen" before search, from the KB's own names (`DrugIndex`), nothing listed by hand. The consonant skeleton of each name is indexed (vowels and semi-vowels dropped, b/p, f/v, k/q/c/g, the sibilants merged: "بروفين" and "Brufen" are both `brfn`), and an Arabic word or two-word phrase with the same skeleton is replaced by the name ("بنادول اكسترا" is Panadol Extra: the longest phrase wins). A skeleton also matches a disease ("السرطان" is `lsrtn`, Losartan, if the article's ل counts), so the match is guarded: the article is stripped before matching and its ل may only be the L of an Al-/El-/Ol- name; the single-letter clitics ب and ل are tried both ways, ف and ك are not clitics here; a word is never mapped when ANY of its forms (with or without article or clitic) is a word of the KB's Arabic text or a frame, aspect or Alternatives word; the word right after an indication word (علاج, دواء, ادوية, مرض) or after عندي / مريض names a condition and is never mapped; the Arabic spelling must carry at least half the vowel letters (ا و ي) of the Latin name ("لسرطان" has one, Losartan three); four consonants at least, one edit away only from six; and two names sharing a skeleton are settled by the vowel count and then a finer skeleton (Brufen u-e against Pirafene i-a-e: "بروفين" is Brufen, "بيرافين" is Pirafene, and a tie maps to nothing, since Arabic has no p). Known limits: a name with fewer than four consonants ("Cozaar") is not mapped; a brand right after "دواء" is not mapped ("دواء بنادول"); a misspelling that drops vowel letters is left alone.
-- **Alias words** (`support._ALIASES`, a few bilingual groups: pregnancy / الحمل, hypertension / ضغط, fever / الحرارة / سخونة ...; the English phrase "blood pressure" and the Arabic "ضغط الدم" / "الضغط العالي" stand for hypertension as WHOLE phrases, so "eye pressure" and "pressure ulcers" are not covered by a Beta Blockers Section): the support check treats the two sides as one word, so "Which drugs treat high blood pressure and malaria?" with the Beta Blockers Section cited (it states the use as "ارتفاع ضغط الدم" only) keeps the covered half Answered, and "عندي سخونية اخد ايه" is supported by the Antipyretics Section (the KB says سخونة and الحرارة, not the dialect سخونية); search adds the group's words to the question, so a dialect word the KB spells differently has a lexical hit.
-- **The no-match gate** (`MEDRAG_MIN_DENSE` 0.5) is unchanged. The Arabic and Franco questions that scored 0.41-0.46 now get lexical hits through the normaliser, the alias words and the rewrite, so they are searched; "dawa el malaria eh" and "ازاي اعمل كبسة" still retrieve nothing, as they should.
-- **Known limits.** The 4B router's transliteration is not always word for word; a gloss is trimmed ("ضغط الدم العالي إيه" is searched as "ضغط العالي إيه"), a swap is refused and the raw Franco message is searched, which the model then sometimes misreads. A question with an everyday word the KB does not use and no alias group is found by the embedding only. "Which drugs treat hypertension and malaria?" is still refused by the 4B model itself (it says no drug treats both and returns no Citation), although the support check now allows the covered half. Franco-Arabic with no digit-letter word is labelled `mixed` only with two Franco lexicon words, or with one when the router also says Franco-Arabic ("ezay astakhdem Panadol"); with none ("astakhdem Panadol kam marra") it is `en`.
-
-## Sessions
-
-`POST /chat` takes an optional `session_id`; the reply carries the Session in the `X-Session-Id` header (the chat page sends it back). No `session_id` starts a new Session, an unknown valid one starts a Session under that ID, and an unusable one (not 1-128 characters of `A-Za-z0-9._:-`) gets a fresh Session whose ID is in the header (no 400). Sessions and their turns are stored in SQLite (WAL) on the `sessions` volume, so they survive `docker compose restart api`; a Session keeps its last 20 turns and the store its 10,000 most recently used Sessions.
-
-The last 3 turns are given to the routing call only, fenced and trimmed, to rewrite a follow-up ("and its side effects?") into a standalone question; retrieval, the answer call and the support check use that question, but only if it passes a deterministic check: every number in it is in the new message, and every other word it adds is a KB drug name or Drug Class (a price or symptom from an earlier reply would be refused and the raw message used instead). Earlier turns are never given to the answer call, so they are never a source of facts: a follow-up whose answer is only in an earlier reply is Out of Scope. Every turn is checked for escalation on its own, on the new message and on its rewrite; history can only raise a status. If the routing call is skipped or fails, the raw message is used. `evaluation/cases_issue8.json` adds multi-turn cases (a fact only in an earlier reply, a Dose request in turn 3, an injection in an earlier turn, an Emergency that only the earlier turn reveals).
-
-## Logging and analytics
-
-Every `/chat` turn and every model call is logged, so the analytics endpoint and the measured numbers for `TOKEN_USAGE.md` come from the running system.
-
-- **Where.** Two tables, `turn_log` and `call_log`, in the same SQLite file as the Sessions (the `sessions` volume). They are separate from the `sessions` / `turns` tables, so the pruning of old Sessions and turns never deletes a log row, and an existing volume gets the tables on its next start.
-- **Per turn:** the Session ID, the message, the status, the `language` label, the cited KB IDs (unique, in order), the total latency (wall time of the `/chat` request) and whether it went unanswered. **Unanswered** means the status is `out_of_scope` or `escalated`. A request that failed (500, or 499 when the client left) is logged as a turn with status `error`: it counts in the volume, the status counts and the latency percentiles, but never as unanswered. Requests rejected with 400 are not logged.
-- **Per model call:** the kind (`routing`, `answer`, `embedding`), the model name, prompt and completion tokens, and the latency. The LLM tokens are the counts the model server reports (Ollama `prompt_eval_count` / `eval_count`, or the OpenAI-style `usage`), not estimates; a call that failed and reported nothing is logged with 0 tokens. The embedding (BGE-M3 runs in-process, so there is no server to report) is one call per search, its prompt tokens are the BGE-M3 tokenizer's own count of the query (the tokens the model reads), completion 0, and its model is `BAAI/bge-m3@<revision>`. Building the search index at startup is not a turn's call and is not logged. The `X-Medrag-Usage` header still counts the LLM calls only.
-- **The write** happens after the response is decided and runs off the request path; any failure (a locked database, a full disk) is written to the server log and swallowed, so it never makes a `/chat` request fail.
-
-`GET /admin/analytics` needs `Authorization: Bearer <token>`, where the token is the server's `MEDRAG_ADMIN_TOKEN` (wrong or missing: 401; the variable unset or empty: 503 `admin disabled: set MEDRAG_ADMIN_TOKEN`).
-
-```
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)   # before docker compose up
-curl -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" "localhost:8000/admin/analytics?since=2026-11-10&bucket=hour&limit=10"
-```
-
-Query parameters, all optional: `since` (inclusive) and `until` (exclusive), ISO 8601 date or date-time (no zone means UTC); `bucket` = `day` (default) or `hour` for the volume over time; `limit` (default 10) for the top lists. The response has `summary` (turns, unanswered, count per status), `volume` (turns, unanswered and errors per bucket), `top_questions` and `unanswered_questions` (grouped by the message after the project's text normaliser and whitespace collapse; each shows the most recent original text, the count and, for the unanswered, the latest status), `tokens_by_call_type` (calls, prompt, completion and total tokens per kind, a `total` row, and an `llm_total` row of routing plus answer), `tokens_per_turn` (sums over all calls and the mean per turn) and `latency_ms` (p50 and p95). Percentiles use the nearest-rank method: the value at rank ceil(p/100 x n) of the n sorted turn latencies in the window.
-
-`python -m evaluation.run --label x --analytics-check` (with the same `MEDRAG_ADMIN_TOKEN` in the environment) calls the endpoint for the run's window afterwards and compares turns, unanswered, status counts and, with `MEDRAG_USAGE_HEADER=1`, the token totals against the run's own rows; p50 and p95 latency are shown for the client and the server side and are not expected to be equal.
-
-No real patient data is stored: this project has none, and the logged messages are test and demo questions about the Knowledge Base.
-
-## Hand-off
-
-When a question is Escalated, the chat page shows a form below the reply (never on Answered or Out of Scope replies): a summary pre-filled from what the user typed in the Session (editable, at most 2000 characters), a contact field, and a note that only what they type is stored. For an Emergency the reply still starts with the instruction to call 123 or go to the emergency department; the form comes after it and is not focused. The form is in Arabic for `ar` and `mixed` replies, English otherwise. After sending it is replaced by a confirmation; an error is shown in the form.
-
-`POST /handoff` is separate from `/chat` (whose contract is unchanged). The Session comes from the `X-Session-Id` header, as for `/chat`; the body is `{"summary": "...", "contact": "..."}` (summary 1-2000 characters, contact 3-200, both after trimming; no control characters; the body at most 16 KB, else 413). Answer 201 `{"id", "session_id", "created_at"}`.
-
-```
-curl -X POST localhost:8000/handoff -H "Content-Type: application/json" -H "X-Session-Id: $SID"   -d '{"summary": "Synthetic test: child swallowed tablets", "contact": "test@example.invalid"}'
-```
-
-- **The gate.** A hand-off is accepted only if the Session has an Escalated turn among its stored turns (409 `no escalated question in this session` otherwise, also for an unknown Session; no or unusable header: 400), and at most 5 per Session (then 409). So the endpoint is not a free-text drop box. A failed write is a 500 to the hand-off request (the user must know it was not saved); `/chat` is not affected.
-- **What is stored.** Table `handoffs` in the Sessions SQLite file (created on start if missing; Session pruning never deletes it): Session ID, time, the summary and contact exactly as typed, the escalation kind of the Session's latest Escalated turn (`emergency`, `dose`, `diagnosis`, `treatment_decision`; read from the fixed reply text) and its language label. Nothing else.
-- **Where it shows.** `GET /admin/analytics` has `handoffs` (`count` in the window and the most recent `limit`, newest first, honouring `since` / `until` / `limit`); `GET /admin/handoffs` returns the same object. Both need the admin token. Each item has `id`, `session_id`, `created_at`, `kind`, `language`, `summary`, `contact`.
-
-Test data is synthetic: no real patient data is used or needed.
-
-## Admin page
-
-`/admin` is a page for uploading, replacing and deleting KB Documents without touching code; changes are in the next answer. The page itself needs no token: it asks for `MEDRAG_ADMIN_TOKEN`, keeps it in `sessionStorage` (this tab only) and sends it as the Bearer header.
-
-**KB store.** With `MEDRAG_KB_STORE` set (`/kb-store` on the `kb-store` volume in compose) the KB lives in that writable folder: on the first start it is seeded once from `MEDRAG_KB_DIR` (`./data`) and the bundled `kb_manifest.json` (each file copied as `<KB ID>.docx`, plus a `manifest.json` with the disease headings); after that the store is the source of truth and `./data` is not read again. Files are named from the KB ID and the file's content, never from a client-supplied name, and every write is atomic (temp file + rename, manifest last), so a crash leaves the old KB. Without `MEDRAG_KB_STORE` (tests, plain local runs) the KB is read-only as before and the document endpoints answer 503.
-
-| Endpoint | |
-| --- | --- |
-| `GET /admin/documents` | KB ID, title, number of Sections, file name as uploaded, updated time |
-| `POST /admin/documents` | JSON `{"kb_id": "KB-03", "diseases": ["1. Pain & Fever - ..."], "filename": "x.docx", "content_base64": "..."}`; adds the KB ID or replaces it. 413 above 10 MB |
-| `DELETE /admin/documents/{kb_id}` | removes it (404 if unknown) |
-
-All three need `Authorization: Bearer $MEDRAG_ADMIN_TOKEN` (503 when the token is unset, 401 when wrong). Example:
-`curl -X POST localhost:8000/admin/documents -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" -H 'content-type: application/json' -d "{\"kb_id\":\"KB-04\",\"content_base64\":\"$(base64 -w0 pharyngitis.docx)\"}"`.
-
-**Disease headings.** Word heading styles cannot tell a disease heading from a drug-class heading, so the upload carries the disease headings (a list, exactly as they appear in the file). They are required for a new KB ID; a replace without them keeps the current ones. A heading that is not in the file is rejected, naming it.
-
-**Validation.** The file goes through the real ingest in a temporary folder before anything is changed. Not a .docx, unreadable, no Sections, a missing heading, a malformed KB ID (`KB-` and two digits) or more than 10 MB gives 400/413 with the reason, and the store and the running KB are untouched.
-
-**What is rebuilt.** The changed KB Document is ingested again and a new immutable KB snapshot (Sections, search index, Trade Name index, support check, Arabic-letter names) replaces the old one in one step; a /chat request in flight finishes on the snapshot it started with. The hybrid index re-embeds only the changed KB Document's Sections and reuses the other vectors, then writes the index cache. One change at a time (a second gets 409); a change while the index is still loading gets 503. Deleting every KB Document is allowed: every question is then Out of Scope. Escalation does not depend on the KB and keeps working throughout.
-
-Changes survive restarts (the `kb-store` volume). To go back to `./data`: `docker compose down`, `docker volume rm <project>_kb-store`, start again (it is seeded afresh). `python -m evaluation.reupload_kb` deletes every KB Document through the API and uploads the originals again (used to check that the eval set still passes).
-
 ## Evaluation
 
-The test set (`evaluation/cases.json`: 85 cases, 90 turns; `evaluation/cases_issue5.json` adds 11 out-of-KB drug traps and partly covered cases, `evaluation/cases_issue7.json` adds 13 Franco-Arabic and Arabic-letter Trade Name cases (a Franco trap, Alternatives, Dose, a Franco follow-up after an Arabic turn), run with `--cases`, each with expected status, expected KB IDs, relevance terms and a note) and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them. Start the stack with the usage header on, so tokens are measured (`MEDRAG_USAGE_HEADER=1 docker compose up -d --wait`), then:
+The test set and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them.
+
+- `evaluation/cases.json`: 85 cases, 90 turns (the 10 public dev questions, paraphrases, dialect, Franco-Arabic, Arabic-letter Trade Names, Strength, group-level questions, partly covered questions, multi-turn, prompt injection, off-topic traps, Emergency, Dose, Diagnosis, Treatment Decision), each with the expected status, KB IDs, relevance terms and a note.
+- `--cases` runs a smaller set: `cases_issue5.json` (11 drugs outside the KB and partly covered cases), `cases_issue7.json` (13 Franco-Arabic and Arabic-letter Trade Name cases), `cases_issue8.json` (multi-turn).
+
+Run it against a started stack. It needs the usage header on (so tokens are measured) and, for `--analytics-check`, the same admin token the server was started with. The runner needs Python 3.12+ and the package's small dependencies on the host, and it reads the KB files in `./data` (for the snippet check):
 
 ```
-python -m evaluation.run --label baseline          # every case, one at a time, against http://localhost:8000
-python -m evaluation.review evaluation/results/<date>-baseline.json   # manual faithfulness-review sheet
-python -m evaluation.kb_check                      # checks expected KB IDs, sections and out-of-scope traps against the real KB files
+python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e .
+export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16) MEDRAG_USAGE_HEADER=1
+docker compose up -d --build --wait                  # (re)start with both set
+python -m evaluation.run --label final --analytics-check                               # every case, one at a time, against http://localhost:8000
+python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json)
+python -m evaluation.review evaluation/results/<date>-final.json                       # the manual faithfulness-review sheet
+python -m evaluation.kb_check                                                          # checks expected KB IDs, sections and out-of-scope traps against the real KB files
+python -m evaluation.recall                                                            # offline search recall (needs torch and the BGE-M3 files, see the script)
 ```
 
-`run` writes `evaluation/results/<date>-<label>.json` (a row per turn with the full response, latency, the Session ID sent and returned) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50/p95, tokens, contract violations). The label may hold only letters, digits, `.`, `_` and `-` (for example `qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request. A name that already exists gets a numeric suffix. The results folder is gitignored: results stay local. Without the usage header the runner warns and the token metrics are marked absent. The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply and up to 5 escalated ones, plus at least 5 seeded random answered replies, and never overwrites an existing sheet; faithfulness is judged by a person, never by an LLM.
+`run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
+The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`). The results folder is gitignored, so results stay local until you copy them out (see Test results).
+The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; faithfulness is judged by a person, never by an LLM.
+`--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides).
+
+## Test results
+
+> **TODO (author): link the final eval run and the faithfulness review here.** Not committed yet: `evaluation/results/` is gitignored, so add the files to the repository (for example under `docs/test-results/`, with `git add -f`) and link them in this section.
+>
+> - the final run on `evaluation/cases.json`: `evaluation/results/<date>-<label>.md` and `.json`, produced by `python -m evaluation.run --label <label> --analytics-check` (stack started with `MEDRAG_USAGE_HEADER=1` and `MEDRAG_ADMIN_TOKEN` set, see Evaluation);
+> - the held-out runs, if you want them recorded: `--cases evaluation/cases_issue5.json`, `cases_issue7.json`, `cases_issue8.json`;
+> - the faithfulness review: `evaluation/results/<date>-<label>-faithfulness-review.md`, generated by `python -m evaluation.review evaluation/results/<date>-<label>.json` and then filled in by hand (the verdict columns and the summary at the end stay empty until a person reviews).
+
+What is already in the repository: the test set and runner (`evaluation/`), the unit tests below, and development numbers quoted from earlier runs in [MODEL_DECISION.md](MODEL_DECISION.md) (status accuracy from 55/90 to 90/90 as the pipeline grew) and [TOKEN_USAGE.md](TOKEN_USAGE.md).
+The submission check ran the 90 turns on a clean clone with fresh volumes: **90/90**, 0 contract violations, analytics check "all exact numbers match" ([docs/submission-checks.md](docs/submission-checks.md)); that run's files are not committed either.
+
+## Known limitations
+
+What a user is most likely to notice (the full list is in the follow-up issue #16 of the issue tracker):
+
+- **It is a 4B model.** The router can classify an unusual wording differently from run to run; a grounded answer can contain one item the cited Section does not say; a Trade Name can be misspelled, or the wrong Section named in the prose while the Citations are right. The server checks Citations, snippets, doses and support, but not every sentence: this is what the faithfulness review is for.
+- **It refuses more than it should in some cases.** An English synonym of a word the KB writes only in Arabic counts as unsupported unless it is in the small alias list (hypertension, pregnancy, fever, ...); an Arabic comparison question with no drug named is refused; an Arabic-letter brand the mapper does not know (short or vowel-poor names such as اكتوس, Cozaar) is not recognised; "which drugs treat hypertension and malaria" is refused by the model itself although half of it is covered.
+- **It can answer more than it should for one kind of question.** "Cancer drugs and their side effects" (an aspect of a condition's drugs) can be Answered by citing a contraindication line that mentions the disease; a generic word that the cited text happens to contain can slip through the support check. Diagnosis and Treatment Decision are caught by the router alone (the answer-call backstop applies only when routing is skipped or fails); the dose check does no unit conversion ("0.5 g" in the KB against "500 mg" in the answer becomes a Dose escalation, which errs on the safe side).
+- **Franco-Arabic edge cases.** With no digit-letter word and only one Franco word, the message is labelled `en` unless the router agrees; the router's transliteration is not always word for word, in which case the raw message is searched.
+- **Sessions.** Two concurrent requests in the same Session can each miss the other's turn; clients that pick the same simple `session_id` share history; if the routing call fails, an emergency that only the history reveals comes back Out of Scope (never answered) rather than Escalated.
+- **Capacity.** One LLM call at a time: a request that cannot finish within the 25 s budget gets HTTP 500 "busy". Without an NVIDIA GPU (the CPU override) answers exceed the 30 s limit.
+- **Operations.** An out-of-range `since` or `until` on `/admin/analytics` answers 500 instead of 400; the log tables grow without limit; a few admin-page edge cases on Windows (a read racing a replace) are noted in the issue.
+- **Tested on one machine and one KB.** The 90/90 above is on the test set the pipeline was tuned against (the held-out sets were written by the same author), so it is evidence that the pipeline works, not a forecast for the hidden question set. The real internet download path of the models was not run in the final check (see [docs/submission-checks.md](docs/submission-checks.md)).
 
 ## Tests
 
-`pip install -e ".[dev]" && pytest`. No Ollama, KB files, torch or model are needed (the search tests use a fake embedder); tests that need the real KB skip themselves, and `tests/test_embedding_real.py` runs only where torch (`pip install -e ".[embed]"`) and the BGE-M3 files (`MEDRAG_EMBED_PATH`) exist.
-`tests/test_e2e_smoke.py` runs against a started stack and skips otherwise.
+`pip install -e ".[dev]" && pytest`: 1,059 tests pass with a stack running (that also runs `tests/test_e2e_smoke.py`, which skips otherwise). CI-style, as GitHub Actions runs it, with no KB files: `MEDRAG_KB_DIR=/nonexistent pytest` gives 970 passed and 89 skipped (the tests that need the real `.docx` files).
+No Ollama, torch or model is needed for the unit tests (the search tests use a fake embedder); `tests/test_embedding_real.py` runs only where torch (`pip install -e ".[embed]"`) and the BGE-M3 files (`MEDRAG_EMBED_PATH`) exist.
+
+## Submission checks
+
+[docs/submission-checks.md](docs/submission-checks.md) records, with the exact commands: the secrets scan of the repository, its full git history and the built image; the clean-clone run (what was verified and what was not); and the commands for the full from-scratch check that downloads everything.

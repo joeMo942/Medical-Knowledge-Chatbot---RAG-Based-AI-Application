@@ -75,11 +75,11 @@ snippets and doc IDs), latency p95 and tokens, plus a faithfulness review of the
 - **Why a multilingual embedding at all:** questions come in Arabic, dialect, Franco-Arabic and English, and the KB is in Arabic and English mixed; a lexical search alone misses everyday wording
   ("عندي سخونية" against a KB that says "الحرارة").
 - **Why this one:** it is multilingual (Arabic and English in one vector space), open weights, and gives a **dense and a sparse (token-weight) vector** from one forward pass, so
-  the search is dense + sparse + BM25 fused by reciprocal rank (README, Search). That choice was made on those properties; **no other embedding model was run for comparison.**
+  the search is dense + sparse + BM25 fused by reciprocal rank (docs/search-and-arabic.md). That choice was made on those properties; **no other embedding model was run for comparison.**
 - **Where it runs:** on the CPU inside the `api` container, so the GPU belongs to the LLM (ADR 0001): model load 7.7 s, one question in about 50 ms on 4 threads (133 ms mean during the eval run), whole search under 0.4 s,
   index of 113 Sections built in 42.7 s on the first start and cached after that. It needs about 2.5 GB of RAM. The cost is the image (CPU `torch`, 1.65 GB) and the 2.3 GB weight download on the first start.
 
-Measured recall (README, Search; `python -m evaluation.recall`, relevant Sections among the top k, 75 questions of which 26 are everyday wording with no drug name):
+Measured recall (README Search section and docs/search-and-arabic.md; `python -m evaluation.recall`, relevant Sections among the top k, 75 questions of which 26 are everyday wording with no drug name):
 
 | retriever | all 75, k=1 | k=2 | k=4 | 26 everyday, k=4 |
 | --- | ---: | ---: | ---: | ---: |
