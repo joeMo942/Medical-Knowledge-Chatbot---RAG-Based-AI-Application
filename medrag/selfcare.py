@@ -48,7 +48,7 @@ _OTHER_PERSON = _rx(
     r"\b(my|his|her|their|our|your)\s+(wife|husband|son|daughter|mother|mom|mum|mommy|father|dad|daddy|brother|sister|friend|"
     r"baby|child|children|kid|kids|boy|girl|patients?|grand\w+|cousin|uncle|aunt|neighbou?r|colleague|boyfriend|girlfriend|"
     r"partner|fianc\w*|relatives?|parents?|family|students?|customers?|clients?|employee|nephew|niece|\w+-in-law)\b",
-    r"\b(he|she|him|himself|herself|hers|they|them|their|someone|somebody|we|us|our|ourselves)\b",
+    r"\b(he|she|him|himself|herself|hers|someone|somebody|we|us|our|ourselves)\b",
     r"\b(his|her)\b",
     r"\b(a|the) (man|woman|boy|girl|patient|child|customer|client|lady|guy)\b",
     r"\bfor (a|the|my|this) (patient|customer|client|person|man|woman|lady|guy)\b",
@@ -110,7 +110,7 @@ _FAMILIES: dict[str, re.Pattern[str]] = {
         r"ta7ses sadr|el2alb|el 2alb)\b",
     ),
     "other_medicines": _rx(
-        r"\b(i|im|i'm|i am|i was|i have been|i've been|ive been)\s+(also |currently |already |still |regularly )?(taking|on|using)\b",
+        r"\b(i|im|i'm|i am|i was|i have been|i've been|ive been)\s+(also |currently |already |still |regularly )?(taking|using)\b",
         r"\bi (already|also|currently|regularly|usually|daily|still|always)\s+(take|use)\b",
         r"\bi (take|use)\s+(?!for\b|if\b|when\b|to\b|at\b|in\b|with\b|and\b|or\b|it\b|that\b|this\b|them\b|something\b|anything\b|"
         r"what\b|which\b|now\b|today\b|tonight\b|tomorrow\b|first\b|here\b|again\b|so\b|as\b|on\b|from\b|about\b|after\b|before\b|"
@@ -122,7 +122,7 @@ _FAMILIES: dict[str, re.Pattern[str]] = {
         r"\b(warfarin|clopidogrel|plavix|insulin|metformin|lithium|methotrexate|digoxin|statins?|blood thinners?|anticoagulants?|"
         r"antiplatelets?|steroids?|cortisone|prednisolone|antidepressants?|contraceptives?|birth control|ssri|diuretics?|"
         r"beta[- ]?blockers?|ace inhibitors?)\b",
-        r"\b(instead of|switch\w*|replac\w*|stop\w*|start\w*|change)\b",
+        r"\b(instead of|(switch|replace|change|stop|start)\w*\s+(to |taking |using |my |the )(medic\w*|drugs?|meds?|pills?|tablets?|treatment|taking|using|\w+ing)\b)",
         r"\b(resistan\w*|not (working|helping)|didn'?t (work|help)|doesn'?t (work|help)|did not (work|help)|no (effect|relief))\b",
         r"باخد|بخد|باخد|بتناول|بستخدم|بستعمل|اخدت|استخدمت|علاج تاني|ادويه تانيه|دوا تاني|ادويتي|دوايا|علاجي|مع ادويه|مع دوا|"
         r"مع علاج|جانب|بدل\b|بدلا من|بدال|ابطل|اوقف|اغير|مفيش فايده|ما نفعش|منفعش|مش نافع|مش بيفرق|خلصت",
@@ -200,6 +200,15 @@ def qualifiers(message: str) -> list[str]:
 
 # ----------------------------------------------------------------------------------- what the user asks
 
+# The strict ways of asking what to take (a verb of taking): the only asks that can RAISE a status (`escalates_with_qualifier`).
+_STRICT_ASK = _rx(
+    r"\b(what|which)\b[^.?!]{0,40}\bi\b[^.?!]{0,12}\b(take|use|try|drink|get|buy)\b",
+    r"\bwhat to (take|use|try|drink)\b",
+    r"(?<!\w)(اخد|اخذ|اتناول|استخدم|استعمل|اشرب|اجرب|اجيب|اشتري)\s+(ايه|اي|ايش|ماذا|ما)\b",
+    r"\b(ممكن|ينفع|اقدر)\s+(اخد|اخذ|اتناول)\s+(ايه|اي)\b",
+    r"\b(a5od|akhod|a5d|akhd|a5ud|a5ood|akhud)\s+(eh|ehh|eih|ay|ey|e7|ayh|aye)\b",
+)
+
 _ASK = _rx(
     r"\b(what|which)\b[^.?!]{0,40}\bi\b[^.?!]{0,12}\b(take|use|try|drink|get|buy)\b",
     r"\bwhat to (take|use|try|drink)\b",
@@ -247,6 +256,6 @@ def escalates_with_qualifier(message: str, *also: str) -> bool:
     `pipeline.decide` then raises the status to a Treatment Decision even when the router said none: the policy is that a
     qualifier keeps such a question Escalated, and a router that missed it must not turn it into an answer. It can only raise.
     A message that does not ask what to take ("Is Brufen safe in pregnancy?") is left to the router, as before."""
-    if not asks_what_to_take(message) and not any(asks_what_to_take(x) for x in also):
+    if not any(_STRICT_ASK.search(normalize(x)) for x in (message, *also)):
         return False
     return any(qualifiers(x) for x in (message, *also))

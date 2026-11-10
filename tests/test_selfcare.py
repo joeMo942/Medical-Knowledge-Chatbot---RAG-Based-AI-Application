@@ -151,3 +151,27 @@ def test_escalates_with_qualifier_needs_an_ask_for_what_to_take_and_a_qualifier(
     assert not escalates_with_qualifier("I have a headache, what can I take?")
     assert not escalates_with_qualifier("Is Brufen safe in pregnancy?")  # no ask for what to take: left to the router
     assert not escalates_with_qualifier("What are the side effects of Brufen in children?")
+
+
+@pytest.mark.parametrize("message", [
+    "I have a headache, what can I take to stop it?",
+    "My headache started this morning, what can I take?",
+    "I get headaches, what can I take for them?",
+    "I'm on my period and have cramps, what can I take?",
+    "What medicines interact with my warfarin?",
+    "Which drug class is my medicine in?",
+])
+def test_ordinary_wording_is_not_raised_by_a_qualifier_that_is_not_there(message):
+    from medrag.selfcare import escalates_with_qualifier
+
+    assert not escalates_with_qualifier(message)
+
+
+@pytest.mark.parametrize("message", [
+    "I have a headache, what can I take to stop it?",
+    "My headache started this morning, what can I take?",
+    "I get headaches, what can I take for them?",
+    "I'm on my period and have cramps, what can I take?",
+])
+def test_these_are_self_care(message):
+    assert is_self_care(message)
