@@ -238,3 +238,15 @@ def is_self_care(message: str, *also: str, context: tuple[str, ...] = ()) -> boo
     if not any(asks_what_to_take(t) for t in texts):
         return False
     return not any(check(t) or qualifiers(t) for t in (*texts, *context) if t)
+
+
+
+def escalates_with_qualifier(message: str, *also: str) -> bool:
+    """True when the message asks in the first person what to take AND carries a risk qualifier or another person, in the message
+    or in `also` (its typo-corrected form): "عندي صداع جامد اخد ايه", "I take warfarin, what can I take for a headache?".
+    `pipeline.decide` then raises the status to a Treatment Decision even when the router said none: the policy is that a
+    qualifier keeps such a question Escalated, and a router that missed it must not turn it into an answer. It can only raise.
+    A message that does not ask what to take ("Is Brufen safe in pregnancy?") is left to the router, as before."""
+    if not asks_what_to_take(message) and not any(asks_what_to_take(x) for x in also):
+        return False
+    return any(qualifiers(x) for x in (message, *also))

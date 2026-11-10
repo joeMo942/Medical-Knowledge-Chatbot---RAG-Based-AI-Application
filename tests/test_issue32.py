@@ -238,3 +238,16 @@ def test_the_issue32_cases_agree_with_the_self_care_rule():
             assert is_self_care(msg), cid
         if case["category"] in ("dose", "emergency"):
             assert check(msg) in ("dose", "emergency"), cid
+
+
+@pytest.mark.parametrize("message", ["I have a severe headache, what can I take?", "عندي صداع جامد اخد ايه",
+                                     "I have pain for 3 days, what can I take?"])
+def test_a_qualified_self_care_attempt_is_escalated_even_when_the_router_says_none(message):
+    llm = FakeLLM(reply=answered(), route=person("none"))
+    body = post(llm, message)
+    assert body["status"] == "escalated" and not llm.calls
+
+
+def test_a_qualified_self_care_attempt_is_escalated_when_the_routing_call_fails():
+    llm = FakeLLM(reply=answered(), route_exc=RuntimeError("down"))
+    assert post(llm, "I am pregnant and have pain, what can I take?")["status"] == "escalated"

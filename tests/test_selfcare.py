@@ -130,3 +130,24 @@ def test_the_ask_may_be_in_the_corrected_form():
 def test_the_pharmacist_note_is_one_sentence_in_the_reply_language():
     assert pharmacist_note("en") == "A pharmacist can tell you which of these suits you."
     assert pharmacist_note("ar") == pharmacist_note("mixed") and "صيدل" in pharmacist_note("ar")
+
+
+# ------------------------------------------------------------ a qualifier RAISES a self-care attempt (router said none)
+
+@pytest.mark.parametrize("message,family", [q for q in QUALIFIED if asks_what_to_take(q[0])])
+def test_a_first_person_ask_with_a_qualifier_is_escalated_even_when_the_router_says_none(message, family):
+    from medrag.selfcare import escalates_with_qualifier
+
+    assert escalates_with_qualifier(message)
+
+
+def test_escalates_with_qualifier_needs_an_ask_for_what_to_take_and_a_qualifier():
+    from medrag.selfcare import escalates_with_qualifier
+
+    assert escalates_with_qualifier("عندي صداع جامد اخد ايه")
+    assert escalates_with_qualifier("I have a headache and I'm pregnant, what can I take?")
+    assert escalates_with_qualifier("3andy sora3 men ayam a5od eh")
+    assert escalates_with_qualifier("what i can take if i have headace pregnnat", "what i can take if i have headache pregnant")
+    assert not escalates_with_qualifier("I have a headache, what can I take?")
+    assert not escalates_with_qualifier("Is Brufen safe in pregnancy?")  # no ask for what to take: left to the router
+    assert not escalates_with_qualifier("What are the side effects of Brufen in children?")

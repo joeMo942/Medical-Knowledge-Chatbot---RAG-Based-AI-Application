@@ -43,7 +43,7 @@ from .language import detect_language, refine
 from .models import Section
 from .routing import Route, route_message
 from .rules import check
-from .selfcare import is_self_care, pharmacist_note
+from .selfcare import escalates_with_qualifier, is_self_care, pharmacist_note
 from .sessions import Turn
 from .support import SupportCheck
 from .typos import Corrected, TypoCorrector, did_you_mean
@@ -78,7 +78,9 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     message (in a Session, and for a Franco-Arabic message): a trigger found there can only raise. `also` holds other forms
     of the message (its typo-corrected text): the rules run on them too, and they can only raise as well.
     A self-care question (selfcare.is_self_care: first person, asks what to take, no risk qualifier anywhere: the message, `also`,
-    the router's rewrite, the earlier turns) lowers the router's treatment_decision to none, and nothing else.
+    the router's rewrite, the earlier turns) lowers the router's treatment_decision to none, and nothing else. The reverse also
+    holds: the user's own symptom, asking what to take, WITH a risk qualifier is a treatment_decision even when the router said
+    none (selfcare.escalates_with_qualifier); a rule that can only raise.
     """
     flagged = _check_all([message, *also])
     if flagged == "emergency":
@@ -98,6 +100,9 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     if self_care and trigger == "treatment_decision":
         log.info("self-care question: the router's treatment_decision is lowered to none")
         trigger = None
+    elif trigger is None and escalates_with_qualifier(message, *also):
+        log.info("self-care attempt with a risk qualifier: escalated as a treatment_decision")
+        trigger = "treatment_decision"
     return Decision(trigger, route, self_care)
 
 
