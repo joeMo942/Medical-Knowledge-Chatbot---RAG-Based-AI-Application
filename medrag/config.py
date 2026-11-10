@@ -4,9 +4,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-# What retrieval actually uses right now; /health reports this string verbatim.
-# Replaced by the real model name when hybrid BGE-M3 search lands (#6).
-EMBEDDING_PLACEHOLDER = "none (lexical placeholder until #6)"
+# What /health reports as "embedding" when search has no embedding model (BM25 only, MEDRAG_RETRIEVER=bm25
+# and the unit tests); the hybrid retriever reports its model ID instead.
+EMBEDDING_PLACEHOLDER = "none (lexical BM25 only)"
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 
@@ -42,6 +42,17 @@ class Settings:
     # SQLite file of the Sessions (a Docker volume in compose). ":memory:" (the default, also the one the
     # tests get) keeps them only until the process ends.
     sessions_db: str = ":memory:"
+    # Search: "hybrid" (BGE-M3 dense + sparse + BM25, the default) or "bm25" (no model, for a quick start or a baseline).
+    retriever: str = "hybrid"
+    embed_path: str = "/models/bge-m3"  # the model's files (modelstore.py fetches them when absent)
+    embed_seed: str = ""  # optional folder with the files already (a local download); copied instead of downloaded
+    index_dir: str = ""  # the index cache; empty = no cache, the index is rebuilt at every start
+    embed_threads: int = 4  # torch CPU threads for one question (the index build uses all cores); 0 = all cores
+    # With no query term in any Section, a best dense similarity below this means "nothing matches" (no LLM call).
+    # The gate only applies where BM25 finds nothing, so it can never retrieve less than BM25 alone did. On the test set the
+    # five such questions (all not answerable: off-topic, an injection, a malaria trap) reach 0.36-0.49; no answerable
+    # question is BM25-empty, so the test set cannot say how high the threshold may go.
+    min_dense: float = 0.5
 
     def __post_init__(self) -> None:
         if self.budget_s <= self.llm_est_s:
@@ -70,5 +81,11 @@ class Settings:
             decode_tok_s=float(e("MEDRAG_DECODE_TOK_S") or d.decode_tok_s),
             llm_margin_s=float(e("MEDRAG_LLM_MARGIN_S") or d.llm_margin_s),
             sessions_db=e("MEDRAG_SESSIONS_DB") or d.sessions_db,
+            retriever=(e("MEDRAG_RETRIEVER") or d.retriever).lower(),
+            embed_path=e("MEDRAG_EMBED_PATH") or d.embed_path,
+            embed_seed=e("MEDRAG_EMBED_SEED") or d.embed_seed,
+            index_dir=e("MEDRAG_INDEX_DIR") or d.index_dir,
+            embed_threads=int(e("MEDRAG_EMBED_THREADS") or d.embed_threads),
+            min_dense=float(e("MEDRAG_MIN_DENSE") or d.min_dense),
             usage_header=(e("MEDRAG_USAGE_HEADER") or str(int(d.usage_header))).strip().lower() in TRUE_VALUES,
         )

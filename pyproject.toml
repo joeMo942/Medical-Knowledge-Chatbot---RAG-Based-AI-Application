@@ -16,6 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Hybrid search (BGE-M3 on the CPU). The Docker image installs these; CI and the unit tests do not need them.
+embed = ["torch>=2.9", "transformers>=4.57,<5", "huggingface_hub>=0.36,<1", "numpy"]
 
 [tool.setuptools.packages.find]
 include = ["medrag*"]

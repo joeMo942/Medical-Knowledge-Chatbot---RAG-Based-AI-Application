@@ -32,10 +32,11 @@ from __future__ import annotations
 
 import re
 
+from .alternatives import ALT_WORDS
+from .drugs import product_cells, tokens
 from .models import Section
 from .rules import normalize
 
-_WORD = re.compile(r"[^\W_]+", re.UNICODE)
 _ARABIC = re.compile(r"[؀-ۿ]")
 _NUMBERISH = re.compile(r"^\d+[a-z]*$")
 
@@ -78,10 +79,11 @@ _FRAME_AR = """
 مانع موانع ممنوع ممنوعه تحذير تحذيرات تحذيره تداخل تداخلات
 روشته وصفه
 سنه سنين سنوات شهر شهور اسبوع اسابيع يوم ايام عمر عمره سن
+انا انت انتي احنا هو اخد اخذ ياخد خد بخد عايز عاوز عايزه عاوزه محتاج محتاجه ينفع لازم ممكن
 """
 _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
-beta3 beta3t beta3to bta3to bta3ty ba2a ba2 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
+beta3 beta3t beta3to bta3to bta3ty ba2a ba2 bta3et beta3et bta3at beta3at bet3a bta3 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
 bedail bedayel tegareya tegarya mamnoo3 mamno3 momken mawad3 mawane3 3ayez 3ayza 3ayzen ana enta
 """
 # Aspect words: what the KB answers by structure (a table column, a heading, a list), so a drug's
@@ -126,8 +128,8 @@ def _words(block: str) -> set[str]:
     return {w for w in normalize(block).split() if w}
 
 
-FRAME = _words(_FRAME_EN) | _words(_FRAME_AR) | _words(_FRAME_FRANCO)
-ASPECT = _words(_ASPECT)
+FRAME = _words(_FRAME_EN) | _words(_FRAME_AR) | _words(_FRAME_FRANCO) | ALT_WORDS
+ASPECT = _words(_ASPECT) | ALT_WORDS
 
 
 def stem(word: str) -> str:
@@ -151,10 +153,6 @@ def stem(word: str) -> str:
 
 # Words that introduce the condition a drug is for: the word after one is a disease, not a brand.
 INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج لعلاج يعالج بيعالج تعالج علاجات مرض امراض".split()}
-
-
-def tokens(text: str) -> list[str]:
-    return _WORD.findall(normalize(text))
 
 
 _ALIAS_GROUPS = [{normalize(w) for w in g} for g in _ALIASES]
@@ -194,16 +192,11 @@ class SupportCheck:
 
     def __init__(self, sections: list[Section] | tuple[Section, ...]):
         names: set[str] = set()
-        for sec in sections:
-            for table in sec.tables:
-                if table.kind != "products":
-                    continue
-                cols = [c for c in (table.trade_name_col, table.active_ingredient_col) if c is not None]
-                for row in table.rows:
-                    for c in cols:
-                        if c < len(row.cells):
-                            names.update(t for t in tokens(row.cells[c]) if len(t) >= 3)
+        for _sec, _table, _cells, trade, active in product_cells(sections):
+            for cell in (trade, active):
+                names.update(t for t in tokens(cell) if len(t) >= 3)
         self.drug_names = names
+        self.section_ids = frozenset(sec.section_id for sec in sections)  # every Section of the KB (answering.py)
         # Drug Class names (the headings of the class Sections): "Which drug class is it in?" is rewritten
         # to name the class or the drug, so both are words a rewrite may bring in from the history.
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}

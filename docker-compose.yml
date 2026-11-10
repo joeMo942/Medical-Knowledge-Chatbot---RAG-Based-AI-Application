@@ -3,7 +3,13 @@
 # No NVIDIA GPU: `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up` (slower).
 #
 # Start order: ollama (healthy) -> model-pull (downloads the LLM once into the
-# named volume, then exits) -> api (healthy only after the model is present).
+# named volume, then exits) and embedder-pull (puts the BGE-M3 files, ~2.3 GB, into the embed-models volume
+# once, then exits) -> api (healthy only after both models are present, BGE-M3 is loaded and the search index
+# is ready).
+#
+# Offline / flaky network, optional, both default to an empty folder (then everything is downloaded):
+#   MEDRAG_WHEELS_DIR  folder with wheels (torch CPU, transformers, ...) used by the image build instead of downloading
+#   MEDRAG_EMBED_SRC   folder with the BGE-M3 files (see README); copied into the embed-models volume, not downloaded
 
 services:
   ollama:
@@ -46,12 +52,29 @@ services:
         fi
     restart: "no"
 
+  embedder-pull:
+    build: &api-build
+      context: .
+      additional_contexts:
+        wheels: ${MEDRAG_WHEELS_DIR:-./docker/wheels-none}
+    image: medrag-api
+    command: ["python", "-m", "medrag.modelstore"]
+    environment:
+      MEDRAG_EMBED_SEED: /seed
+    volumes:
+      - embed-models:/models
+      - ${MEDRAG_EMBED_SRC:-./docker/embed-seed-none}:/seed:ro
+    restart: "no"
+
   api:
-    build: .
+    build: *api-build
+    image: medrag-api
     depends_on:
       ollama:
         condition: service_healthy
       model-pull:
+        condition: service_completed_successfully
+      embedder-pull:
         condition: service_completed_successfully
     environment:
       MEDRAG_KB_DIR: /kb
@@ -73,19 +96,26 @@ services:
       MEDRAG_DECODE_TOK_S: ${MEDRAG_DECODE_TOK_S:-53}
       MEDRAG_LLM_MARGIN_S: ${MEDRAG_LLM_MARGIN_S:-2.5}
       MEDRAG_USAGE_HEADER: ${MEDRAG_USAGE_HEADER:-0}
+      MEDRAG_RETRIEVER: ${MEDRAG_RETRIEVER:-hybrid}
+      MEDRAG_MIN_DENSE: ${MEDRAG_MIN_DENSE:-0.5}
+      MEDRAG_EMBED_THREADS: ${MEDRAG_EMBED_THREADS:-4}
     volumes:
       - ./data:/kb:ro
       - sessions:/var/lib/medrag  # Sessions (SQLite) survive restarts and rebuilds of the api
+      - embed-models:/models:ro   # BGE-M3 files, put there once by embedder-pull
+      - index:/index              # the search index, rebuilt only when a KB Document or the model changes
     ports:
       - "8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 60  # loading BGE-M3 and, the first time, embedding the 113 Sections takes about a minute on the CPU
       start_period: 10s
     restart: unless-stopped
 
 volumes:
   ollama-models:
   sessions:
+  embed-models:
+  index:

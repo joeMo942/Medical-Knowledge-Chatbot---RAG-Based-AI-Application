@@ -8,6 +8,8 @@ states a dose-like amount missing from its cited Sections becomes the fixed Dose
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
 import unicodedata
 from typing import Any, Literal
@@ -18,12 +20,14 @@ from .dosecheck import unsupported_amounts
 from .escalation import ESCALATION_TEXT
 from .gate import LLMGate
 from .llm import LLMTruncated
-from .models import Line, Section
+from .models import PATH_SEPARATOR, Line, Section
 from .retrieval import STOP_WORDS, tokenize
 from .routing import TRIGGERS, effective_trigger
 from .rules import normalize
 from .support import SupportCheck, stem
 from .support import tokens as support_tokens
+
+log = logging.getLogger("medrag")
 
 Status = Literal["answered", "out_of_scope", "escalated"]
 Language = Literal["ar", "en", "mixed"]
@@ -86,6 +90,9 @@ SYSTEM_PROMPT = (
     "Reply in the language of the question (Arabic or English); keep drug names in English. "
     "Be concise: answer only what was asked, in at most about 120 words; keep any list short "
     "(the most relevant items only) and do not repeat the sections back. "
+    "Exception: when asked for alternatives (other Trade Names of the same drug), list EVERY Trade Name "
+    "that the sections show with the same Active Ingredient, each once, and never a drug with a different "
+    "Active Ingredient, even from the same class. "
     "Decide the status like this. If the sections state ANYTHING that answers part of the question, set "
     "status to \"answered\": give only that part, then add one plain sentence saying which part is not in "
     "the knowledge base (for example the price, or a second question). Set status to \"out_of_scope\", "
@@ -289,7 +296,26 @@ def _pick_snippet(given: str, section: Section, hints: str) -> str | None:
     return _repair(section, hints, given)
 
 
-def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Section, Citation]]:
+_KB_ID = re.compile(r"^(KB-\d{2})(?!\d)")
+
+
+def _by_prefix(section_id: Any, snippet: str, sections: list[Section], known: frozenset[str]) -> Section | None:
+    """A small model often garbles a long section_id: only "KB-03", or "KB-04 > Pharyngitis > Analgesics" with the
+    heading translated. If it starts with the KB ID of retrieved Sections, it names the one retrieved Section of that
+    Document that holds the snippet word for word. Never when the ID is the exact ID of a real Section that was not
+    retrieved (`known`: every Section of the KB), when no retrieved Section of that Document holds the snippet, or when
+    two do: the Citation must always point to a retrieved Section, and the snippet is what proves which."""
+    if not isinstance(section_id, str) or section_id.strip() in known:
+        return None
+    m = _KB_ID.match(section_id.strip())
+    if not m:
+        return None
+    same = [s for s in sections if s.kb_id == m.group(1) and is_valid_snippet(snippet, s)]
+    return same[0] if len(same) == 1 else None
+
+
+def build_cited(raw: Any, sections: list[Section], hints: str,
+                known: frozenset[str] = frozenset()) -> list[tuple[Section, Citation]]:
     """Each valid Citation with the retrieved Section it points to."""
     by_id = {s.section_id: s for s in sections}
     out: list[tuple[Section, Citation]] = []
@@ -297,11 +323,11 @@ def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Sec
     for c in raw if isinstance(raw, list) else []:
         if not isinstance(c, dict):
             continue
-        sec = by_id.get(c.get("section_id"))
-        if sec is None:
-            continue  # not a retrieved Section: drop it
         given = c.get("snippet")
         given = given if isinstance(given, str) else ""
+        sec = by_id.get(c.get("section_id")) or _by_prefix(c.get("section_id"), given, sections, known)
+        if sec is None:
+            continue  # not a retrieved Section: drop it
         snippet = _pick_snippet(given, sec, hints)
         if snippet is None or (sec.section_id, snippet) in seen:
             continue
@@ -310,8 +336,8 @@ def build_cited(raw: Any, sections: list[Section], hints: str) -> list[tuple[Sec
     return out
 
 
-def build_citations(raw: Any, sections: list[Section], hints: str) -> list[Citation]:
-    return [c for _, c in build_cited(raw, sections, hints)]
+def build_citations(raw: Any, sections: list[Section], hints: str, known: frozenset[str] = frozenset()) -> list[Citation]:
+    return [c for _, c in build_cited(raw, sections, hints, known)]
 
 
 def escalated(trigger: str, language: str) -> ChatResponse:
@@ -337,13 +363,15 @@ async def answer_question(
     """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller).
     `backstop`: the routing call did not run, so the answer call also classifies the message.
     `support`: the support check (support.py); without it every valid Citation is accepted."""
-    if not sections:  # nothing lexically related: no reason to ask the model
+    if not sections:  # nothing related: no reason to ask the model
+        log.info("out_of_scope: nothing retrieved")
         return out_of_scope(language)
     system = SYSTEM_PROMPT + BACKSTOP_PROMPT if backstop else SYSTEM_PROMPT
     try:
         result = await llm.complete_json(system, build_prompt(question, sections), answer_schema(backstop), deadline)
     except LLMTruncated:
         # The reply hit the output cap: it is incomplete, so nothing of it is shown.
+        log.info("out_of_scope: the reply hit the output cap")
         return out_of_scope(language)
     raw = result.data
     if backstop:
@@ -353,7 +381,8 @@ async def answer_question(
     answer = raw.get("answer")
     answer = answer.strip() if isinstance(answer, str) else ""
     if raw.get("status") == "answered" and answer:
-        cited = build_cited(raw.get("citations"), sections, f"{question} {answer}")
+        cited = build_cited(raw.get("citations"), sections, f"{question} {answer}",
+                            support.section_ids if support is not None else frozenset())
         if cited:
             cited_sections = list({s.section_id: s for s, _ in cited}.values())
             cited_text = "\n".join(s.render() for s in cited_sections)
@@ -363,7 +392,10 @@ async def answer_question(
                 return escalated("dose", language)
             if support is not None and not support.supported(question, cited_sections):
                 # Real Sections, but none of them is about what was asked (drug names alone do not count).
+                log.info("out_of_scope: the support check refused the cited Sections")
                 return out_of_scope(language)
             return ChatResponse(answer=answer, citations=[c for _, c in cited], status="answered", language=language)
     # out_of_scope, or answered without a valid Citation (contract invariant).
+    log.info("out_of_scope: the model said %r%s; reply: %.700s", raw.get("status"), "" if answer else " with no answer",
+             json.dumps(raw, ensure_ascii=False))
     return out_of_scope(language)
