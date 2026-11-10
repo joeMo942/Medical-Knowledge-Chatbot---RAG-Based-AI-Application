@@ -139,6 +139,22 @@ Query parameters, all optional: `since` (inclusive) and `until` (exclusive), ISO
 
 No real patient data is stored: this project has none, and the logged messages are test and demo questions about the Knowledge Base.
 
+## Hand-off
+
+When a question is Escalated, the chat page shows a form below the reply (never on Answered or Out of Scope replies): a summary pre-filled from what the user typed in the Session (editable, at most 2000 characters), a contact field, and a note that only what they type is stored. For an Emergency the reply still starts with the instruction to call 123 or go to the emergency department; the form comes after it and is not focused. The form is in Arabic for `ar` and `mixed` replies, English otherwise. After sending it is replaced by a confirmation; an error is shown in the form.
+
+`POST /handoff` is separate from `/chat` (whose contract is unchanged). The Session comes from the `X-Session-Id` header, as for `/chat`; the body is `{"summary": "...", "contact": "..."}` (summary 1-2000 characters, contact 3-200, both after trimming; no control characters; the body at most 16 KB, else 413). Answer 201 `{"id", "session_id", "created_at"}`.
+
+```
+curl -X POST localhost:8000/handoff -H "Content-Type: application/json" -H "X-Session-Id: $SID"   -d '{"summary": "Synthetic test: child swallowed tablets", "contact": "test@example.invalid"}'
+```
+
+- **The gate.** A hand-off is accepted only if the Session has an Escalated turn among its stored turns (409 `no escalated question in this session` otherwise, also for an unknown Session; no or unusable header: 400), and at most 5 per Session (then 409). So the endpoint is not a free-text drop box. A failed write is a 500 to the hand-off request (the user must know it was not saved); `/chat` is not affected.
+- **What is stored.** Table `handoffs` in the Sessions SQLite file (created on start if missing; Session pruning never deletes it): Session ID, time, the summary and contact exactly as typed, the escalation kind of the Session's latest Escalated turn (`emergency`, `dose`, `diagnosis`, `treatment_decision`; read from the fixed reply text) and its language label. Nothing else.
+- **Where it shows.** `GET /admin/analytics` has `handoffs` (`count` in the window and the most recent `limit`, newest first, honouring `since` / `until` / `limit`); `GET /admin/handoffs` returns the same object. Both need the admin token. Each item has `id`, `session_id`, `created_at`, `kind`, `language`, `summary`, `contact`.
+
+Test data is synthetic: no real patient data is used or needed.
+
 ## Admin page
 
 `/admin` is a page for uploading, replacing and deleting KB Documents without touching code; changes are in the next answer. The page itself needs no token: it asks for `MEDRAG_ADMIN_TOKEN`, keeps it in `sessionStorage` (this tab only) and sends it as the Bearer header.

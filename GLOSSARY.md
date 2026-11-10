@@ -57,10 +57,14 @@ _Avoid_: rejected, unanswerable, refused
 
 **Escalated**:
 The question is an Emergency or asks for a Dose, a Diagnosis or a Treatment Decision; the reply says what to do next without giving medical advice. Takes precedence over Answered and Out of Scope.
-_Avoid_: refused, blocked, handed off
+_Avoid_: refused, blocked
 
 **Emergency**:
 A message describing red-flag symptoms or an acutely unwell person (e.g. severe breathlessness with blue lips), regardless of whether the drug mentioned is in the Knowledge Base.
+
+**Hand-off**:
+After an Escalated reply, a summary and contact details that the user chooses to leave, stored with their Session so a pharmacist or physician can follow up. It never replaces or delays the Escalated reply's advice (for an Emergency: call 123 or go to the emergency department).
+_Avoid_: referral, ticket, callback
 
 **Diagnosis**:
 A request to decide what condition a specific person has.

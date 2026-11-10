@@ -13,6 +13,11 @@
   blockquote { margin: .3rem 0 0; padding-left: .6rem; border-inline-start: 3px solid #999; font-size: .85rem; }
   form { display: flex; gap: .5rem; } input { flex: 1; padding: .6rem; font-size: 1rem; }
   button { padding: .6rem 1rem; font-size: 1rem; }
+  .handoff { display: block; margin: .6rem 0; padding: .6rem .8rem; border: 1px solid #bbb; border-radius: .5rem; }
+  .handoff label { display: block; font-weight: 600; margin: .4rem 0 .2rem; }
+  .handoff textarea, .handoff input { width: 100%; box-sizing: border-box; padding: .5rem; font-size: 1rem; font-family: inherit; }
+  .handoff textarea { min-height: 6rem; } .handoff .note { font-size: .8rem; color: #555; margin: .4rem 0; }
+  .handoff .err { color: #b00020; margin: .4rem 0; } .handoff.done { background: #e6f4ea; }
 </style>
 </head>
 <body>
@@ -22,7 +27,45 @@
 <button>Send</button></form>
 <script>
 let sid = null;
-const log = document.getElementById("log"), q = document.getElementById("q");
+const typed = [];  // what the user has sent in this Session, as the page shows it
+const SUMMARY_MAX = 2000;
+const HANDOFF_TEXT = {
+  en: {dir: "ltr", intro: "Leave a summary and your contact so a pharmacist or physician can follow up",
+       summary: "Summary of the situation", contact: "Phone or email", note: "Only what you type here is stored.",
+       send: "Send", sending: "Sending...", done: "Thank you. A pharmacist or physician will follow up.",
+       fail: "Could not send: "},
+  ar: {dir: "rtl", intro: "اترك ملخصًا عن الحالة وبيانات التواصل ليتابع معك صيدلي أو طبيب",
+       summary: "ملخص الحالة", contact: "رقم الهاتف أو البريد الإلكتروني", note: "يتم حفظ ما تكتبه هنا فقط.",
+       send: "إرسال", sending: "جارٍ الإرسال...", done: "شكرًا لك. سيتابع معك صيدلي أو طبيب.",
+       fail: "تعذّر الإرسال: "},
+};
+// The hand-off form of an Escalated reply: built after the reply is on the page, appended below it, never focused.
+let formCount = 0;
+function handoffForm(language, session) {  // `session`: the Session of the reply this form belongs to
+  const n = ++formCount;  // unique ids: a later Escalated reply gets its own labels
+  const t = HANDOFF_TEXT[language === "ar" || language === "mixed" ? "ar" : "en"];
+  const form = document.createElement("form"); form.className = "handoff"; form.dir = t.dir;
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
+  const area = el("textarea"); area.id = "hs" + n; area.maxLength = SUMMARY_MAX; area.dir = "auto";
+  area.value = typed.join("\n").slice(-SUMMARY_MAX);  // newest last; the oldest is cut when too long
+  const contact = el("input"); contact.id = "hc" + n; contact.dir = "auto"; contact.maxLength = 200; contact.autocomplete = "off";
+  const sum = el("label", t.summary); sum.htmlFor = area.id;
+  const con = el("label", t.contact); con.htmlFor = contact.id;
+  const err = el("div", "", "err"), send = el("button", t.send); send.type = "submit";
+  form.append(el("div", t.intro), sum, area, con, contact, el("div", t.note, "note"), err, send);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault(); err.textContent = ""; send.disabled = true; send.textContent = t.sending;
+    try {
+      const r = await fetch("/handoff", {method: "POST", headers: {"Content-Type": "application/json", "X-Session-Id": session},
+                                         body: JSON.stringify({summary: area.value, contact: contact.value})});
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.status);
+      form.replaceChildren(el("div", t.done)); form.className = "handoff done";
+    } catch (x) { err.textContent = t.fail + (x.message || x); send.disabled = false; send.textContent = t.send; }
+  });
+  return form;
+}
+const log = document.getElementById("log"), q = document.getElementById("q"), sendBtn = document.querySelector("#f button");
 function add(cls, text) {
   const d = document.createElement("div"); d.className = "msg " + cls; d.dir = "auto";
   d.textContent = text; log.appendChild(d); return d;
@@ -30,7 +73,8 @@ function add(cls, text) {
 document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = q.value.trim(); if (!message) return;
-  q.value = ""; add("user", message);
+  q.value = ""; add("user", message); typed.push(message);
+  q.disabled = sendBtn.disabled = true;  // one /chat request at a time
   const bot = add("bot", "...");
   try {
     const r = await fetch("/chat", {
@@ -38,7 +82,8 @@ document.getElementById("f").addEventListener("submit", async (e) => {
       headers: Object.assign({"Content-Type": "application/json"}, sid ? {"X-Session-Id": sid} : {}),
       body: JSON.stringify(sid ? {message, session_id: sid} : {message}),
     });
-    sid = r.headers.get("X-Session-Id") || sid;
+    const rsid = r.headers.get("X-Session-Id") || sid;  // this reply's own Session, for its hand-off form
+    sid = rsid;
     const data = await r.json();
     if (!r.ok) { bot.textContent = "Error: " + (data.error || r.status); return; }
     bot.textContent = data.answer;
@@ -49,7 +94,9 @@ document.getElementById("f").addEventListener("submit", async (e) => {
       b.textContent = c.doc_id + " - " + c.title + " > " + c.section + ": " + c.snippet;
       bot.appendChild(b);
     }
+    if (data.status === "escalated") log.appendChild(handoffForm(data.language, rsid));
   } catch (err) { bot.textContent = "Error: " + err; }
+  finally { q.disabled = sendBtn.disabled = false; }
 });
 </script>
 </body>
