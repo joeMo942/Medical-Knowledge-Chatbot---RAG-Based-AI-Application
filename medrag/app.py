@@ -21,6 +21,7 @@ from .analytics import ERROR, AnalyticsLog, Window
 from .answering import ChatResponse
 from .config import EMBEDDING_PLACEHOLDER, Settings
 from .gate import Busy, LLMGate
+from .handoff import MAX_BODY_BYTES, HandoffLog, InvalidHandoff, NotEscalated, validate as validate_handoff
 from .ingest import kb_dir, kb_files_hash, load_knowledge_base
 from .kbmanager import Busy as KBBusy, KBManager, KBSnapshot, NotFound, NotReady, open_store
 from .kbstore import MAX_UPLOAD_BYTES, InvalidDocument, KBStore, check_kb_id
@@ -183,6 +184,7 @@ def create_app(
     manager = KBManager(KBSnapshot.build(tuple(documents or ()), retriever, tuple(sections)), kb_store)
     store = SessionStore(settings.sessions_db)
     analytics = AnalyticsLog(store)
+    handoffs = HandoffLog(store)
     admin = Depends(admin_guard(settings.admin_token))
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
@@ -285,7 +287,48 @@ def create_app(
         if not 1 <= limit <= 1000:
             raise HTTPException(400, "'limit' must be between 1 and 1000")
         window = Window(_parse_time("since", since), _parse_time("until", until))
-        return JSONResponse(await asyncio.to_thread(analytics.report, window, bucket, limit))
+        report = await asyncio.to_thread(analytics.report, window, bucket, limit)
+        report["handoffs"] = await asyncio.to_thread(handoffs.listing, window, limit)
+        return JSONResponse(report)
+
+    @app.get("/admin/handoffs", dependencies=[admin])
+    async def admin_handoffs(since: str | None = None, until: str | None = None, limit: int = 10) -> JSONResponse:
+        if not 1 <= limit <= 1000:
+            raise HTTPException(400, "'limit' must be between 1 and 1000")
+        window = Window(_parse_time("since", since), _parse_time("until", until))
+        return JSONResponse(await asyncio.to_thread(handoffs.listing, window, limit))
+
+    @app.post("/handoff")
+    async def handoff(request: Request) -> JSONResponse:
+        session_id = request.headers.get("x-session-id")
+        if not session_id or store.resolve(session_id) != session_id:
+            return _error(400, "the X-Session-Id header is required (the Session of the escalated question)")
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+            return _error(413, "request body too large", session_id)
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_BODY_BYTES:
+                return _error(413, "request body too large", session_id)
+            chunks.append(chunk)
+        try:
+            body = json.loads(b"".join(chunks))
+        except ValueError:
+            return _error(400, "request body must be JSON", session_id)
+        if not isinstance(body, dict):
+            return _error(400, "request body must be a JSON object", session_id)
+        try:
+            summary, contact = validate_handoff(body)
+            stored = await asyncio.to_thread(handoffs.add, session_id, summary, contact)
+        except InvalidHandoff as exc:
+            return _error(400, str(exc), session_id)
+        except NotEscalated as exc:
+            return _error(409, str(exc), session_id)
+        except Exception:
+            log.exception("could not store the hand-off")
+            return _error(500, "the hand-off could not be saved, please try again", session_id)
+        return JSONResponse(stored, status_code=201, headers={"X-Session-Id": session_id})
 
     def need_store() -> None:
         if not manager.enabled:
