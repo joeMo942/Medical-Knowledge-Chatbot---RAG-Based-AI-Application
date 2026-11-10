@@ -19,7 +19,9 @@ from .textnorm import has_arabic, normalize
 # a word ("omega3", "type2") or a unit or ordinal ("5mcg", "2nd", "3ml") is not one.
 _NOT_FRANCO = frozenset("""mg mgs mcg mgm ml gm kg iu nd rd th st mmol tablet tablets tab tabs pill pills cap caps capsule capsules
 time times day days hour hours week weeks month months year years dose doses drop drops puff puffs unit units sachet
-sachets box boxes bottle bottles strip strips pack packs ampoule ampoules injection injections""".split())
+sachets box boxes bottle bottles strip strips pack packs ampoule ampoules injection injections
+am pm hr hrs h yo y yr yrs lb lbs wk wks min mins sec secs mo mos x fu""".split())
+NOT_FRANCO = _NOT_FRANCO  # also the units a number may carry (support.is_number)
 _WORD = re.compile(r"[a-z0-9]+")
 # Words that are Franco-Arabic and not English; two of them make a message mixed.
 FRANCO_WORDS = frozenset("""
@@ -46,7 +48,10 @@ def _is_franco_digit_word(w: str) -> bool:
     if trailing:
         return True
     m = re.fullmatch(r"([a-z]{0,12})([235-9])([a-z]{2,12})[0-9]?", w)
-    return bool(m) and m.group(3) not in _NOT_FRANCO
+    if not m or m.group(3) in _NOT_FRANCO:
+        return False
+    # a digit in front of a word is Franco only when the word has a vowel ("3andy", "7amel", "2alb"), not "3pm", "6hrs", "5lbs"
+    return bool(m.group(1)) or any(v in m.group(3) for v in "aeiouy")
 
 
 def franco_marks(message: str) -> tuple[int, int]:

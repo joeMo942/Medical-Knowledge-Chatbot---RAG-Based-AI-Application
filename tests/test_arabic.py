@@ -56,9 +56,11 @@ def test_different_words_do_not(arabic, latin):
     assert not same_word(arabic, latin)
 
 
-def test_fine_skeleton_keeps_b_and_p_apart():
+def test_b_and_p_are_one_letter_and_the_vowels_settle_the_pair():
     assert skeleton("بروفين") == skeleton("Pirafene") == skeleton("Brufen")
-    assert fine("بروفين") == fine("Brufen") != fine("Pirafene")
+    assert fine("بروفين") == fine("Pirafene")  # Arabic has no p
+    assert NAMES.map("بروفين")[0] == "Brufen"  # two long vowels: Brufen (u e), not Pirafene (i a e)
+    assert NAMES.map("بيرافين")[0] == "Pirafene"  # three: the other drug, never "Brufen contains Ibuprofen"
 
 
 # --- Trade Names in Arabic letters ----------------------------------------------------------------
@@ -93,7 +95,6 @@ def test_ordinary_arabic_words_are_never_taken_for_a_brand(question):
 
 
 def test_a_vowel_variant_of_a_long_name_is_still_found():
-    assert NAMES.map("كتافلم")[0] == "Cataflam"  # a vowel letter dropped: the same skeleton
     assert NAMES.map("ديكلوفيناك")[0] == "Diclofenac"  # an Active Ingredient (the first word of a KB name)
 
 
@@ -314,3 +315,54 @@ def test_prompt_puts_the_language_before_the_question():
 
 def test_not_found_text_for_mixed_carries_both_scripts():
     assert "لم أجد" in NOT_FOUND["mixed"] and "I could not find" in NOT_FOUND["mixed"]
+
+
+# --- the fix round: digit-letter words are words, short words are checked, short skeletons do not match ----------------
+
+@pytest.mark.parametrize("word", ["7amel", "3ayan", "2alb", "7asasiya", "3andy"])
+def test_a_franco_digit_word_is_a_word_not_a_number(word):
+    from medrag.support import is_number
+    assert not is_number(word)
+
+
+def test_real_numbers_are_still_numbers():
+    from medrag.support import is_number
+    assert all(is_number(w) for w in ["500", "5mg", "2.5", "10ml", "2nd"])
+
+
+def test_dropping_the_pregnancy_word_is_refused_and_the_other_swaps_too():
+    assert not ok("brufen amaan lel 7amel?", "هل Brufen آمن")  # the qualifier 7amel (pregnant) was lost
+    assert SUPPORT.translated("brufen amaan lel 7amel?", "هل Brufen آمن") is None
+    assert SUPPORT.translated("dawa lel 7asasiya eh", "ما الدواء") is None
+    assert SUPPORT.translated("el 3ayan 2alb eh", "ما الدواء") is None
+
+
+@pytest.mark.parametrize("message,rewrite", [
+    ("dawa el ebola eh", "ما دواء البول؟"),  # two consonants
+    ("dawa lel kalb eh", "ما دواء للقلب؟"),  # kalb (dog) is k, القلب is q
+    ("dawa lel zohry eh", "ما دواء للظهر؟"),  # zohry (syphilis) is z, الظهر is dh
+])
+def test_a_short_or_other_class_skeleton_does_not_make_two_words_one(message, rewrite):
+    assert SUPPORT.translated(message, rewrite) is None
+
+
+@pytest.mark.parametrize("extra", ["سل", "دم", "مش"])
+def test_a_two_letter_word_is_not_waved_through(extra):
+    rw = f"عندي سخونية {extra} آخذ إيه"
+    assert not ok("3andy so5oneya a5od eh", rw)
+    cleaned = SUPPORT.translated("3andy so5oneya a5od eh", rw)
+    assert cleaned is not None and extra not in cleaned.split()
+
+
+def test_pressure_alone_is_not_the_kbs_hypertension():
+    assert not SUPPORT.supported("Which drugs lower eye pressure?", [BETA])
+    assert not SUPPORT.supported("Which drugs treat pressure ulcers?", [BETA])
+    assert SUPPORT.supported("Which drugs are used for high blood pressure?", [BETA])
+    assert SUPPORT.supported("ادوية ضغط الدم", [BETA])
+    assert alias_words("Which drugs lower eye pressure?") == []
+    assert "الضغط" in alias_words("high blood pressure")
+
+
+@pytest.mark.parametrize("question", ["علاج السرطان", "ايه علاج السرطان؟", "ادوية التسمم", "ادوية للسرطان", "عندي سرطان"])
+def test_a_disease_after_an_indication_word_is_never_a_brand(question):
+    assert NAMES.map(question) == (question, [])

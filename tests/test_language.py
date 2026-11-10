@@ -37,3 +37,16 @@ def test_refine_needs_the_router_and_a_franco_mark_of_the_messages_own():
     assert refine("en", "What is Panadol", "mixed") == "en"  # the router alone never relabels English
     assert refine("ar", "ايه كتافلام", "mixed") == "ar"
     assert refine("en", "ezay astakhdem Panadol", None) == "en"
+
+
+@pytest.mark.parametrize("message", [
+    "Can I take Panadol at 3pm?", "Is Brufen ok every 6hrs?", "My 6yo has a fever", "Is 5lbs weight gain a side effect of Zyrtec?",
+    "Panadol 2am", "Which drugs contain 5fu", "Take it every 8h for 5days", "A 3yr old with 2x daily Brufen", "At 10mins, 30secs",
+])
+def test_english_times_ages_and_weights_are_not_franco(message):
+    assert detect_language(message) == "en"
+
+
+@pytest.mark.parametrize("message", ["brufen amaan lel 7amel?", "dawa lel 7asasiya eh", "el 3ayan 2alb", "7amel 3ayan", "3andy so5oneya a5od"])
+def test_franco_digit_words_still_count(message):
+    assert detect_language(message) == "mixed"

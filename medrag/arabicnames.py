@@ -30,9 +30,20 @@ from .translit import allowed_distance, distance, fine, skeleton
 _ARABIC_RUN = re.compile(  # letters and marks, not the Arabic comma, semicolon, question mark or digits
     r"[\u0621-\u063A\u0640-\u065F\u066E-\u06D3\u06FA-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+")
 _ARABIC_WORD = re.compile(r"[\u0600-\u06FF]")
-_CLITICS = ("وبال", "وال", "بال", "كال", "فال", "لل", "ال", "و", "ب", "ل", "ف", "ك")
+_CLITICS = ("وبال", "وال", "بال", "لل", "ال", "و", "ب", "ل")
+_ARTICLE_PREFIXES = ("وبال", "وال", "بال", "لل")
+_AL_NAMES = ("al", "el", "ol", "ul", "il")  # the names whose own first syllable may be spelled ال
+_CONTEXT = ("عندي", "مريض", "مريضه", "بسبب", "اعراض")
 MIN_EXACT = 4  # consonants a skeleton needs to match at all (three: "قرص" is not Eucreas, "كثير" is not Cozaar)
 MAX_WORDS = 3
+
+
+def _latin_vowels(name: str) -> int:
+    """The vowel letters of a Latin name, a silent final e (Pirafene) not counted."""
+    n = 0
+    for w in name.lower().split():
+        n += sum(w.count(c) for c in "aeiouy") - (1 if len(w) > 3 and w.endswith("e") else 0)
+    return n
 
 
 def arabic_common_words(sections: list[Section] | tuple[Section, ...]) -> frozenset[str]:
@@ -52,6 +63,7 @@ class ArabicNames:
     def __init__(self, drugs: DrugIndex, common_words: frozenset[str] = frozenset()):
         """`common_words`: normalised Arabic words that are never brands (the frame, aspect and Alternatives words)."""
         self._common = common_words
+        self._context = frozenset(normalize(w) for w in (*INDICATION, *_CONTEXT))
         # skeleton -> [(display name, identity)]; identity is what the name IS (its Active Ingredient component
         # names), so two names of one ingredient are not ambiguous with each other
         self._index: dict[str, list[tuple[str, frozenset[str]]]] = {}
@@ -72,59 +84,84 @@ class ArabicNames:
         if len(sk.replace(" ", "")) >= MIN_EXACT:
             self._index.setdefault(sk, []).append((name, ident))
 
-    def _variants(self, word: str) -> list[str]:
-        out = [word]
+    def _forms(self, word: str) -> list[tuple[str, bool, str]]:
+        """The forms of one normalised Arabic word to try: (form, may keep a leading ل as the brand's own L, prefix).
+
+        The article is stripped before matching, so the ل of ال never supplies the "l" of an L- or Al- brand
+        (السرطان is not Losartan); the unstripped word is tried only for names that begin with Al-/El-/Ol-.
+        A single-letter clitic (ب ل و) is tried both ways, since brands begin with those letters too; the letters
+        ف and ك are not clitics here (they would eat the first letter of a brand)."""
+        out = [(word, False, "")]
+        article = any(word.startswith(a) for a in _ARTICLE_PREFIXES)
         for p in _CLITICS:
-            if word.startswith(p) and len(word) - len(p) >= 3 and word[len(p):] not in out:
-                out.append(word[len(p):])
+            if article and len(p) == 1:
+                continue  # لل = ل + ال: the ل is not a clitic of its own
+            if word.startswith(p) and len(word) - len(p) >= 3:
+                out.append((word[len(p):], False, p))
+        if word.startswith("ال"):
+            out[0] = (word, True, "")  # the article's ل may only be the L of an Al-/El- name
+        elif any(word.startswith(p) for p in _ARTICLE_PREFIXES):
+            out = out[1:]  # بال, وال, لل ...: the unstripped word is article + word, never a brand
         return out
 
     def _lookup(self, words: list[str]) -> str | None:
         """The KB name for these normalised Arabic words (one word, or a phrase), or None."""
-        if any(w in self._common for w in words):
+        forms0 = self._forms(words[0])
+        # An ordinary word is never a brand: not if ANY of its forms (with or without article or clitic) is a word of the
+        # KB's Arabic text or a frame word.
+        if any(f in self._common for w in words[1:] for f, _, _ in self._forms(w)) or any(
+                f in self._common for f, _, _ in forms0):
             return None
-        found: list[tuple[int, int, str, frozenset[str]]] = []  # (skeleton distance, fine distance, name, identity)
-        for variant in self._variants(words[0]):  # the clitics of the first word only
-            if variant in self._common:
-                continue
-            phrase = " ".join([variant, *words[1:]])
+        found: list[tuple[int, int, int, str, frozenset[str]]] = []  # (skeleton, vowel, fine distance, name, identity)
+        for form, article_l, _prefix in forms0:
+            phrase = " ".join([form, *words[1:]])
             sk = skeleton(phrase)
             if len(sk.replace(" ", "")) < MIN_EXACT:
                 continue
+            budget = allowed_distance(sk)
             if sk in self._index:
                 near = [(0, name, ident) for name, ident in self._index[sk]]
             else:
-                budget = allowed_distance(sk)
                 near = []
                 if budget:
                     for esk, name, ident in self._flat:
                         if abs(len(esk) - len(sk)) <= budget and (d := distance(sk, esk)) <= budget:
                             near.append((d, name, ident))
+            if article_l:
+                near = [n for n in near if n[1].lower().startswith(_AL_NAMES)]
+            av = sum(phrase.count(c) for c in "اوي")  # long-vowel letters of the Arabic spelling
             fp = fine(phrase)
-            found += [(d, distance(fp, fine(name)), name, ident) for d, name, ident in near]
+            for d, name, ident in near:
+                lv = _latin_vowels(name)
+                if av < (lv + 1) // 2:  # a brand is written with its vowels: لسرطان has one, Losartan three
+                    continue
+                found.append((d, abs(av - lv), distance(fp, fine(name)), name, ident))
         if not found:
             return None
-        found.sort(key=lambda f: f[:2])
-        top = [f for f in found if f[:2] == found[0][:2]]
-        return top[0][2] if len({f[3] for f in top}) == 1 else None
+        found.sort(key=lambda f: f[:3])
+        top = [f for f in found if f[:3] == found[0][:3]]
+        return top[0][3] if len({f[4] for f in top}) == 1 else None
 
     def map(self, text: str) -> tuple[str, list[Replacement]]:
         """`text` with each Trade Name or Active Ingredient written in Arabic letters replaced by the KB's spelling, and
-        the replacements made. Nothing else in the text changes."""
+        the replacements made. Nothing else in the text changes. A word right after an indication word (علاج, دواء, ادوية,
+        مرض ...) or after عندي / مريض names a condition, not a brand, and is never mapped."""
         runs = list(_ARABIC_RUN.finditer(text))
         out: list[str] = []
         done: list[Replacement] = []
         pos, i = 0, 0
         while i < len(runs):
             hit = None
-            for n in range(min(MAX_WORDS, len(runs) - i), 0, -1):
-                group = runs[i:i + n]
-                if any(text[a.end():b.start()] != " " for a, b in zip(group, group[1:])):
-                    continue
-                name = self._lookup([normalize(m.group()) for m in group])
-                if name:
-                    hit = (n, name)
-                    break
+            prev = normalize(runs[i - 1].group()) if i and text[runs[i - 1].end():runs[i].start()] == " " else ""
+            if not (prev and any(f in self._context for f, _, _ in self._forms(prev))):
+                for n in range(min(MAX_WORDS, len(runs) - i), 0, -1):
+                    group = runs[i:i + n]
+                    if any(text[a.end():b.start()] != " " for a, b in zip(group, group[1:])):
+                        continue
+                    name = self._lookup([normalize(m.group()) for m in group])
+                    if name:
+                        hit = (n, name)
+                        break
             if hit:
                 n, name = hit
                 start, end = runs[i].start(), runs[i + n - 1].end()

@@ -69,12 +69,12 @@ def skeleton(text: str, ayn: bool = False) -> str:
 
 
 _AR_FINE = {"ث": "s", "ذ": "z", "ز": "z", "ش": "s", "ص": "s", "ض": "d", "ظ": "z", "ق": "k", "ج": "g", "غ": "g", "خ": "k", "ح": "h",
-            "چ": "s", "گ": "g", "ڤ": "v", "پ": "p"}
+            "چ": "s", "گ": "g", "ڤ": "v", "پ": "b"}
 
 
 def fine(text: str) -> str:
     """A finer skeleton for telling apart two names that share a coarse one (Brufen / Pirafene: b and p are one
-    class above, and Arabic has no p): the same reduction, but b p f v z s j g stay what they are."""
+    class above, and Arabic has no p): the same reduction, but f v z s j g stay what they are (b and p are one letter: Arabic has no p)."""
     out = []
     for w in re.findall(r"[^\W_]+", normalize(text)):
         if _ARABIC.search(w):
@@ -93,9 +93,53 @@ def fine(text: str) -> str:
                 elif c == "q":
                     letters.append("k")
                 elif c in "bpdtgjkfvszlmnrh":
-                    letters.append(c)
+                    letters.append("b" if c == "p" else c)  # Arabic has no p: ب is b or p, so the two are one letter here
             out.append(_collapse("".join(letters)))
     return " ".join(x for x in out if x)
+
+
+_AR_STRICT = {**_AR, "ق": "q", "خ": "x", "ظ": "Z", "ع": "3", "ث": "t", "ز": "z", "ذ": "z"}
+_FRANCO_STRICT = {"7": "h", "5": "x", "9": "q", "2": "q", "6": "t", "8": "g", "3": "3"}
+
+
+def strict_skeleton(text: str) -> str:
+    """The skeleton used to check that a translation is the SAME word: the coarse one with the letters Franco-Arabic
+    writes distinctly kept apart (ق is q / 9 / 2, never k; خ is x / 5 / kh; ظ is dh, never z; ع is 3)."""
+    words = []
+    for w in re.findall(r"[^\W_]+", normalize(text)):
+        if _ARABIC.search(w):
+            w = w[:-1] if w.endswith("ه") and len(w) > 3 else w
+            words.append(_collapse("".join(_AR_STRICT.get(c, "") for c in w)))
+            continue
+        for a, b in (("kh", "X"), ("dh", "Z"), ("gh", "G"), ("sh", "S"), ("ch", "S"), ("th", "T"), ("ph", "F"), ("ck", "K"), ("qu", "Q")):
+            w = w.replace(a, b)
+        w = w.replace("x", "KS")
+        out = []
+        for i, c in enumerate(w):
+            if c.isupper():
+                out.append({"X": "x", "Z": "Z", "G": "g", "S": "s", "T": "t", "F": "f", "K": "k", "Q": "q"}.get(c, c.lower()))
+            elif c == "c":
+                out.append("s" if w[i + 1:i + 2] in ("e", "i", "y") else "k")
+            elif c in _FRANCO_STRICT:
+                out.append(_FRANCO_STRICT[c])
+            elif c in "qz":
+                out.append(c)
+            elif c in _LATIN:
+                out.append(_LATIN[c])
+        words.append(_collapse("".join(out)))
+    return " ".join(x for x in words if x)
+
+
+def strict_same(a: str, b: str) -> bool:
+    """True when two words (any script) are the same word by the strict skeleton: equal, three consonants at least (two
+    only when a Franco digit-letter is among them: "3aly" ~ "عالي"), or one edit apart from six. It compares consonant
+    classes, so a few three-consonant words of different meaning can still collide."""
+    sa, sb = strict_skeleton(a), strict_skeleton(b)
+    n = len(sa.replace(" ", ""))
+    digit = any(ch.isdigit() for ch in a + b)
+    if sa == sb:
+        return n >= 3 or (n >= 2 and digit)
+    return n >= 6 and len(sb.replace(" ", "")) >= 6 and distance(sa, sb) <= 1
 
 
 def distance(a: str, b: str) -> int:
