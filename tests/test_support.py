@@ -476,3 +476,33 @@ def test_real_kb_indication_questions_and_the_fix_round_repros(real_kb):
                  ("مريض الكلى ياخد مسكن ايه", pick("KB-03", "NSAIDs –")), ("ادوية مسكنة لمرضى الكلى", pick("KB-03", "NSAIDs –")),
                  ("is Actos used for bladder cancer", tzd), ("هل اكتوس بيعالج سرطان المثانة", tzd)):
         assert check.supported(q, [s]), q
+
+
+YESNO_INDICATION = ["هل في دوا للسرطان؟", "هل في علاج للسرطان؟", "Is there a drug for cancer?",
+                    "Is there any medicine for bladder cancer?", "ينفع ادوية للسرطان؟", "ممكن علاج للسرطان",
+                    "Can you suggest a drug for cancer?"]
+
+
+@pytest.mark.parametrize("question", YESNO_INDICATION)
+def test_a_yes_no_indication_question_with_no_named_drug_is_still_an_indication_question(question):
+    assert not FIX_CHECK.supported(question, [TZD]), question
+
+
+def test_a_yes_no_modal_exempts_only_a_question_that_names_a_drug():
+    assert FIX_CHECK.supported("is Actos used for bladder cancer", [TZD])
+    assert FIX_CHECK.supported("Is Actos safe with bladder cancer?", [TZD])
+    assert FIX_CHECK.supported("هل اكتوس بيعالج سرطان المثانة", [TZD])
+
+
+@pytest.mark.kb
+def test_real_kb_yes_no_indication_questions_and_named_drugs(real_kb):
+    sections = [s for d in real_kb.values() for s in d.sections]
+    check = SupportCheck(sections)
+    tzd = next(s for s in sections if "Thiazolidinediones" in s.section)
+    for q in YESNO_INDICATION:
+        assert not check.supported(q, [tzd]), q
+    for q in ("هل اكتوس بيعالج سرطان المثانة", "is Actos used for bladder cancer"):
+        assert check.supported(q, [tzd]), q
+    assert check.supported("Can a pregnant patient take antibiotics?", [next(s for s in sections if s.kb_id == "KB-05" and "Tetracyclines" in s.section)])
+    brufen = next(s for s in sections if any("Brufen" in r.text for r in s.product_rows))
+    assert check.supported("Is Brufen safe in pregnancy?", [brufen])

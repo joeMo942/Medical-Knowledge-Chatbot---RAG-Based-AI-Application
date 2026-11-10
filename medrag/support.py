@@ -215,10 +215,10 @@ def asks_indication(question: str, named_drug: bool = False) -> bool:
     "What does a cancer patient take" asks the same thing: a patient word, a take word followed by a question word or
     nothing, and a question that is not a yes/no one."""
     if named_drug:
-        return False
+        return False  # a yes/no question about a named drug ("هل اكتوس بيعالج ...", "is Actos used for ...") is about that drug
     toks = tokens(question)
-    if not toks or toks[0] in _YESNO_FIRST or any(_is_risk_aspect(t) for t in toks):
-        return False  # a yes/no question ("هل اكتوس بيعالج ...") is about one drug, which may be written in Arabic letters
+    if not toks or any(_is_risk_aspect(t) for t in toks):
+        return False
     if any(t in _INDICATION_EN or t in _DRUG_WORDS or stem(t) in INDICATION for t in toks):
         return True
     if any(pair in _INDICATION_PAIRS for pair in zip(toks, toks[1:])):
@@ -227,7 +227,7 @@ def asks_indication(question: str, named_drug: bool = False) -> bool:
     if any(t == "ينفع" and (i >= 1 and toks[i - 1] in _QWORDS or i >= 2 and toks[i - 1] == "اللي" and toks[i - 2] in _QWORDS)
            for i, t in enumerate(toks)):
         return True
-    if any(t in _PATIENT for t in toks):
+    if toks[0] not in _YESNO_FIRST and any(t in _PATIENT for t in toks):
         for i, t in enumerate(toks):
             if t in _TAKE and (i + 1 == len(toks) or toks[i + 1] in _QWORDS):
                 return True
@@ -369,6 +369,8 @@ class SupportCheck:
         # Drug Class names (the headings of the class Sections): "Which drug class is it in?" is rewritten
         # to name the class or the drug, so both are words a rewrite may bring in from the history.
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}
+        self._sections = tuple(sections)
+        self._arabic_names = None  # built on the first Arabic-letter question
         self._kb = _Text("\n".join(s.render() for s in sections))
 
     def rewrite_ok(self, message: str, rewrite: str, *, from_history: bool = True, translate: bool = False) -> bool:
@@ -458,6 +460,21 @@ class SupportCheck:
         return [t for t in toks
                 if not (t in FRAME or t in ABSENT or t in self.drug_names or len(t) < 3 or is_number(t))]
 
+    def _names_arabic_brand(self, question: str) -> bool:
+        """The question names a KB Trade Name / Active Ingredient written in Arabic letters (the #7 mapper)."""
+        if self._arabic_names is None:
+            from .arabicnames import ArabicNames, arabic_common_words  # imports this module: not at the top
+            from .drugs import DrugIndex
+            self._arabic_names = ArabicNames(DrugIndex(self._sections), arabic_common_words(self._sections))
+        if self._arabic_names.map(question)[1]:
+            return True
+        # The mapper leaves short or vowel-poor names alone (اكتوس): in a yes/no question an unknown Arabic word that may be
+        # a brand (no article, not the object of an indication word) is taken as the drug the question is about.
+        toks = tokens(question)
+        return bool(toks) and toks[0] in _YESNO_FIRST and any(
+            not self._kb.has(w) and self._brand_like(toks, i) for i, w in enumerate(self._topic(toks)) if w in toks
+            for i in [toks.index(w)])
+
     def _condition_terms(self, toks: list[str]) -> list[str]:
         """The topic terms of an indication question that are not the frame itself: "الادويه", "بتعالج", "العلاج" (article
         and verb forms of the indication and frame words) and "المناسب" say what is asked, not which condition."""
@@ -483,7 +500,7 @@ class SupportCheck:
         if drugs and not any(text.has(d) for d in drugs):
             return False  # the Sections cited say nothing about the drug that was asked about
         # An indication question grounds its condition only in what the Sections say a class is FOR.
-        indication = asks_indication(question, bool(drugs))
+        indication = asks_indication(question, bool(drugs) or self._names_arabic_brand(question))
         grounded = _Text("\n".join(indication_text(s) for s in cited)) if indication else text
         if not self._topic(qtokens) or (indication and not self._condition_terms(qtokens)):
             return True
