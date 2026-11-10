@@ -36,7 +36,7 @@ from .alternatives import ALT_WORDS
 from .drugs import product_cells, tokens
 from .models import Section
 from .language import NOT_FRANCO, _is_franco_digit_word
-from .translit import skeleton, strict_same, strict_skeleton
+from .translit import same_word, skeleton, strict_same, strict_skeleton
 from .textnorm import normalize
 
 _ARABIC = re.compile(r"[؀-ۿ]")
@@ -94,7 +94,7 @@ _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
 beta3 beta3t beta3to bta3to bta3ty ba2a ba2 bta3et beta3et bta3at beta3at bet3a bta3 maada mada el3ada fa3ala fa3ela a3rad gaanbeya ganbeya
 bedail bedayel tegareya tegarya mamnoo3 mamno3 momken mawad3 mawane3 3ayez 3ayza 3ayzen ana enta
-3andy 3andi 3ndy 3ndi a5od a5d a5ood ya5od dawa dawaa edy ezay ezzay leh lih lel lil fel fil bdayel bdail meen men feen fein emta
+3andy 3andi 3ndy 3ndi a5od a5d a5ood ya5od dawa dawaa edy ezay ezzay leh lih lel lil fel fil amaan aman bdayel bdail meen men feen fein emta
 """
 # Aspect words: what the KB answers by structure (a table column, a heading, a list), so a drug's
 # Section answers them without ever containing the word.
@@ -165,6 +165,14 @@ def stem(word: str) -> str:
         if w.endswith(s) and len(w) - len(s) >= 4:
             return w[: -len(s)]
     return w
+
+
+_ASPECT_STEMS = frozenset(stem(w) for w in ASPECT)
+
+
+def is_aspect(t: str) -> bool:
+    """An aspect word, with its article or clitic ("المادة" for "مادة")."""
+    return t in ASPECT or stem(t) in _ASPECT_STEMS
 
 
 # Words that introduce the condition a drug is for: the word after one is a disease, not a brand.
@@ -275,7 +283,11 @@ class SupportCheck:
 
         def same(t: str, others: list[str]) -> bool:
             # with and without the stem: the stemmer strips a letter that is part of the word as often as a clitic (بدايل)
-            return translate and any(strict_same(a, b) for o in others for a in {t, stem(t)} for b in {o, stem(o)})
+            # The aspect words are a closed list (ingredient, side effects, alternatives ...): between two of them the
+            # lenient comparison is enough ("maada" ~ "المادة"); every other word needs the strict one.
+            return translate and any(
+                (same_word if (is_aspect(t) and is_aspect(o)) else strict_same)(a, b)
+                for o in others for a in {t, stem(t)} for b in {o, stem(o)})
 
         for t in rtoks:
             if is_number(t):
@@ -284,7 +296,7 @@ class SupportCheck:
                 continue
             if len(t) < 2 or stem(t) in have:  # a single letter is a clitic's remnant; two letters (سل, دم, مش) are words
                 continue
-            if t in ASPECT:  # what is asked (side effects, alternatives ...): a translation may not change it
+            if is_aspect(t):  # what is asked (side effects, alternatives ...): a translation may not change it
                 if translate and not same(t, mtoks):
                     return False
                 continue
@@ -298,7 +310,7 @@ class SupportCheck:
         if translate:
             kept = {stem(t) for t in rtoks}
             for m in mtoks:
-                if is_number(m) or len(m) < 3 or stem(m) in kept or (m in FRAME and m not in ASPECT):
+                if is_number(m) or len(m) < 3 or stem(m) in kept or (m in FRAME and not is_aspect(m)):
                     continue
                 if same(m, rtoks) or (_LATIN.fullmatch(m) is not None and any(strict_same(m, w) for w in _FRAME_AR_WORDS)):
                     continue
@@ -320,7 +332,7 @@ class SupportCheck:
         kept = []
         for m in re.finditer(r"[^\W_]+", rewrite):
             t = normalize(m.group())
-            drop = (len(t) >= 2 and not is_number(t) and stem(t) not in have and t not in ASPECT and t not in FRAME
+            drop = (len(t) >= 2 and not is_number(t) and stem(t) not in have and not is_aspect(t) and t not in FRAME
                     and not (from_history and (t in self.drug_names or t in self.class_names))
                     and not any(strict_same(a, b) for o in mtoks for a in {t, stem(t)} for b in {o, stem(o)}))
             if not drop:

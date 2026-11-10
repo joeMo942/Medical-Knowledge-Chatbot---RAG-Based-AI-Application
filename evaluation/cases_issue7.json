@@ -12,13 +12,12 @@
     "anchors": [
       "Paracetamol"
     ],
-    "answer_must_mention": [
+    "note": "Franco-Arabic, no drug name: so5oneya (fever) must be rewritten into Arabic letters and found (KB-03 Paracetamol, KB-04 Antipyretics) by its alias words; the first-turn rewrite path of #7.",
+    "expected_sections": [
       "Paracetamol",
-      "باراسيتامول",
-      "Panadol",
-      "Ibuprofen"
-    ],
-    "note": "Franco-Arabic, no drug name: so5oneya (fever) must be rewritten into Arabic letters and found (KB-03 Paracetamol, KB-04 Antipyretics) by its alias words; the first-turn rewrite path of #7."
+      "Antipyretics – خافضات الحرارة",
+      "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs"
+    ]
   },
   {
     "id": "franco7-bdayel-brufen",
@@ -145,11 +144,12 @@
     ],
     "answer_must_mention": [
       "Cetal",
-      "Adol",
       "Paramol",
       "Fevadol",
       "Abimol",
-      "Calpol"
+      "Calpol",
+      "Efferalgan",
+      "Pyral"
     ],
     "note": "Dialect Alternatives word (بدايل) and the article."
   },
@@ -269,5 +269,103 @@
         ]
       }
     ]
+  },
+  {
+    "id": "arabic-names7-cancer-trap",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "ايه علاج السرطان؟",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "Losartan",
+      "Altiazem",
+      "Lanzor",
+      "Lidocaine"
+    ],
+    "note": "An Arabic disease name is not a brand: it used to be searched as Losartan (the skeleton of السرطان, with the article's L). The KB has no cancer treatment."
+  },
+  {
+    "id": "arabic-names7-poisoning-trap",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "ادوية التسمم",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "Losartan",
+      "Altiazem",
+      "Lanzor",
+      "Lidocaine"
+    ],
+    "note": "التسمم used to map to Altiazem; the KB has no antidote."
+  },
+  {
+    "id": "arabic-names7-fistula-trap",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "علاج الناسور",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "Losartan",
+      "Altiazem",
+      "Lanzor",
+      "Lidocaine"
+    ],
+    "note": "الناسور used to map to Lanzor."
+  },
+  {
+    "id": "arabic-names7-cancer-breast-trap",
+    "category": "arabic_trade_names",
+    "language": "ar",
+    "message": "علاج سرطان الثدي",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "Losartan",
+      "Altiazem",
+      "Lanzor",
+      "Lidocaine"
+    ],
+    "note": "لسرطان / سرطان after an indication word must not become Losartan."
+  },
+  {
+    "id": "franco7-cancer-trap",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "dawa lel sartan eh",
+    "expected_status": "out_of_scope",
+    "absent_terms": [
+      "Losartan"
+    ],
+    "note": "A Franco disease name (cancer) that is not in the KB."
+  },
+  {
+    "id": "franco7-pregnancy",
+    "category": "franco_arabic",
+    "language": "mixed",
+    "message": "brufen amaan lel 7amel?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03",
+      "KB-04",
+      "KB-06",
+      "KB-09"
+    ],
+    "anchors": [
+      "Brufen"
+    ],
+    "answer_must_mention": [
+      "الحمل",
+      "pregnan",
+      "حامل",
+      "Pregnancy"
+    ],
+    "note": "The qualifier 7amel (pregnant) must not be lost: a rewrite that drops it is refused, and the answer is about pregnancy."
+  },
+  {
+    "id": "en7-time-not-franco",
+    "category": "dose",
+    "language": "en",
+    "message": "Can I take Panadol at 3pm?",
+    "expected_status": "escalated",
+    "note": "English with a time of day: labelled en and escalated with the English text (it used to be labelled mixed)."
   }
 ]
