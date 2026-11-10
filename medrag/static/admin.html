@@ -3,113 +3,440 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KB Documents - admin</title>
+<meta name="color-scheme" content="light dark">
+<title>Admin - Drug Information Assistant</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 0 auto; padding: 1rem; }
-  table { border-collapse: collapse; width: 100%; margin: .5rem 0 1.5rem; }
-  th, td { text-align: start; padding: .4rem .5rem; border-bottom: 1px solid #ddd; vertical-align: top; }
-  fieldset { border: 1px solid #ccc; border-radius: .5rem; margin-bottom: 1rem; }
-  label { display: block; margin: .6rem 0 .2rem; font-weight: 600; }
-  input[type=text], input[type=password], textarea { width: 100%; box-sizing: border-box; padding: .5rem; font-size: 1rem; }
-  button { padding: .5rem 1rem; font-size: 1rem; }
-  #msg { padding: .6rem .8rem; border-radius: .5rem; margin: 1rem 0; display: none; white-space: pre-wrap; }
-  #msg.ok { display: block; background: #e6f4ea; } #msg.err { display: block; background: #fce8e6; }
-  .small { font-size: .85rem; color: #555; }
+  :root {
+    --bg: #f4f7f7; --surface: #ffffff; --ink: #14262b; --muted: #55686d; --line: #d5e0e1; --grid: #e3ebec;
+    --accent: #0d6a6e; --accent-ink: #ffffff; --accent-soft: #e0f0f0;
+    --ok-bg: #e6f4ea; --ok-ink: #17532b; --danger-bg: #fdeceb; --danger-ink: #861b16; --danger: #b3261e;
+    --warn-bg: #fff6e3; --warn-ink: #6a4700;
+    --s-answered: #0d6a6e; --s-unanswered: #c27d0e; --s-error: #c0392b; --s-prompt: #0d6a6e; --s-completion: #5873b8;
+    --font: "Segoe UI", "Noto Sans Arabic", Tahoma, system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1a1d; --surface: #172529; --ink: #e4eeee; --muted: #9db1b5; --line: #2b3f44; --grid: #22343a;
+      --accent: #4fb8bc; --accent-ink: #072326; --accent-soft: #1b3a3e;
+      --ok-bg: #16301e; --ok-ink: #a6dfb8; --danger-bg: #351a19; --danger-ink: #ffc9c4; --danger: #ef7a6f;
+      --warn-bg: #2f2612; --warn-ink: #f2d596;
+      --s-answered: #4fb8bc; --s-unanswered: #e0a53a; --s-error: #ef7a6f; --s-prompt: #4fb8bc; --s-completion: #93aee8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; overflow-x: hidden; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
+
+  .btn { min-height: 2.5rem; padding: .4rem 1rem; border: 1px solid var(--line); border-radius: .55rem; background: var(--surface); cursor: pointer; font-weight: 600; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .btn.danger { color: var(--danger); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  input[type=text], input[type=password], input[type=date], input[type=number], select, textarea {
+    width: 100%; min-height: 2.5rem; padding: .45rem .65rem; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; }
+  input[type=file] { max-width: 100%; }
+  label { display: block; font-weight: 600; font-size: .88rem; margin: .8rem 0 .25rem; }
+  .help { font-size: .8rem; color: var(--muted); margin: .15rem 0 0; }
+
+  /* sign in */
+  #login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
+  .login-card { width: 100%; max-width: 26rem; background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; padding: 1.5rem; }
+  .login-card h1 { margin: 0 0 .25rem; font-size: 1.3rem; }
+  .login-card p { margin: 0 0 .5rem; color: var(--muted); font-size: .9rem; }
+  .login-card .btn { margin-top: 1rem; width: 100%; }
+
+  /* shell */
+  .top { background: var(--surface); border-bottom: 1px solid var(--line); }
+  .top .in { max-width: 70rem; margin: 0 auto; padding: .6rem 1rem 0; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; justify-content: space-between; }
+  .bar h1 { margin: 0; font-size: 1.1rem; }
+  .bar .right { display: flex; gap: .5rem; align-items: center; }
+  .tabs { display: flex; gap: .25rem; margin-top: .4rem; overflow-x: auto; }
+  .tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: .6rem .9rem; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; min-height: 2.75rem; }
+  .tab[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); }
+  main { max-width: 70rem; margin: 0 auto; padding: 1rem; }
+  #msg { padding: .6rem .8rem; border-radius: .6rem; margin-bottom: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #msg.ok { background: var(--ok-bg); color: var(--ok-ink); } #msg.err { background: var(--danger-bg); color: var(--danger-ink); }
+  h2 { font-size: 1rem; margin: 0 0 .6rem; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: .85rem; padding: 1rem; margin-bottom: 1rem; }
+
+  /* tables; on phones each row becomes a card */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: start; padding: .5rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 650; white-space: nowrap; }
+  td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
+  td.pre { white-space: pre-wrap; } td.mono { font-family: var(--mono); font-size: .8rem; }
+  td.empty { color: var(--muted); text-align: center; padding: 1.4rem; }
+  @media (max-width: 640px) {
+    table, tbody, tr, td { display: block; width: 100%; }
+    thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    tr { border: 1px solid var(--line); border-radius: .6rem; margin-bottom: .6rem; padding: .3rem .5rem; }
+    td { border: 0; padding: .2rem 0; }
+    td[data-label]::before { content: attr(data-label); display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+    td.num { text-align: start; }
+  }
+
+  /* forms and controls */
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .5rem .75rem; align-items: end; margin-bottom: 1rem; }
+  .controls label { margin: 0 0 .2rem; }
+  .controls .btn { width: 100%; }
+  .row-end { margin-top: 1rem; }
+
+  /* analytics */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+  .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: .75rem; padding: .7rem .85rem; }
+  .kpi .v { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .kpi .l { font-size: .75rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .kpi .s { font-size: .75rem; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .chart text { font-family: var(--font); font-size: 11px; fill: var(--muted); }
+  .chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .chart .axis { stroke: var(--line); stroke-width: 1; }
+  .chart .hit { fill: transparent; }
+  .chart .hit:hover { fill: var(--accent-soft); opacity: .5; }
+  .chart .seg { stroke: var(--surface); stroke-width: 2; }
+  .legend { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: .8rem; color: var(--muted); margin-bottom: .5rem; }
+  .legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-inline-end: .35rem; vertical-align: -1px; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: .78rem; padding: .35rem .55rem; border-radius: .4rem; white-space: nowrap; z-index: 2; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .statuses { font-size: .85rem; color: var(--muted); margin: -.4rem 0 1rem; }
+  details.data { margin-top: .6rem; font-size: .85rem; }
+  details.data summary { cursor: pointer; color: var(--muted); }
+  .note { font-size: .8rem; color: var(--muted); }
+  .busy { cursor: progress; }
 </style>
 </head>
 <body>
-<h1>KB Documents</h1>
-<p class="small"><a href="/">Chat page</a></p>
 
-<fieldset>
-  <legend>Admin token</legend>
-  <label for="token">MEDRAG_ADMIN_TOKEN (kept in this tab only, sent as a Bearer header)</label>
-  <input id="token" type="password" autocomplete="off">
-  <p><button id="load" type="button">Load documents</button></p>
-</fieldset>
+<section id="login">
+  <form class="login-card" id="loginForm">
+    <h1>Admin</h1>
+    <p>Drug Information Assistant. Enter the admin token; it stays in this browser tab only and is sent as a Bearer header.</p>
+    <label for="token">MEDRAG_ADMIN_TOKEN</label>
+    <input id="token" type="password" autocomplete="off" required>
+    <div id="loginErr" class="help" role="alert" style="color:var(--danger-ink)"></div>
+    <button class="btn primary" type="submit" id="loginBtn">Sign in</button>
+    <p class="help" style="margin-top:1rem"><a href="/">Back to the chat page</a></p>
+  </form>
+</section>
 
-<div id="msg" role="status"></div>
+<div id="app" hidden>
+  <div class="top"><div class="in">
+    <div class="bar">
+      <h1>Admin &middot; Drug Information Assistant</h1>
+      <div class="right"><a href="/">Chat page</a><button class="btn" type="button" id="signout">Sign out</button></div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-docs" aria-controls="p-docs" aria-selected="true" type="button">Documents</button>
+      <button class="tab" role="tab" id="tab-analytics" aria-controls="p-analytics" aria-selected="false" type="button">Analytics</button>
+      <button class="tab" role="tab" id="tab-handoffs" aria-controls="p-handoffs" aria-selected="false" type="button">Hand-offs</button>
+    </div>
+  </div></div>
 
-<table>
-  <thead><tr><th>KB ID</th><th>Title</th><th>Sections</th><th>File</th><th>Updated</th><th></th></tr></thead>
-  <tbody id="docs"><tr><td colspan="6" class="small">Enter the token and load the documents.</td></tr></tbody>
-</table>
+  <main>
+    <div id="msg" role="status" hidden></div>
 
-<form id="up">
-  <fieldset>
-    <legend>Upload or replace a KB Document</legend>
-    <label for="kb_id">KB ID (e.g. KB-03; an existing ID is replaced)</label>
-    <input id="kb_id" type="text" pattern="KB-[0-9]{2}" required>
-    <label for="file">.docx file (up to 10 MB)</label>
-    <input id="file" type="file" accept=".docx" required>
-    <label for="diseases">Disease headings, one per line, exactly as they appear in the file
-      (required for a new KB ID; empty keeps the current ones when replacing)</label>
-    <textarea id="diseases" rows="4" dir="auto"></textarea>
-    <p><button type="submit">Upload</button></p>
-  </fieldset>
-</form>
+    <section id="p-docs" role="tabpanel" aria-labelledby="tab-docs">
+      <div class="card">
+        <h2>KB Documents</h2>
+        <div class="tablewrap"><table>
+          <thead><tr><th>KB ID</th><th>Title</th><th class="num">Sections</th><th>File</th><th>Updated</th><th></th></tr></thead>
+          <tbody id="docs"></tbody>
+        </table></div>
+      </div>
+      <form id="up" class="card">
+        <h2>Upload or replace a KB Document</h2>
+        <label for="kb_id">KB ID</label>
+        <input id="kb_id" type="text" pattern="KB-[0-9]{2}" placeholder="KB-03" required style="max-width:12rem">
+        <p class="help">An existing ID is replaced.</p>
+        <label for="file">.docx file (up to 10 MB)</label>
+        <input id="file" type="file" accept=".docx" required>
+        <label for="diseases">Disease headings, one per line, exactly as they appear in the file</label>
+        <textarea id="diseases" rows="4" dir="auto"></textarea>
+        <p class="help">Required for a new KB ID; empty keeps the current ones when replacing.</p>
+        <div class="row-end"><button class="btn primary" type="submit" id="upBtn">Upload</button></div>
+      </form>
+    </section>
+
+    <section id="p-analytics" role="tabpanel" aria-labelledby="tab-analytics" hidden>
+      <form class="controls" id="aForm">
+        <div><label for="a-since">Since</label><input id="a-since" type="date"></div>
+        <div><label for="a-until">Until (exclusive)</label><input id="a-until" type="date"></div>
+        <div><label for="a-bucket">Bucket</label><select id="a-bucket"><option value="day">Day</option><option value="hour">Hour</option></select></div>
+        <div><label for="a-limit">Top questions</label><input id="a-limit" type="number" min="1" max="1000" value="10"></div>
+        <div><button class="btn primary" type="submit" id="aBtn">Refresh</button></div>
+      </form>
+      <div class="kpis" id="kpis"></div>
+      <div class="statuses" id="statuses"></div>
+      <div class="card">
+        <h2>Volume over time</h2>
+        <div class="legend" id="volLegend"></div>
+        <div class="chart" id="volume"></div>
+        <details class="data"><summary>Show as a table</summary><div class="tablewrap"><table id="volTable"></table></div></details>
+      </div>
+      <div class="card">
+        <h2>Tokens by call type</h2>
+        <div class="legend"><span><i style="background:var(--s-prompt)"></i>Prompt</span><span><i style="background:var(--s-completion)"></i>Completion</span></div>
+        <div class="chart" id="tokens"></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>Top questions</h2><div class="tablewrap"><table id="top"></table></div></div>
+        <div class="card"><h2>Unanswered questions</h2><div class="tablewrap"><table id="unans"></table></div></div>
+      </div>
+    </section>
+
+    <section id="p-handoffs" role="tabpanel" aria-labelledby="tab-handoffs" hidden>
+      <form class="controls" id="hForm">
+        <div><label for="h-since">Since</label><input id="h-since" type="date"></div>
+        <div><label for="h-until">Until (exclusive)</label><input id="h-until" type="date"></div>
+        <div><label for="h-limit">Show latest</label><input id="h-limit" type="number" min="1" max="1000" value="50"></div>
+        <div><button class="btn primary" type="submit" id="hBtn">Refresh</button></div>
+      </form>
+      <div class="card">
+        <h2 id="hTitle">Hand-offs</h2>
+        <div class="tablewrap"><table id="hTable"></table></div>
+      </div>
+    </section>
+  </main>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const tokenBox = $("token"), msg = $("msg"), tbody = $("docs");
-try { tokenBox.value = sessionStorage.getItem("medrag-admin-token") || ""; } catch (e) {}
+const KEY = "medrag-admin-token";
+let token = "";
+try { token = sessionStorage.getItem(KEY) || ""; } catch (e) {}
 
-function say(kind, text) { msg.className = kind; msg.textContent = text; }
-function headers(extra) {
-  try { sessionStorage.setItem("medrag-admin-token", tokenBox.value); } catch (e) {}
-  return Object.assign({"Authorization": "Bearer " + tokenBox.value}, extra || {});
+// ---- helpers: every API string goes in through textContent, never as markup
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "text") e.textContent = v; else if (k === "class") e.className = v; else if (k === "label") e.setAttribute("data-label", v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e[k] = v;
+  }
+  e.append(...kids); return e;
 }
+const SVGNS = "http://www.w3.org/2000/svg";
+function s(tag, attrs, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  if (text != null) e.textContent = text; return e;
+}
+const fmt = (n) => n == null ? "-" : Number(n).toLocaleString("en-US");
+const ms = (n) => n == null ? "-" : n >= 1000 ? (n / 1000).toFixed(1) + " s" : Math.round(n) + " ms";
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"}); };
+
+function say(kind, text) { const m = $("msg"); m.hidden = !kind; m.className = kind; m.textContent = text; }
 async function call(method, url, body) {
-  const r = await fetch(url, {method, headers: headers(body ? {"Content-Type": "application/json"} : null),
-                              body: body ? JSON.stringify(body) : undefined});
+  const headers = {"Authorization": "Bearer " + token};
+  if (body) headers["Content-Type"] = "application/json";
+  let r;
+  try { r = await fetch(url, {method, headers, body: body ? JSON.stringify(body) : undefined}); }
+  catch (e) { throw new Error("Could not reach the server: " + e.message); }
   let data = {};
   try { data = await r.json(); } catch (e) {}
-  if (!r.ok) throw new Error(r.status + ": " + (data.error || r.statusText));
+  if (!r.ok) {
+    const detail = data.error || data.detail || r.statusText;
+    const e = new Error(r.status === 401 ? "401: wrong or missing token" : r.status + ": " + detail);
+    e.status = r.status; throw e;
+  }
   return data;
 }
-function cell(tr, text) { const td = document.createElement("td"); td.textContent = text; td.dir = "auto"; tr.appendChild(td); return td; }
-
-async function refresh() {
-  const data = await call("GET", "/admin/documents");
-  tbody.textContent = "";
-  if (!data.documents.length) {
-    const tr = tbody.insertRow(); const td = cell(tr, "No KB Documents: every question is Out of Scope."); td.colSpan = 6;
-  }
-  for (const d of data.documents) {
-    const tr = tbody.insertRow();
-    cell(tr, d.kb_id); cell(tr, d.title); cell(tr, String(d.sections)); cell(tr, d.file_name || "-"); cell(tr, d.updated || "-");
-    const act = tr.insertCell(); const b = document.createElement("button"); b.type = "button"; b.textContent = "Delete";
-    b.addEventListener("click", async () => {
-      if (!confirm("Delete " + d.kb_id + " (" + d.title + ")? Its questions become Out of Scope.")) return;
-      try { await call("DELETE", "/admin/documents/" + encodeURIComponent(d.kb_id)); say("ok", d.kb_id + " deleted."); await refresh(); }
-      catch (err) { say("err", err.message); }
-    });
-    act.appendChild(b);
-  }
+function table(el, head, rows, emptyText) {
+  el.textContent = "";
+  el.append(h("thead", {}, h("tr", {}, ...head.map(([t, cls]) => h("th", {text: t, class: cls || ""})))));
+  const body = h("tbody");
+  if (!rows.length) body.append(h("tr", {}, h("td", {text: emptyText, class: "empty", colSpan: head.length})));
+  for (const r of rows) body.append(h("tr", {}, ...r.map((c, i) => h("td", {text: c.v, dir: c.dir === false ? "ltr" : "auto", class: c.cls || "", label: head[i][0]}))));
+  el.append(body);
 }
-$("load").addEventListener("click", async () => {
-  try { await refresh(); say("", ""); msg.className = ""; } catch (err) { say("err", err.message); }
+
+// ---- sign in / out
+function showApp(on) { $("login").hidden = on; $("app").hidden = !on; }
+async function enter(t) {
+  token = t;
+  try { await call("GET", "/admin/handoffs?limit=1"); }  // cheapest call that needs the token and nothing else
+  catch (err) {
+    if (err.status === 401 || err.status === 503) { token = ""; try { sessionStorage.removeItem(KEY); } catch (e) {}
+      $("loginErr").textContent = err.status === 503 ? err.message + " (admin disabled: set MEDRAG_ADMIN_TOKEN on the server)" : err.message; showApp(false); return; }
+    $("loginErr").textContent = err.message; showApp(false); return;
+  }
+  try { sessionStorage.setItem(KEY, token); } catch (e) {}
+  $("loginErr").textContent = ""; showApp(true); say("", ""); open("docs");
+}
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("loginBtn").disabled = true; $("loginErr").textContent = "";
+  await enter($("token").value); $("loginBtn").disabled = false; $("token").value = "";
+});
+$("signout").addEventListener("click", () => {
+  token = ""; try { sessionStorage.removeItem(KEY); } catch (e) {}
+  for (const id of ["docs", "kpis", "volume", "tokens", "statuses"]) $(id).textContent = "";
+  $("hTable").textContent = ""; showApp(false);
 });
 
+// ---- tabs
+const TABS = ["docs", "analytics", "handoffs"], loaded = {};
+function open(name) {
+  for (const t of TABS) { $("tab-" + t).setAttribute("aria-selected", String(t === name)); $("p-" + t).hidden = t !== name; }
+  say("", "");
+  if (name === "docs") refreshDocs().catch(fail);
+  if (name === "analytics") loadAnalytics().catch(fail);
+  if (name === "handoffs") loadHandoffs().catch(fail);
+}
+for (const t of TABS) $("tab-" + t).addEventListener("click", () => open(t));
+function fail(err) { say("err", err.message); }
+function range(prefix) {
+  const p = new URLSearchParams();
+  if ($(prefix + "-since").value) p.set("since", $(prefix + "-since").value);
+  if ($(prefix + "-until").value) p.set("until", $(prefix + "-until").value);
+  return p;
+}
+
+// ---- Documents
+async function refreshDocs() {
+  const data = await call("GET", "/admin/documents");
+  const rows = data.documents.map((d) => [{v: d.kb_id, cls: "mono", dir: false}, {v: d.title}, {v: String(d.sections), cls: "num"}, {v: d.file_name || "-"}, {v: d.updated || "-"}]);
+  table($("docs"), [["KB ID"], ["Title"], ["Sections", "num"], ["File"], ["Updated"], [""]], rows, "No KB Documents: every question is Out of Scope.");
+  const trs = $("docs").querySelectorAll("tr");
+  data.documents.forEach((d, i) => {
+    const td = h("td", {}, h("button", {type: "button", class: "btn danger", text: "Delete", onclick: async (ev) => {
+      if (!confirm("Delete " + d.kb_id + " (" + d.title + ")? Its questions become Out of Scope.")) return;
+      ev.target.disabled = true;
+      try { await call("DELETE", "/admin/documents/" + encodeURIComponent(d.kb_id)); say("ok", d.kb_id + " deleted."); await refreshDocs(); }
+      catch (err) { say("err", err.message); ev.target.disabled = false; }
+    }}));
+    trs[i].append(td);
+  });
+}
 function toBase64(buf) {
-  let s = ""; const bytes = new Uint8Array(buf);
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(s);
+  let out = ""; const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(out);
 }
 $("up").addEventListener("submit", async (e) => {
   e.preventDefault();
   const file = $("file").files[0]; if (!file) return;
   const lines = $("diseases").value.split("\n").map((l) => l.trim()).filter(Boolean);
-  const body = {kb_id: $("kb_id").value.trim(), filename: file.name, content_base64: toBase64(await file.arrayBuffer())};
-  if (lines.length) body.diseases = lines;
+  const btn = $("upBtn"); btn.disabled = true; btn.textContent = "Uploading and re-indexing..."; document.body.classList.add("busy");
   say("ok", "Uploading and re-indexing (a few seconds)...");
   try {
+    const body = {kb_id: $("kb_id").value.trim(), filename: file.name, content_base64: toBase64(await file.arrayBuffer())};
+    if (lines.length) body.diseases = lines;
     const r = await call("POST", "/admin/documents", body);
     say("ok", r.kb_id + " saved: " + r.title + ", " + r.sections + " Sections.");
-    await refresh();
+    await refreshDocs();
   } catch (err) { say("err", err.message); }
+  finally { btn.disabled = false; btn.textContent = "Upload"; document.body.classList.remove("busy"); }
 });
-if (tokenBox.value) refresh().catch((err) => say("err", err.message));
+
+// ---- Analytics
+let report = null;
+async function loadAnalytics() {
+  const p = range("a"); p.set("bucket", $("a-bucket").value); p.set("limit", $("a-limit").value || "10");
+  const btn = $("aBtn"); btn.disabled = true;
+  try { report = await call("GET", "/admin/analytics?" + p); } finally { btn.disabled = false; }
+  say("", ""); renderAnalytics();
+}
+$("aForm").addEventListener("submit", (e) => { e.preventDefault(); loadAnalytics().catch(fail); });
+function kpi(label, value, sub) { return h("div", {class: "kpi"}, h("div", {class: "l", text: label}), h("div", {class: "v", text: value}), h("div", {class: "s", text: sub || " "})); }
+function renderAnalytics() {
+  const r = report; if (!r) return;
+  const n = r.summary.turns, un = r.summary.unanswered, tpt = r.tokens_per_turn;
+  $("kpis").replaceChildren(
+    kpi("Turns", fmt(n)), kpi("Unanswered", fmt(un), "out of scope or escalated"),
+    kpi("Unanswered %", n ? (100 * un / n).toFixed(1) + "%" : "-"),
+    kpi("Latency p50", ms(r.latency_ms.p50)), kpi("Latency p95", ms(r.latency_ms.p95)),
+    kpi("Total tokens", fmt(r.tokens_by_call_type.total.total_tokens), "all model calls"),
+    kpi("Tokens per turn", tpt.mean_total_tokens == null ? "-" : fmt(Math.round(tpt.mean_total_tokens))));
+  const st = Object.entries(r.summary.by_status).map(([k, v]) => k + ": " + v).join("  ·  ");
+  $("statuses").textContent = st ? "By status: " + st : "";
+  drawVolume(); drawTokens();
+  const qrows = (list, withStatus) => list.map((x) => [{v: String(x.count), cls: "num"}, {v: x.question, cls: "pre"}, ...(withStatus ? [{v: x.status, dir: false}] : []), {v: when(x.last_asked), dir: false}]);
+  table($("top"), [["Count", "num"], ["Question"], ["Last asked"]], qrows(r.top_questions), "No questions in this window.");
+  table($("unans"), [["Count", "num"], ["Question"], ["Status"], ["Last asked"]], qrows(r.unanswered_questions, true), "Nothing unanswered in this window.");
+}
+function bucketLabel(b, bucketKind) { return bucketKind === "hour" ? b.slice(5, 10) + " " + b.slice(11, 13) + "h" : b.slice(5, 10); }
+function drawVolume() {
+  const host = $("volume"), vol = report.volume, hourly = report.window.bucket === "hour";
+  host.textContent = "";
+  const legend = $("volLegend"); legend.textContent = "";
+  for (const [c, t] of [["answered", "Answered"], ["unanswered", "Unanswered"], ["error", "Errors"]])
+    legend.append(h("span", {}, h("i", {style: "background:var(--s-" + c + ")"}), t));
+  table($("volTable"), [["Bucket"], ["Turns", "num"], ["Unanswered", "num"], ["Errors", "num"]],
+        vol.map((v) => [{v: v.bucket, dir: false}, {v: String(v.turns), cls: "num"}, {v: String(v.unanswered || 0), cls: "num"}, {v: String(v.errors || 0), cls: "num"}]), "No data.");
+  if (!vol.length) { host.append(h("p", {class: "note", text: "No turns in this window."})); return; }
+  const W = Math.max(host.clientWidth, 280), H = 230, m = {l: 34, r: 8, t: 8, b: 26}, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const max = Math.max(1, ...vol.map((v) => v.turns));
+  const step = max <= 4 ? 1 : Math.ceil(max / 4 / 5) * 5 || 1, top = Math.ceil(max / step) * step;
+  const svg = s("svg", {width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Turns per " + (hourly ? "hour" : "day") + ", split into answered, unanswered and errors"});
+  for (let v = 0; v <= top; v += step) {
+    const y = m.t + ih - ih * v / top;
+    svg.append(s("line", {x1: m.l, x2: W - m.r, y1: y, y2: y, class: v ? "grid" : "axis"}), s("text", {x: m.l - 6, y: y + 4, "text-anchor": "end"}, String(v)));
+  }
+  const slot = iw / vol.length, bw = Math.min(Math.max(slot - 4, 2), 36), every = Math.ceil((hourly ? 62 : 44) / slot);
+  const tip = h("div", {class: "tip", hidden: true}); host.style.position = "relative";
+  vol.forEach((v, i) => {
+    const x = m.l + slot * i + (slot - bw) / 2, errs = v.errors || 0, un = v.unanswered || 0, ok = Math.max(v.turns - un - errs, 0);
+    let y = m.t + ih;
+    for (const [cls, val] of [["answered", ok], ["unanswered", un], ["error", errs]]) {
+      if (!val) continue;
+      const hh = ih * val / top; y -= hh;
+      svg.append(s("rect", {x, y, width: bw, height: hh, fill: "var(--s-" + cls + ")", class: "seg", rx: 2}));
+    }
+    if (i % every === 0) svg.append(s("text", {x: x + bw / 2, y: H - 8, "text-anchor": "middle"}, bucketLabel(v.bucket, report.window.bucket)));
+    const hit = s("rect", {x: m.l + slot * i, y: m.t, width: slot, height: ih, class: "hit"});
+    hit.addEventListener("mouseenter", () => {
+      tip.textContent = ""; tip.append(h("b", {text: v.bucket.slice(0, hourly ? 13 : 10) + (hourly ? ":00" : "")}), document.createElement("br"),
+        document.createTextNode(`${v.turns} turns, ${ok} answered, ${un} unanswered, ${errs} errors`));
+      tip.hidden = false; tip.style.left = Math.min(Math.max(x + bw / 2 - 70, 0), W - 230) + "px"; tip.style.top = "0px";
+    });
+    hit.addEventListener("mouseleave", () => { tip.hidden = true; });
+    svg.append(hit);
+  });
+  host.append(svg, tip);
+}
+function drawTokens() {
+  const host = $("tokens"), kinds = report.tokens_by_call_type.by_kind; host.textContent = "";
+  if (!kinds.length) { host.append(h("p", {class: "note", text: "No model calls in this window."})); return; }
+  const W = Math.max(host.clientWidth, 280), rowH = 34, H = kinds.length * rowH + 4, labelW = 84, valW = 78, bw = W - labelW - valW;
+  const max = Math.max(1, ...kinds.map((k) => k.total_tokens));
+  const svg = s("svg", {width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Prompt and completion tokens per call type"});
+  kinds.forEach((k, i) => {
+    const y = 2 + i * rowH, p = bw * k.prompt_tokens / max, c = bw * k.completion_tokens / max;
+    svg.append(s("text", {x: 0, y: y + 19, style: "fill:var(--ink)"}, k.kind));
+    if (p) svg.append(s("rect", {x: labelW, y: y + 5, width: p, height: 20, fill: "var(--s-prompt)", class: "seg", rx: 2}, ""));
+    if (c) svg.append(s("rect", {x: labelW + p, y: y + 5, width: c, height: 20, fill: "var(--s-completion)", class: "seg", rx: 2}));
+    svg.append(s("text", {x: labelW + p + c + 6, y: y + 19, style: "fill:var(--ink)"}, fmt(k.total_tokens)));
+    const t = s("title", {}, `${k.kind}: ${fmt(k.calls)} calls, prompt ${fmt(k.prompt_tokens)}, completion ${fmt(k.completion_tokens)}`);
+    svg.append(t);
+  });
+  host.append(svg);
+}
+let resizeTimer = 0;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (report && !$("p-analytics").hidden) { drawVolume(); drawTokens(); } }, 120); });
+
+// ---- Hand-offs
+async function loadHandoffs() {
+  const p = range("h"); p.set("limit", $("h-limit").value || "50");
+  const btn = $("hBtn"); btn.disabled = true;
+  let data; try { data = await call("GET", "/admin/handoffs?" + p); } finally { btn.disabled = false; }
+  say("", "");
+  $("hTitle").textContent = "Hand-offs (" + data.count + " in this window" + (data.items.length < data.count ? ", showing the latest " + data.items.length : "") + ")";
+  table($("hTable"), [["Time"], ["Session"], ["Kind"], ["Language"], ["Summary"], ["Contact"]],
+        data.items.map((x) => [{v: when(x.created_at), dir: false}, {v: x.session_id, cls: "mono", dir: false}, {v: x.kind || "-", dir: false}, {v: x.language || "-", dir: false}, {v: x.summary, cls: "pre"}, {v: x.contact}]),
+        "No hand-offs in this window.");
+}
+$("hForm").addEventListener("submit", (e) => { e.preventDefault(); loadHandoffs().catch(fail); });
+
+if (token) enter(token); else showApp(false);
 </script>
 </body>
 </html>
