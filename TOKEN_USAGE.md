@@ -39,7 +39,7 @@ Why the counts differ per turn: 7 of the 90 turns are rule-flagged emergencies a
 after the routing call alone (no search); 3 Out of Scope turns are searched but nothing matches (the no-match gate), so there is no answer call; the other 59 make both
 LLM calls (44 Answered, 15 Out of Scope). Query length is small
 everywhere (routing input is the fixed system prompt plus the message), so the spread is in the answer call (839 to 1,746 prompt tokens in the
-direct measurement below, depending on the 1 to 4 Sections retrieved).
+direct 5-question measurement below, and about 480 to 2,200 across the 90-turn run, mean 1,746, depending on the 1 to 4 Sections retrieved; the 480 to 2,200 range is the reviewer's reading of the call log and was not re-derived here).
 
 | turns | count | mean latency |
 | --- | ---: | ---: |

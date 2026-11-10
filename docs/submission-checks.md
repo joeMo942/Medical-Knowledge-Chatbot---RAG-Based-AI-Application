@@ -11,7 +11,7 @@ Method:
 
 Result: **no secret found.** The only hits are test fixtures (`TOKEN = "s3cret-token"` in tests, used against an in-process app), the pinned model file hashes in `medrag/modelstore.py`, the public Python release key ID (`GPG_KEY` of the base image) and the CA certificate bundles of `certifi`/the OS. The image environment holds only `MEDRAG_*` paths and pip settings; `MEDRAG_ADMIN_TOKEN` and the optional API key are passed at run time from the operator's shell, never baked in. `.env` and `.env.*` are gitignored and dockerignored; no KB `.docx` is in git or in the image.
 
-Noted, not a secret: the assessment brief PDF (`docs/MTI_AI_SOLUTIONS_AI_ENGINEER_TECHNICAL_ASSESSMENT.pdf`, marked confidential) is in git history (commits `204dc6f` and later removed by `551db6c`). The repository is private; decide whether to rewrite history before sharing it.
+Noted, not a secret: the assessment brief PDF (`docs/MTI_AI_SOLUTIONS_AI_ENGINEER_TECHNICAL_ASSESSMENT.pdf`, marked confidential) is in git history (added in `204dc6f`, removed in `551db6c`). The repository is private; decide whether to rewrite history before sharing it.
 
 ## 2. Clean-clone run
 

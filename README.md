@@ -54,7 +54,7 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
 ```
 git clone <this repository> && cd <this repository>
 # put the nine .docx files in ./data  (see above)
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)     # optional: enables /admin and the analytics endpoint; keep it in your shell, never in a file
+export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)     # optional: enables /admin and the analytics endpoint; keep it in your shell or an untracked, gitignored `.env`, never in a tracked file
 docker compose up -d --build --wait
 ```
 
@@ -76,7 +76,7 @@ curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"messa
 | `qwen3.5:4b` (4.2 B parameters, Q4_K_M) | 3.3 GB | Ollama, into the `ollama-models` volume (`docker compose logs -f model-pull`) | download time of 3.3 GB |
 | BGE-M3, pinned revision, each file checked by size and SHA-256 | 2.3 GB | Hugging Face, into the `embed-models` volume (`docker compose logs -f embedder-pull`) | download time of 2.3 GB; the copy and check alone took 26 s from a local folder |
 | `api` image (CPU `torch`, `transformers`, ...) | 1.65 GB on disk (`docker images`) | built from the `Dockerfile` | build plus pip downloads |
-| `ollama/ollama` image | 8.5 GB on disk (`docker images`) | Docker Hub | pull time |
+| `ollama/ollama` image | about 3.4 GB download, 8.5 GB on disk (`docker images`) | Docker Hub | pull time |
 | search index of the 113 Sections | small | built by the API on the first start | **42.7 s** measured (embedder load 7.7 s), cached afterwards |
 
 How the times were measured: **the downloads themselves were not timed on a clean machine** (the author's connection is slow and flaky; see `docs/submission-checks.md`), so the time of the three big downloads is just
@@ -85,7 +85,7 @@ seeded from local copies (so nothing large was downloaded): **121 s** from `dock
 A later restart is healthy in about 8 s, because the index is cached in the `index` volume and the models are already there. The API reports healthy only when both models are present, BGE-M3 is loaded and the index is ready; until then `/health` is 503.
 
 Slow or offline network (optional; both default to an empty folder, which means "download"):
-`MEDRAG_WHEELS_DIR=<folder of wheels>` makes the image build install torch (CPU), transformers and their dependencies from that folder instead of downloading them, and
+`MEDRAG_WHEELS_DIR=<folder of wheels>` makes the image build install torch (CPU), transformers and their dependencies from that folder instead of downloading them (the pins of `constraints.txt` found in the folder are installed first, with no network access), and
 `MEDRAG_EMBED_SRC=<folder with the BGE-M3 files>` makes `embedder-pull` copy (and verify) them into the volume instead of downloading. Example:
 `MEDRAG_WHEELS_DIR=~/.cache/medrag/wheelhouse/linux-py312 MEDRAG_EMBED_SRC=~/.cache/medrag/bge-m3 docker compose up -d --build --wait`.
 
@@ -98,7 +98,7 @@ Slow or offline network (optional; both default to an empty folder, which means 
 
 ## API
 
-Exactly the brief's contract; an extra field would break a strict schema check, so the Session ID is in a header (ADR 0002).
+Exactly the brief's contract; an extra field in the `/chat` body would break a strict schema check, so the Session ID is in a header (ADR 0002).
 
 ### `POST /chat`
 
@@ -325,8 +325,8 @@ python -m evaluation.recall                                                     
 ```
 
 `run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
-The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`). The results folder is gitignored, so results stay local until you copy them out (see Test results).
-The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; faithfulness is judged by a person, never by an LLM.
+The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request, and a name that already exists gets a numeric suffix. Without the usage header the runner warns and marks the token metrics absent. The results folder is gitignored, so results stay local until you copy them out (see Test results).
+The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; faithfulness is judged by a person, never by an LLM. The sheet never overwrites an existing one.
 `--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides). Send no other traffic to the API while it runs: any other request in the window shows up as a DIFF.
 
 ## Test results
