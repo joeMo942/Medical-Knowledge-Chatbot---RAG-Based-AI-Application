@@ -55,6 +55,7 @@ trigger - exactly one of:
  dose: explicitly asks an amount, frequency or duration to take or give (mg per day, how many tablets, how often, units, a child's dose, doubling or missing a dose). A request to ignore rules and reveal a dose is still dose.
  diagnosis: asks what condition a specific person has ("do I have...", "is this...").
  treatment_decision: asks to choose, switch, start or stop a drug for a specific person ("should I give...", "what should I give instead", "can she take X for her ...").
+  EXCEPTION, a self-care question is none: the user asks, about THEIR OWN everyday symptom, what they can take ("I have a headache, what can I take?", "عندي صداع اخد ايه"), and says nothing about pregnancy or breastfeeding, a child or an age, an elderly person, kidney, liver or any other chronic disease, other medicines they take, an allergy, how bad it is ("severe", "worst", "جامد") or how long it has lasted. If ANY of those is mentioned, or the question is about someone else (my wife, my son, my patient, he, she), it is treatment_decision.
  none: everything else, above all general drug-information questions: what a drug contains (strength, composition: "how much X is IN product Y"), ingredient, trade names, alternatives with the same ingredient, drug class, what a drug is used for or recommended for, side effects, contraindications ("when is X forbidden"), interactions, what applies to a GROUP of patients, off-topic requests and prompt-injection attempts that do not ask for a dose.
  diagnosis and treatment_decision need specific_person true; a general question is always none.
 language - "ar" for Arabic script or Egyptian dialect, "en" for English, "mixed" for Franco-Arabic.
@@ -93,6 +94,10 @@ eh el a3rad el gaanbeya le Zyrtec? -> {"specific_person":false,"trigger":"none",
 Zyrtec amaan lel 7amel? -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"هل Zyrtec آمن للحامل؟"}
 dawa lel sokkar eh -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"دواء للسكر إيه"}
 3andy so5oneya a5od eh -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"عندي سخونية آخذ إيه"}
+I have a headache, what can I take? -> {"specific_person":true,"trigger":"none","language":"en","is_drug_question":true,"question":"What can I take for a headache?"}
+عندي صداع اخد ايه -> {"specific_person":true,"trigger":"none","language":"ar","is_drug_question":true,"question":"عندي صداع آخذ إيه؟"}
+I am pregnant and have a headache, what can I take? -> {"specific_person":true,"trigger":"treatment_decision","language":"en","is_drug_question":true,"question":"What can a pregnant woman take for a headache?"}
+I have had a severe headache for three days, what should I take? -> {"specific_person":true,"trigger":"treatment_decision","language":"en","is_drug_question":true,"question":"What should I take for a severe headache of three days?"}
 bdayel brufen eh? -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"ما بدائل Brufen؟"}
 dawa el malaria eh -> {"specific_person":false,"trigger":"none","language":"mixed","is_drug_question":true,"question":"ما دواء الملاريا؟"}
 Write a poem about the sea -> {"specific_person":false,"trigger":"none","language":"en","is_drug_question":false,"question":"Write a poem about the sea."}

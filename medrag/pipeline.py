@@ -19,6 +19,14 @@ rewrite is refused, the raw message is used as before.
 A Franco-Arabic message (language `mixed`) is also rewritten, on the first turn too, into Arabic letters (word for
 word, see `standalone_question`); Trade Names and Active Ingredients in Arabic letters are then mapped to the KB's
 English spelling (arabicnames.py). The Answer Language is decided once (language.py) and handed to the answer call.
+
+A question word that is a typo of exactly one KB word is corrected before search and the support check (typos.py); the
+escalation rules run on the raw message AND the corrected one (so "pregnent" is still a pregnancy), and an Answered reply then
+starts with "Did you mean: ...?".
+
+A first-person self-care question with no risk qualifier (selfcare.py, ADR 0003) is the one place a status is lowered: the
+router's treatment_decision becomes none. It never lowers an emergency, a dose or a diagnosis. The Answered reply then ends with
+the fixed note that a pharmacist can say which one suits the person, added here so the model cannot leave it out.
 """
 from __future__ import annotations
 
@@ -35,8 +43,10 @@ from .language import detect_language, refine
 from .models import Section
 from .routing import Route, route_message
 from .rules import check
+from .selfcare import is_self_care, pharmacist_note
 from .sessions import Turn
 from .support import SupportCheck
+from .typos import Corrected, TypoCorrector, did_you_mean
 
 log = logging.getLogger("medrag")
 Search = Callable[[str], Awaitable[list[Section]]]
@@ -46,10 +56,17 @@ Search = Callable[[str], Awaitable[list[Section]]]
 class Decision:
     trigger: str | None  # emergency | dose | diagnosis | treatment_decision, or None
     route: Route | None  # None when the routing call was skipped or failed
+    self_care: bool = False  # a first-person self-care question without a risk qualifier (selfcare.py): no Treatment Decision
+
+
+def _check_all(texts: Sequence[str]) -> str | None:
+    """The rule trigger of the strongest of several forms of one message (emergency before dose)."""
+    found = {check(t) for t in texts}
+    return "emergency" if "emergency" in found else "dose" if "dose" in found else None
 
 
 async def decide(message: str, llm: LLMGate, deadline: float | None = None,
-                 history: Sequence[Turn] = ()) -> Decision:
+                 history: Sequence[Turn] = (), also: Sequence[str] = ()) -> Decision:
     """Rules first, then the routing call; the two are combined so that nothing is ever lowered.
 
     - Emergency wording: Escalated at once (no routing call needed).
@@ -58,9 +75,12 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     - Nothing flagged: the router's trigger, if any. If the router failed or was skipped, the
       answer call carries a backstop classification (see answering.answer_question).
     The rules run on the raw message always, and on the router's rewrite wherever the rewrite stands in for the
-    message (in a Session, and for a Franco-Arabic message): a trigger found there can only raise.
+    message (in a Session, and for a Franco-Arabic message): a trigger found there can only raise. `also` holds other forms
+    of the message (its typo-corrected text): the rules run on them too, and they can only raise as well.
+    A self-care question (selfcare.is_self_care: first person, asks what to take, no risk qualifier anywhere: the message, `also`,
+    the router's rewrite, the earlier turns) lowers the router's treatment_decision to none, and nothing else.
     """
-    flagged = check(message)
+    flagged = _check_all([message, *also])
     if flagged == "emergency":
         return Decision("emergency", None)
     route = await route_message(message, llm, deadline, history)
@@ -72,7 +92,13 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
         return Decision("emergency", route)
     if flagged or rewrite_flag:
         return Decision(flagged or rewrite_flag, route)
-    return Decision(route.trigger if route else None, route)
+    trigger = route.trigger if route else None
+    context = (*(t.message for t in history), *((route.question,) if route and route.question else ()))
+    self_care = is_self_care(message, *also, context=context)
+    if self_care and trigger == "treatment_decision":
+        log.info("self-care question: the router's treatment_decision is lowered to none")
+        trigger = None
+    return Decision(trigger, route, self_care)
 
 
 def standalone_question(message: str, decision: Decision, history: Sequence[Turn],
@@ -107,11 +133,13 @@ def standalone_question(message: str, decision: Decision, history: Sequence[Turn
 
 async def respond(message: str, language: str, search: Search, llm: LLMGate,
                   deadline: float | None = None, support: SupportCheck | None = None,
-                  history: Sequence[Turn] = (), names: ArabicNames | None = None) -> ChatResponse:
+                  history: Sequence[Turn] = (), names: ArabicNames | None = None,
+                  typos: TypoCorrector | None = None) -> ChatResponse:
     """`language` is the heuristic Answer Language of the current message (language.detect_language), whatever the history
     was written in. It is refined once by the routing call (`language.refine`) and then fixed: the escalation text, the
     answer call (told to write in it) and the returned label all use this one value."""
-    decision = await decide(message, llm, deadline, history)
+    typed = typos.correct(message, language) if typos is not None else Corrected(message)
+    decision = await decide(message, llm, deadline, history, (typed.text,) if typed.changes else ())
     language = refine(language, message, decision.route.language if decision.route else None)
     if decision.trigger:
         return escalated(decision.trigger, language)
@@ -120,9 +148,21 @@ async def respond(message: str, language: str, search: Search, llm: LLMGate,
         question, mapped = names.map(question)
         if mapped:
             log.info("Arabic-letter names mapped: %s", ", ".join(f"{m.original} -> {m.name}" for m in mapped))
+    fixed = Corrected(question)
+    if typos is not None and language != "mixed":
+        fixed = typed if question == message and typed.changes else typos.correct(question, language)
+        question = fixed.text
     if question != message:
         log.info("searching for %r instead of the message", question)
     sections = await search(question)
     alternatives = bool({*tokens(question), *tokens(message)} & ALT_WORDS)
-    return await answer_question(question, language, sections, llm, deadline, backstop=decision.route is None,
-                                 support=support, alternatives=alternatives)
+    result = await answer_question(question, language, sections, llm, deadline, backstop=decision.route is None,
+                                   support=support, alternatives=alternatives, self_care=decision.self_care)
+    if result.status != "answered":
+        return result  # the fixed Out of Scope and Escalated texts stay exactly as they are
+    answer = result.answer
+    if fixed.changes:
+        answer = f"{did_you_mean(fixed.words, language)}\n{answer}"
+    if decision.self_care:
+        answer = f"{answer}\n\n{pharmacist_note(language)}"
+    return result.model_copy(update={"answer": answer})

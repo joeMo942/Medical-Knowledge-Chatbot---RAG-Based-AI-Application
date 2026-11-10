@@ -254,7 +254,7 @@ def create_app(
                      getattr(snap.retriever, "last_embed_ms", 0.0))
             return found
 
-        return await respond(message, detect_language(message), search, gate, deadline, snap.support, history, snap.names)
+        return await respond(message, detect_language(message), search, gate, deadline, snap.support, history, snap.names, snap.typos)
 
     async def load_history(session_id: str) -> list[Turn]:
         """The last few turns, or none: a store problem never blocks a reply."""

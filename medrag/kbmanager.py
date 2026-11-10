@@ -23,6 +23,7 @@ from .kbstore import InvalidDocument, KBStore, check_diseases, check_kb_id
 from .models import KBDocument, Section
 from .retrieval import LexicalRetriever, Retriever
 from .support import SupportCheck
+from .typos import TypoCorrector
 
 log = logging.getLogger("medrag")
 
@@ -46,14 +47,16 @@ class KBSnapshot:
     retriever: Retriever
     support: SupportCheck
     names: ArabicNames
+    typos: TypoCorrector
 
     @classmethod
     def build(cls, documents: tuple[KBDocument, ...], retriever: Retriever,
               sections: tuple[Section, ...] | None = None) -> "KBSnapshot":
         sections = tuple(sections) if sections is not None else tuple(s for d in documents for s in d.sections)
         drugs = getattr(retriever, "drugs", None) or DrugIndex(sections)
-        return cls(tuple(documents), sections, retriever, SupportCheck(sections),
-                   ArabicNames(drugs, arabic_common_words(sections)))
+        support = SupportCheck(sections)
+        return cls(tuple(documents), sections, retriever, support,
+                   ArabicNames(drugs, arabic_common_words(sections)), TypoCorrector(sections))
 
     @property
     def ready(self) -> bool:
