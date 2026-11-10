@@ -418,7 +418,7 @@ def test_indication_questions_not_grounded_in_risk_lines_are_not_supported(quest
 @pytest.mark.parametrize("question, section", [
     ("Which drugs cause dry cough?", ACE),
     ("Can a pregnant patient take blood pressure drugs?", ACE), ("ادوية الضغط في الحمل", ACE), ("Which blood pressure drugs are used in pregnancy?", ACE),
-    ("is Actos used for bladder cancer", TZD), ("هل اكتوس بيعالج سرطان المثانة", TZD),
+    ("is Actos used for bladder cancer", TZD), ("هل Actos بيعالج سرطان المثانة", TZD),
     ("Can a bladder cancer patient take Actos?", TZD),
     ("ادوية السكر", TZD), ("علاج الضغط", ACE), ("what helps with high blood pressure", ACE),
 ])
@@ -474,7 +474,7 @@ def test_real_kb_indication_questions_and_the_fix_round_repros(real_kb):
     for q, s in (("ادوية تسبب الكحة", pick("KB-08", "ACE")), ("ادوية بتسبب رعشة", pick("KB-01", "SABA", "Asthma")),
                  ("Can a pregnant patient take antibiotics?", pick("KB-05", "Tetracyclines")),
                  ("مريض الكلى ياخد مسكن ايه", pick("KB-03", "NSAIDs –")), ("ادوية مسكنة لمرضى الكلى", pick("KB-03", "NSAIDs –")),
-                 ("is Actos used for bladder cancer", tzd), ("هل اكتوس بيعالج سرطان المثانة", tzd)):
+                 ("is Actos used for bladder cancer", tzd), ("هل Actos بيعالج سرطان المثانة", tzd)):
         assert check.supported(q, [s]), q
 
 
@@ -491,7 +491,27 @@ def test_a_yes_no_indication_question_with_no_named_drug_is_still_an_indication_
 def test_a_yes_no_modal_exempts_only_a_question_that_names_a_drug():
     assert FIX_CHECK.supported("is Actos used for bladder cancer", [TZD])
     assert FIX_CHECK.supported("Is Actos safe with bladder cancer?", [TZD])
-    assert FIX_CHECK.supported("هل اكتوس بيعالج سرطان المثانة", [TZD])
+    # "اكتوس" is not mapped to Actos by the #7 mapper (short, vowel-poor), so this question names no drug and is held to
+    # the indication rule: Out of Scope on the TZD Section (an accepted cost of not guessing at unknown Arabic words).
+    assert not FIX_CHECK.supported("هل اكتوس بيعالج سرطان المثانة", [TZD])
+    assert FIX_CHECK.supported("هل Actos بيعالج سرطان المثانة؟", [TZD])
+
+
+@pytest.mark.parametrize("question", ["هل في برشام للسرطان؟", "هل في حقن للسرطان؟", "هل في كبسولات للسرطان؟",
+                                      "هل في اعشاب تعالج السرطان؟", "هل في شراب للسرطان؟", "هل ينفع كركم للسرطان؟",
+                                      "هل في دكتور يعالج السرطان؟"])
+def test_an_unknown_arabic_word_in_a_yes_no_question_is_never_taken_for_a_drug(question):
+    assert not FIX_CHECK.supported(question, [TZD]), question
+
+
+def test_a_failing_name_lookup_means_no_drug_is_named():
+    check = SupportCheck(FIX_KB)
+
+    class Broken:
+        def map(self, text):
+            raise RuntimeError("lookup unavailable")
+    check._arabic_names = Broken()
+    assert not check.supported("هل في علاج للسرطان؟", [TZD])
 
 
 @pytest.mark.kb
@@ -501,8 +521,14 @@ def test_real_kb_yes_no_indication_questions_and_named_drugs(real_kb):
     tzd = next(s for s in sections if "Thiazolidinediones" in s.section)
     for q in YESNO_INDICATION:
         assert not check.supported(q, [tzd]), q
-    for q in ("هل اكتوس بيعالج سرطان المثانة", "is Actos used for bladder cancer"):
+    for q in ("هل Actos بيعالج سرطان المثانة؟", "is Actos used for bladder cancer"):
         assert check.supported(q, [tzd]), q
+    assert not check.supported("هل اكتوس بيعالج سرطان المثانة", [tzd])  # the mapper does not know اكتوس: accepted cost
+    for q in ("هل في برشام للسرطان؟", "هل في حقن للسرطان؟", "هل في كبسولات للسرطان؟", "هل في اعشاب تعالج السرطان؟",
+              "هل في شراب للسرطان؟", "هل ينفع كركم للسرطان؟", "هل في دكتور يعالج السرطان؟"):
+        assert not check.supported(q, [tzd]), q
+    brufen_sec = next(s for s in sections if s.kb_id == "KB-03" and any("Brufen" in r.text for r in s.product_rows))
+    assert check.supported("هل بروفين بيعالج الالم؟", [brufen_sec])
     assert check.supported("Can a pregnant patient take antibiotics?", [next(s for s in sections if s.kb_id == "KB-05" and "Tetracyclines" in s.section)])
     brufen = next(s for s in sections if any("Brufen" in r.text for r in s.product_rows))
     assert check.supported("Is Brufen safe in pregnancy?", [brufen])

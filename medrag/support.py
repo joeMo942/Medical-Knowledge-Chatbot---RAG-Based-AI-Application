@@ -184,6 +184,7 @@ INDICATION = {stem(normalize(w)) for w in "دواء ادويه دوا علاج �
 # says what a class is FOR, not where it says when NOT to use it or what it does wrong (`indication_text`).
 _INDICATION_EN = {"treat", "treats", "treated", "treating", "treatment", "treatments", "therapy", "dawa", "dawaa", "3elag", "3lag"}
 _DRUG_WORDS = {"drug", "drugs", "medicine", "medicines", "medication", "medications", "meds"}
+_EXISTENTIAL = {("is", "there"), ("are", "there"), ("هل", "في"), ("هل", "فيه"), ("هل", "عندكم"), ("في", "حاجه")}
 _INDICATION_PAIRS = {("help", "with"), ("helps", "with"), ("helping", "with"), ("used", "for"), ("used", "in"), ("use", "for"),
                      ("anything", "for")}
 # What a question asks about a drug's risks, or what a drug causes: these are not indication questions even with no drug named.
@@ -222,6 +223,10 @@ def asks_indication(question: str, named_drug: bool = False) -> bool:
     if any(t in _INDICATION_EN or t in _DRUG_WORDS or stem(t) in INDICATION for t in toks):
         return True
     if any(pair in _INDICATION_PAIRS for pair in zip(toks, toks[1:])):
+        return True
+    # "is there / are there / any X for ...", "هل في / فيه / يوجد X ل..", "هل ينفع X ل..": asking whether something exists or
+    # works for a condition, with no drug named, is asking what treats it
+    if any(pair in _EXISTENTIAL for pair in zip(toks, toks[1:])) or "ينفع" in toks or "يوجد" in toks:
         return True
     # "ايه اللي ينفع لـ X": what is good for X (a yes/no "ينفع" with a drug named never gets here)
     if any(t == "ينفع" and (i >= 1 and toks[i - 1] in _QWORDS or i >= 2 and toks[i - 1] == "اللي" and toks[i - 2] in _QWORDS)
@@ -462,18 +467,14 @@ class SupportCheck:
 
     def _names_arabic_brand(self, question: str) -> bool:
         """The question names a KB Trade Name / Active Ingredient written in Arabic letters (the #7 mapper)."""
-        if self._arabic_names is None:
-            from .arabicnames import ArabicNames, arabic_common_words  # imports this module: not at the top
-            from .drugs import DrugIndex
-            self._arabic_names = ArabicNames(DrugIndex(self._sections), arabic_common_words(self._sections))
-        if self._arabic_names.map(question)[1]:
-            return True
-        # The mapper leaves short or vowel-poor names alone (اكتوس): in a yes/no question an unknown Arabic word that may be
-        # a brand (no article, not the object of an indication word) is taken as the drug the question is about.
-        toks = tokens(question)
-        return bool(toks) and toks[0] in _YESNO_FIRST and any(
-            not self._kb.has(w) and self._brand_like(toks, i) for i, w in enumerate(self._topic(toks)) if w in toks
-            for i in [toks.index(w)])
+        try:
+            if self._arabic_names is None:
+                from .arabicnames import ArabicNames, arabic_common_words  # imports this module: not at the top
+                from .drugs import DrugIndex
+                self._arabic_names = ArabicNames(DrugIndex(self._sections), arabic_common_words(self._sections))
+            return bool(self._arabic_names.map(question)[1])
+        except Exception:  # fail safe: no lookup, no drug named, so the indication rule applies
+            return False
 
     def _condition_terms(self, toks: list[str]) -> list[str]:
         """The topic terms of an indication question that are not the frame itself: "الادويه", "بتعالج", "العلاج" (article
