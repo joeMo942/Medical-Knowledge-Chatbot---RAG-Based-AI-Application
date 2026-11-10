@@ -123,10 +123,16 @@ def test_a_word_for_word_arabic_rewrite_of_franco_is_accepted():
     ("3andy so5oneya a5od eh", "q"),
     ("eh el a3rad el gaanbeya bta3t Ventolin?", "ما بدائل Ventolin؟"),  # what is asked changed: side effects -> alternatives
     ("Ventolin mamnoo3 le meen?", "ما الأعراض الجانبية لـ Ventolin؟"),  # contraindications -> side effects
-    ("dawa lel daghT el 3aly", "ما دواء ضغط الدم العالي؟"),  # a gloss the message does not have (الدم): refused, the raw message is used
+    ("dawa lel daghT el 3aly", "ما دواء ضغط العين العالي؟"),  # a gloss that is not a phrase of the KB next to the user's word
+    ("so5oneya", "سخونية الدم"),
 ])
 def test_a_rewrite_that_adds_drops_or_swaps_a_word_is_refused(message, rewrite):
     assert not ok(message, rewrite)
+
+
+def test_a_gloss_the_kb_itself_puts_next_to_the_users_word_is_accepted():
+    # "ضغط الدم" is the KB's own phrase (the Beta Blockers line): the router's usual rendering of "daghT"
+    assert ok("dawa lel daghT el 3aly", "ما دواء ضغط الدم العالي؟")
 
 
 def test_a_first_turn_rewrite_gets_no_drug_name_exemption():

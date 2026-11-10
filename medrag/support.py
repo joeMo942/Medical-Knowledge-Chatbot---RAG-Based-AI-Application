@@ -228,6 +228,8 @@ class SupportCheck:
         # to name the class or the drug, so both are words a rewrite may bring in from the history.
         self.class_names = {t for sec in sections if sec.kind == "class" for t in tokens(sec.section) if len(t) >= 3}
         self._kb = _Text("\n".join(s.render() for s in sections))
+        words = [stem(t) for sec in sections for t in tokens(sec.render())]
+        self._pairs = frozenset(zip(words, words[1:]))  # adjacent word pairs of the KB's text (rewrite_ok)
 
     def rewrite_ok(self, message: str, rewrite: str, *, from_history: bool = True, translate: bool = False) -> bool:
         """True when a standalone rewrite of `message` adds nothing it may not.
@@ -254,7 +256,10 @@ class SupportCheck:
             # with and without the stem: the stemmer strips a letter that is part of the word as often as a clitic (بدايل)
             return translate and any(same_word(a, b) for o in others for a in {t, stem(t)} for b in {o, stem(o)})
 
-        for t in rtoks:
+        def justified(t: str) -> bool:
+            return stem(t) in have or same(t, mtoks)
+
+        for i, t in enumerate(rtoks):
             if _NUMBERISH.match(t):
                 if t not in mtoks:
                     return False
@@ -271,6 +276,8 @@ class SupportCheck:
                 continue
             if same(t, mtoks):
                 continue
+            if translate and self._phrase_neighbour(rtoks, i, justified):
+                continue
             return False
         if translate:
             kept = {stem(t) for t in rtoks}
@@ -281,6 +288,15 @@ class SupportCheck:
                     continue
                 return False
         return True
+
+    def _phrase_neighbour(self, rtoks: list[str], i: int, justified) -> bool:
+        """True when rtoks[i] and a neighbouring word that IS the message's own (justified) are an adjacent pair of words
+        in the KB's text: the usual Arabic phrase for what the user wrote ("daghT" -> "ضغط الدم": the KB says ضغط الدم).
+        The extra word must be one the KB itself puts next to the user's word, so it cannot bring in another condition."""
+        t = stem(rtoks[i])
+        before = i > 0 and justified(rtoks[i - 1]) and (stem(rtoks[i - 1]), t) in self._pairs
+        after = i + 1 < len(rtoks) and justified(rtoks[i + 1]) and (t, stem(rtoks[i + 1])) in self._pairs
+        return before or after
 
     def topic_terms(self, question: str) -> list[str]:
         return self._topic(tokens(question))
