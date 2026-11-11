@@ -10,7 +10,7 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
 | [API](#api) | `POST /chat`, `GET /health`, examples |
 | [Safety policy](#safety-policy) | Answered / Out of Scope / Escalated, Dose vs Strength, why this suits pharmacists and doctors |
 | [Architecture](#architecture) | the pipeline, services, volumes |
-| [Evaluation](#evaluation) and [Test results](#test-results) | how to run the eval; where the recorded results go |
+| [Evaluation](#evaluation) and [Test results](#test-results) | how to run the eval; the recorded results ([docs/test-results/](docs/test-results/README.md)) |
 | [`MODEL_DECISION.md`](MODEL_DECISION.md), [`TOKEN_USAGE.md`](TOKEN_USAGE.md) | why these models; tokens and speed per model call |
 | [Known limitations](#known-limitations) | what a user will notice |
 | [`docs/adr/`](docs/adr), [`GLOSSARY.md`](GLOSSARY.md) | decisions and the domain vocabulary used here (Section, Citation, Dose, Strength, ...) |
@@ -337,7 +337,7 @@ A reply cut off at its cap is answered as `out_of_scope` (and logged as a warnin
 The test set and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them.
 
 - `evaluation/cases.json`: 85 cases, 90 turns (the 10 public dev questions, paraphrases, dialect, Franco-Arabic, Arabic-letter Trade Names, Strength, group-level questions, partly covered questions, multi-turn, prompt injection, off-topic traps, Emergency, Dose, Diagnosis, Treatment Decision), each with the expected status, KB IDs, relevance terms and a note.
-- `--cases` runs a smaller set: `cases_issue5.json` (11 drugs outside the KB and partly covered cases), `cases_issue7.json` (13 Franco-Arabic and Arabic-letter Trade Name cases), `cases_issue8.json` (multi-turn).
+- `--cases` runs a smaller set: `cases_issue5.json` (17: drugs outside the KB and partly covered cases), `cases_issue7.json` (20: Franco-Arabic and Arabic-letter Trade Name cases), `cases_issue8.json` (4 multi-turn cases), `cases_issue32.json` (57: self-care wording and lookups).
 
 Run it against a started stack. It needs the usage header on (so tokens are measured) and, for `--analytics-check`, the same admin token the server was started with. The runner needs Python 3.12+ and the package's small dependencies on the host, and it reads the KB files in `./data` (for the snippet check):
 
@@ -347,27 +347,32 @@ pip install -e .
 export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16) MEDRAG_USAGE_HEADER=1
 docker compose up -d --build --wait                  # (re)start with both set
 python -m evaluation.run --label final --analytics-check                               # every case, one at a time, against http://localhost:8000
-python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json)
+python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json, cases_issue32.json)
 python -m evaluation.review evaluation/results/<date>-final.json                       # the manual faithfulness-review sheet
 python -m evaluation.kb_check                                                          # checks expected KB IDs, sections and out-of-scope traps against the real KB files
 python -m evaluation.recall                                                            # offline search recall (needs torch and the BGE-M3 files, see the script)
 ```
 
 `run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
-The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request, and a name that already exists gets a numeric suffix. Without the usage header the runner warns and marks the token metrics absent. The results folder is gitignored, so results stay local until you copy them out (see Test results).
+The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request, and a name that already exists gets a numeric suffix. Without the usage header the runner warns and marks the token metrics absent. The results folder is gitignored; the final runs were copied to [docs/test-results/](docs/test-results/README.md).
 The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; the sheet is filled in a first pass by an AI reviewer (Claude Opus) that checks each claim against the cited Section; the author then checks it and signs it off, and the sheet says which is which. The sheet never overwrites an existing one.
 `--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides). Send no other traffic to the API while it runs: any other request in the window shows up as a DIFF.
 
 ## Test results
 
-> **TODO (author): link the final eval run and the faithfulness review here.** Not committed yet: `evaluation/results/` is gitignored, so add the files to the repository (for example under `docs/test-results/`, with `git add -f`) and link them in this section.
->
-> - the final run on `evaluation/cases.json`: `evaluation/results/<date>-<label>.md` and `.json`, produced by `python -m evaluation.run --label <label> --analytics-check` (stack started with `MEDRAG_USAGE_HEADER=1` and `MEDRAG_ADMIN_TOKEN` set, see Evaluation);
-> - the held-out runs, if you want them recorded: `--cases evaluation/cases_issue5.json`, `cases_issue7.json`, `cases_issue8.json`;
-> - the faithfulness review: `evaluation/results/<date>-<label>-faithfulness-review.md`, generated by `python -m evaluation.review evaluation/results/<date>-<label>.json` and then filled in by hand (the verdict columns and the summary at the end stay empty until a person reviews).
+Recorded final run, 2026-11-11 (laptop plugged in, Windows Balanced power mode, the GPU sometimes power-capped), one request at a time. Full reports, raw results, the analytics-check outputs, the recall output and the harness description (test sets, scoring, how to re-run, every failing case, caveats) are in [docs/test-results/](docs/test-results/README.md).
 
-What is already in the repository: the test set and runner (`evaluation/`), the unit tests below, and development numbers quoted from earlier runs in [MODEL_DECISION.md](MODEL_DECISION.md) (status accuracy from 55/90 to 90/90 as the pipeline grew) and [TOKEN_USAGE.md](TOKEN_USAGE.md).
-The submission check ran the 90 turns on a clean clone with fresh volumes: **90/90**, 0 contract violations, analytics check "all exact numbers match" ([docs/submission-checks.md](docs/submission-checks.md)); that run's files are not committed either.
+| set | status | language | Citation KB ID | snippets verbatim | contract violations | latency p50 / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `cases.json` (85 cases, 90 turns, includes the 10 dev questions) | **90/90** | 90/90 | 44/44 | 53/53 | 0 | 3.47 / 6.65 s |
+| `cases_issue5.json` (17: outside the KB, partly covered) | 15/17 | 17/17 | 5/7 | 6/6 | 0 | 3.87 / 5.79 s |
+| `cases_issue7.json` (20 cases, 21 turns: Franco-Arabic, Arabic-letter Trade Names) | 21/21 | 21/21 | 11/11 | 16/16 | 0 | 3.64 / 6.17 s |
+| `cases_issue8.json` (4 cases, 9 turns: multi-turn) | 9/9 | 9/9 | 5/5 | 5/5 | 0 | 3.20 / 4.65 s |
+| `cases_issue32.json` (57 cases, 58 turns: self-care wording, lookups) | 58/58 | 58/58 | 18/19 | 50/50 | 0 | 0.82 / 7.43 s |
+
+Search recall (75 questions, relevant Section among the 4 retrieved): hybrid 75, BM25 71.
+The two misses are partly covered questions that came back Out of Scope instead of answering the covered half (`partial5-metformin-contraindications-cost`, `partial5b-hypertension-and-malaria`); they fail every time. The sets were written by the author and used while tuning, so these are development numbers, not a forecast for the hidden set.
+The faithfulness review sheets are generated but not signed off yet; see the results folder.
 
 ## Known limitations
 

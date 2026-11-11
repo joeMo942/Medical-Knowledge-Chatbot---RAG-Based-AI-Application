@@ -19,19 +19,19 @@ Both are open-weights models. `GET /health` reports both names.
 
 ## Why qwen3.5:4b: what I measured
 
-On the 90-turn test set (the 10 dev questions plus my own cases in Arabic, Egyptian dialect, Franco-Arabic and English):
+On the 90-turn test set (final run `final`, 2026-11-11, the 10 dev questions plus my own cases in Arabic, Egyptian dialect, Franco-Arabic and English):
 
 - **Status: 90/90 correct**, including all 10 dev questions. Language label: 90/90.
 - **Citations:** 44/44 valid, and 53/53 snippets are verbatim text from the cited Section. **No invented sources.**
 - **0 API contract violations.**
-- **Speed:** latency per `/chat` is p50 3.68 s and p95 6.04 s, far inside the 30 s limit. Output runs at 60–73 tokens/s.
+- **Speed:** latency per `/chat` is p50 3.47 s and p95 6.65 s in the final run (2026-11-11; laptop plugged in, Windows Balanced power mode, the GPU sometimes power-capped; the earlier clean-clone run had 3.68 / 6.04 s), far inside the 30 s limit. Output runs at 58–73 tokens/s.
 - **Memory:** 3.4 GB loaded and 100% on the GPU, so it fits the 8 GB card with room for its context.
 
-Caveat: these 90 turns were also used to tune the pipeline, so the score describes this test set, not the hidden one.
+Caveat: these 90 turns were also used to tune the pipeline, so the score describes this test set, not the hidden one. All five test sets and their results: [docs/test-results/](docs/test-results/README.md).
 
 ## Why BGE-M3: what I measured
 
-Recall test with 75 questions, counting a question as found when the right Section is among the 4 retrieved:
+Recall test with 75 questions (re-run 2026-11-11, results in [docs/test-results/](docs/test-results/README.md)), counting a question as found when the right Section is among the 4 retrieved:
 
 | Search | Found (of 75) | Everyday wording, no drug name (of 26) |
 |---|---:|---:|
