@@ -64,6 +64,7 @@ drug drugs medicine medicines medication medications treat treats treated treati
 therapy therapies safe safety suitable recommended common commonly mainly main usual usually please want need
 patient patients people person anything something everything thing things
 have has had having feel feels feeling felt got suffer suffers suffering
+her his him hers woman women man men
 cause causes caused causing help helps helping lower lowers reduce reduces increase increases work works
 stop start long short high low possible likely taken taking
 year years old age aged month months week weeks day days

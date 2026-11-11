@@ -387,6 +387,7 @@ async def answer_question(
     support: SupportCheck | None = None,
     alternatives: bool = False,
     self_care: bool = False,
+    lookup: bool = False,
 ) -> ChatResponse:
     """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller).
     `backstop`: the routing call did not run, so the answer call also classifies the message.
@@ -408,7 +409,7 @@ async def answer_question(
     raw = result.data
     if backstop:
         trigger = effective_trigger(raw)
-        if self_care and trigger == "treatment_decision":
+        if (self_care or lookup) and trigger == "treatment_decision":
             trigger = None
         if trigger:
             return escalated(trigger, language)

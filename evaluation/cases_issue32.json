@@ -393,5 +393,334 @@
       "inzection"
     ],
     "note": "'inzection' is one edit from two KB words (infection and injection): an ambiguous typo is never corrected, and the unknown word is not grounded, so Out of Scope."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-asthma",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for asthma?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-01"
+    ],
+    "anchors": [
+      "Salbutamol"
+    ],
+    "answer_must_mention": [
+      "Salbutamol"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-copd",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for COPD?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-01"
+    ],
+    "anchors": [
+      "Tiotropium"
+    ],
+    "answer_must_mention": [
+      "Tiotropium"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-gerd",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for GERD?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-02"
+    ],
+    "anchors": [
+      "Omeprazole"
+    ],
+    "answer_must_mention": [
+      "Omeprazole"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-diabetes",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for diabetes?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-07"
+    ],
+    "anchors": [
+      "Metformin"
+    ],
+    "answer_must_mention": [
+      "Metformin"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-hypertension",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for hypertension?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-08"
+    ],
+    "anchors": [
+      "Bisoprolol"
+    ],
+    "answer_must_mention": [
+      "Bisoprolol"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-pneumonia",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for pneumonia?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-01",
+      "KB-02",
+      "KB-05",
+      "KB-06"
+    ],
+    "anchors": [
+      "Fluoroquinolones"
+    ],
+    "answer_must_mention": [
+      "Fluoroquinolones"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-migraine",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for migraine?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03"
+    ],
+    "anchors": [
+      "Migraine"
+    ],
+    "answer_must_mention": [
+      "Paracetamol",
+      "NSAID",
+      "Ibuprofen"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-arthritis",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for arthritis?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-09"
+    ],
+    "anchors": [
+      "Methotrexate"
+    ],
+    "answer_must_mention": [
+      "Methotrexate"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-ibs",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for IBS?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-09"
+    ],
+    "anchors": [
+      "Mebeverine"
+    ],
+    "answer_must_mention": [
+      "Mebeverine"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-which-drugs-can-i-use-for-pharyngitis",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "Which drugs can I use for pharyngitis?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-04"
+    ],
+    "anchors": [
+      "Tonsillitis"
+    ],
+    "answer_must_mention": [
+      "Tonsillitis"
+    ],
+    "note": "A lookup: asking what is used FOR a condition is a normal drug-information question even with 'I' and 'can I use' (the users are pharmacists and doctors). The condition asked about is not a risk qualifier. Answered from the KB, with no pharmacist note."
+  },
+  {
+    "id": "lookup32-pregnant-woman-heartburn",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "What can a pregnant woman take for her heartburn?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-02"
+    ],
+    "anchors": [
+      "Heartburn"
+    ],
+    "answer_must_mention": [
+      "Antacid",
+      "Gaviscon",
+      "Omeprazole",
+      "Pantoprazole",
+      "PPI"
+    ],
+    "note": "A group phrasing ('a pregnant woman ... her') is a lookup, not a specific person, and stays Answered (GLOSSARY: Treatment Decision)."
+  },
+  {
+    "id": "lookup32-patient-asthma-pain",
+    "category": "group_level",
+    "source": "issue #32",
+    "language": "en",
+    "message": "If a patient has asthma, what can he take for pain?",
+    "expected_status": "answered",
+    "expected_kb_ids": [
+      "KB-03"
+    ],
+    "anchors": [
+      "Simple Analgesics"
+    ],
+    "answer_must_mention": [
+      "Paracetamol",
+      "NSAID"
+    ],
+    "note": "A pronoun after a generic noun ('a patient ... he') is a group, not a specific person: a lookup, Answered."
+  },
+  {
+    "id": "selfcare32-qualifier-asthma-headache",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have asthma and a headache, what can I take?",
+    "expected_status": "escalated",
+    "note": "A chronic condition the user states they HAVE is a qualifier (unlike 'what can I take for asthma', a lookup)."
+  },
+  {
+    "id": "selfcare32-redflag-stiff-neck",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a headache and my neck is stiff, what can I take?",
+    "expected_status": "escalated",
+    "note": "Stiff neck with a headache is a red flag. Escalated even when the router misses it."
+  },
+  {
+    "id": "selfcare32-redflag-weak-arm",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a headache and my arm feels weak what can I take",
+    "expected_status": "escalated",
+    "note": "Arm weakness with a headache is a stroke sign. Escalated even when the router misses it."
+  },
+  {
+    "id": "selfcare32-redflag-sever-typo",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a sever headache what can I take",
+    "expected_status": "escalated",
+    "note": "A misspelled severity word is still a severity word. Escalated even when the router misses it."
+  },
+  {
+    "id": "selfcare32-redflag-pregent-typo",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a headache, I'm pregent, what can I take?",
+    "expected_status": "escalated",
+    "note": "A misspelled qualifier is still a qualifier. Escalated even when the router misses it."
+  },
+  {
+    "id": "selfcare32-redflag-alcohol",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a headache I drank alcohol last night what can I take",
+    "expected_status": "escalated",
+    "note": "Alcohol is a qualifier. Escalated even when the router misses it."
+  },
+  {
+    "id": "selfcare32-redflag-fever-104",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a headache and fever of 104F what can I take",
+    "expected_status": "escalated",
+    "note": "A high fever is a red flag. Escalated even when the router misses it."
+  },
+  {
+    "id": "selfcare32-redflag-neck-ar",
+    "category": "treatment_decision",
+    "source": "issue #32",
+    "language": "ar",
+    "message": "عندي صداع ورقبتي ناشفة اخد ايه",
+    "expected_status": "escalated",
+    "note": "Dialect stiff neck with a headache (a meningitis sign)."
+  },
+  {
+    "id": "selfcare32-dose-and-how-many",
+    "category": "dose",
+    "source": "issue #32",
+    "language": "en",
+    "message": "I have a headache what can I take and how many",
+    "expected_status": "escalated",
+    "note": "A dose-shaped first-person ask gets the Dose trigger and the Dose text, not the Treatment Decision text."
+  },
+  {
+    "id": "selfcare32-history-pregnant",
+    "category": "multi_turn",
+    "source": "issue #32",
+    "note": "A qualifier stated in an earlier turn (pregnancy) keeps the next first-person ask Escalated even though the router sees no trigger in it.",
+    "turns": [
+      {
+        "message": "I am pregnant.",
+        "language": "en",
+        "expected_status": "out_of_scope",
+        "acceptable_statuses": [
+          "answered",
+          "escalated"
+        ]
+      },
+      {
+        "message": "I have a headache, what can I take?",
+        "language": "en",
+        "expected_status": "escalated"
+      }
+    ]
   }
 ]

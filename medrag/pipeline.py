@@ -43,7 +43,7 @@ from .language import detect_language, refine
 from .models import Section
 from .routing import Route, route_message
 from .rules import check
-from .selfcare import escalates_other_person, escalates_with_qualifier, is_self_care, pharmacist_note
+from .selfcare import judge, pharmacist_note
 from .sessions import Turn
 from .support import SupportCheck
 from .typos import Corrected, TypoCorrector, did_you_mean
@@ -56,7 +56,8 @@ Search = Callable[[str], Awaitable[list[Section]]]
 class Decision:
     trigger: str | None  # emergency | dose | diagnosis | treatment_decision, or None
     route: Route | None  # None when the routing call was skipped or failed
-    self_care: bool = False  # a first-person self-care question without a risk qualifier (selfcare.py): no Treatment Decision
+    self_care: bool = False  # the user's own symptom, asking what to take, no risk qualifier (selfcare.py): the note is added
+    lowered: bool = False  # a lookup or self-care question: a backstop treatment_decision is ignored too
 
 
 def _check_all(texts: Sequence[str]) -> str | None:
@@ -77,10 +78,10 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     The rules run on the raw message always, and on the router's rewrite wherever the rewrite stands in for the
     message (in a Session, and for a Franco-Arabic message): a trigger found there can only raise. `also` holds other forms
     of the message (its typo-corrected text): the rules run on them too, and they can only raise as well.
-    A self-care question (selfcare.is_self_care: first person, asks what to take, no risk qualifier anywhere: the message, `also`,
-    the router's rewrite, the earlier turns) lowers the router's treatment_decision to none, and nothing else. The reverse also
-    holds: the user's own symptom, asking what to take, WITH a risk qualifier is a treatment_decision even when the router said
-    none (selfcare.escalates_with_qualifier); a rule that can only raise.
+    `selfcare.judge` applies the self-care and lookup policy (ADR 0003): a first-person "what can I take / use" ask is a lookup
+    or a self-care question and lowers the router's treatment_decision to none (and nothing else, never emergency, dose or
+    diagnosis); with a risk qualifier in the message, its corrected form, the router's rewrite or an earlier turn, or about
+    another specific person, it is RAISED to a treatment_decision even when the router said none; with dose wording it is a dose.
     """
     flagged = _check_all([message, *also])
     if flagged == "emergency":
@@ -95,15 +96,15 @@ async def decide(message: str, llm: LLMGate, deadline: float | None = None,
     if flagged or rewrite_flag:
         return Decision(flagged or rewrite_flag, route)
     trigger = route.trigger if route else None
-    context = (*(t.message for t in history), *((route.question,) if route and route.question else ()))
-    self_care = is_self_care(message, *also, context=context)
-    if self_care and trigger == "treatment_decision":
-        log.info("self-care question: the router's treatment_decision is lowered to none")
+    verdict = judge(message, *also, context=tuple(t.message for t in history), rewrite=route.question if route else None)
+    if verdict.raise_to and trigger in (None, "treatment_decision"):
+        if trigger != verdict.raise_to:
+            log.info("first-person ask for what to take: escalated as %s by the self-care rules", verdict.raise_to)
+        return Decision(verdict.raise_to, route)
+    if verdict.lower and trigger == "treatment_decision":
+        log.info("self-care or lookup question: the router's treatment_decision is lowered to none")
         trigger = None
-    elif trigger is None and (escalates_with_qualifier(message, *also) or escalates_other_person(message, *also)):
-        log.info("self-care attempt with a risk qualifier: escalated as a treatment_decision")
-        trigger = "treatment_decision"
-    return Decision(trigger, route, self_care)
+    return Decision(trigger, route, verdict.self_care and trigger is None, verdict.lower and trigger is None)
 
 
 def standalone_question(message: str, decision: Decision, history: Sequence[Turn],
@@ -162,7 +163,8 @@ async def respond(message: str, language: str, search: Search, llm: LLMGate,
     sections = await search(question)
     alternatives = bool({*tokens(question), *tokens(message)} & ALT_WORDS)
     result = await answer_question(question, language, sections, llm, deadline, backstop=decision.route is None,
-                                   support=support, alternatives=alternatives, self_care=decision.self_care)
+                                   support=support, alternatives=alternatives, self_care=decision.self_care,
+                                   lookup=decision.lowered)
     if result.status != "answered":
         return result  # the fixed Out of Scope and Escalated texts stay exactly as they are
     answer = result.answer
