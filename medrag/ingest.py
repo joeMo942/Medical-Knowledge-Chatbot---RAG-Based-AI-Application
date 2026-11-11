@@ -67,8 +67,9 @@ def resolve_file(entry: ManifestEntry, directory: Path) -> Path:
 
     First the manifest's name ("asthma w copd.docx"), also when it differs only in case or Unicode normal form (an
     Arabic name copied through macOS can arrive decomposed). Then the one .docx named by the KB ID ("KB-01.docx",
-    as the brief says the starter files are named). Two files named by the same ID count as none, so the right file is
-    never guessed. If nothing matches, the manifest's path, which does not exist."""
+    as the brief says the starter files are named), preferring exactly "KB-01.docx"; two other candidates
+    ("KB-01 a.docx", "KB-01 b.docx") raise FileNotFoundError naming both, so the right file is never guessed.
+    If nothing matches, the manifest's path, which does not exist."""
     exact = directory / entry.file
     if exact.is_file():
         return exact
@@ -81,7 +82,15 @@ def resolve_file(entry: ManifestEntry, directory: Path) -> Path:
     if len(same) == 1:
         return same[0]
     by_id = [p for p in files if p.suffix.casefold() == ".docx" and _named_by_id(p.stem, entry.kb_id)]
-    return by_id[0] if len(by_id) == 1 else exact
+    exact_id = [p for p in by_id if p.stem.casefold() == entry.kb_id.casefold()]
+    if len(exact_id) == 1:
+        return exact_id[0]  # "KB-01.docx" next to a stray "KB-01 - Copy.docx"
+    if len(by_id) == 1:
+        return by_id[0]
+    if by_id:
+        raise FileNotFoundError(f"{entry.kb_id}: more than one file could be it, keep only one: "
+                                + ", ".join(p.name for p in by_id))
+    return exact
 
 
 def missing_files(entries: tuple[ManifestEntry, ...], directory: Path) -> list[Path]:
@@ -93,9 +102,10 @@ def missing_message(missing: list[Path]) -> str:
             + " (each file may also be named by its KB ID, for example KB-01.docx)")
 
 
-def load_document(entry: ManifestEntry, directory: Path) -> KBDocument:
-    """The KB ID comes from the manifest entry, never from the file name."""
-    path = resolve_file(entry, directory)
+def load_document(entry: ManifestEntry, directory: Path, lookup: bool = True) -> KBDocument:
+    """The KB ID comes from the manifest entry, never from the file name. `lookup=False` reads exactly the manifest's
+    file (the KB store, whose own manifest names its files)."""
+    path = resolve_file(entry, directory) if lookup else directory / entry.file
     try:
         blocks = read_blocks(path)
         diseases, sections = split_sections(entry.kb_id, entry.diseases, blocks)

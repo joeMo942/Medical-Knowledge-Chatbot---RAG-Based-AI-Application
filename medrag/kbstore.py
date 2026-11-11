@@ -123,7 +123,7 @@ class KBStore:
         """Every KB Document of the store, ingested (and stray files of an interrupted change removed)."""
         stored = self.documents()
         self.clean(stored)
-        return tuple(load_document(s.entry, self.dir) for s in stored)
+        return tuple(load_document(s.entry, self.dir, lookup=False) for s in stored)
 
     def clean(self, stored: tuple[StoredDocument, ...]) -> None:
         keep = {s.entry.file for s in stored}

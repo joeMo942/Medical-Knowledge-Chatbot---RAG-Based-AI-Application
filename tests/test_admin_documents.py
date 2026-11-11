@@ -484,10 +484,10 @@ def test_the_default_limits_pass_a_normal_document(admin):
 
 
 def test_the_real_kb_files_pass_validation(real_kb, tmp_path):
-    from medrag.ingest import kb_dir
+    from medrag.ingest import kb_dir, resolve_file
     store = KBStore(tmp_path)
     for e in load_manifest():
-        doc = store.validate(e.kb_id, e.diseases, (kb_dir() / e.file).read_bytes())
+        doc = store.validate(e.kb_id, e.diseases, resolve_file(e, kb_dir()).read_bytes())
         assert doc.sections
 
 

@@ -128,11 +128,21 @@ def test_a_decomposed_arabic_name_is_the_same_file(tmp_path):
     ["KB-012.docx"],                       # another ID, not KB-01
     ["KB-01.0123456789ab.docx"],           # the KB store's old version of a Document
     ["KB-01.txt"],                         # not a .docx
-    ["KB-01.docx", "KB-01 copy.docx"],     # two candidates: never guess
 ])
 def test_id_names_that_do_not_count(tmp_path, names):
     for n in names:
         make_docx(tmp_path / n)
     entries = (ManifestEntry("KB-01", "asthma w copd.docx", ("1. Asthma",)),)
-    with pytest.raises(FileNotFoundError, match="KB-01.docx"):
+    with pytest.raises(FileNotFoundError, match="asthma w copd"):
         load_knowledge_base(tmp_path, entries)
+
+
+def test_two_id_candidates_are_named_and_the_exact_id_name_wins(tmp_path):
+    from medrag.ingest import resolve_file
+    entry = ManifestEntry("KB-01", "asthma w copd.docx", ("1. Asthma",))
+    make_docx(tmp_path / "KB-01 a.docx")
+    make_docx(tmp_path / "KB-01 b.docx")
+    with pytest.raises(FileNotFoundError, match="more than one file could be it.*KB-01 a.docx.*KB-01 b.docx"):
+        resolve_file(entry, tmp_path)
+    make_docx(tmp_path / "KB-01.docx")
+    assert resolve_file(entry, tmp_path).name == "KB-01.docx"
