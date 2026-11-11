@@ -194,7 +194,8 @@ def test_prompt_forbids_outside_knowledge_and_asks_for_partial_answers():
 
 # ------------------------------------------------------------------ real KB (skipped without the .docx files)
 
-CASES = [c for name in ("cases.json", "cases_issue5.json", "cases_issue7.json", "cases_issue8.json")
+CASES = [c for name in ("cases.json", "cases_issue5.json", "cases_issue7.json", "cases_issue8.json",
+                                                   "cases_issue32.json")
          for c in json.loads((Path(__file__).resolve().parents[1] / "evaluation" / name).read_text(encoding="utf-8"))]
 
 
@@ -532,3 +533,20 @@ def test_real_kb_yes_no_indication_questions_and_named_drugs(real_kb):
     assert check.supported("Can a pregnant patient take antibiotics?", [next(s for s in sections if s.kb_id == "KB-05" and "Tetracyclines" in s.section)])
     brufen = next(s for s in sections if any("Brufen" in r.text for r in s.product_rows))
     assert check.supported("Is Brufen safe in pregnancy?", [brufen])
+
+
+# ---------------------------------------------------------------- wording verbs (issue 32)
+
+def test_have_has_had_having_are_frame_words_not_topic_terms():
+    from medrag.support import FRAME
+    for w in ("have", "has", "had", "having", "feel", "feeling", "got", "suffer", "suffering", "عندي", "حاسس", "بعاني"):
+        assert w in FRAME
+
+
+def test_a_question_with_have_is_supported_by_the_section_about_the_condition():
+    sec = Section("KB-03", "Pain", "Simple Analgesics", "class",
+                  (Line("Used for headache and mild pain."), products(("Panadol", "Paracetamol"))))
+    check = SupportCheck([sec])
+    assert check.supported("what can i take if i have headache", [sec])
+    assert check.supported("I have a headache, what can I take?", [sec])
+    assert not check.supported("what can i take if i have malaria", [sec])

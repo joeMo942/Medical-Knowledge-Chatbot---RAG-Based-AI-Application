@@ -70,6 +70,8 @@ BACKSTOP_PROMPT = (
     "else's medicine), \"dose\" (asks an amount, frequency or duration to take or give; NOT how much of an "
     "ingredient a product contains), \"diagnosis\" (what condition a specific person has) or "
     "\"treatment_decision\" (choose, switch, start or stop a drug for a specific person), else \"none\". "
+    "A person asking what THEY can take for their own everyday symptom, with no pregnancy, child, elderly person, chronic "
+    "disease, other medicine, allergy, severity or duration mentioned, is \"none\". "
     "General questions about a drug, a class or a group of patients are always \"none\"."
 )
 
@@ -122,6 +124,14 @@ LANGUAGE_INSTRUCTION: dict[str, str] = {
               "Arabic script, keeping drug names and clinical terms the sections give in English in English letters; "
               "do not write Arabic in Latin letters."),
 }
+SELF_CARE_HINT = ("The user asks what drugs are used for their own everyday symptom. This IS a drug-information question: "
+                  "list the drug classes and drugs the sections give for that condition (the most relevant, at most four) and set "
+                  "status to \"answered\" when the sections list any. General information only: no doses and no advice to take a "
+                  "particular one. At most 60 words.")
+LOOKUP_HINT = ("This is a drug-information lookup: the user asks what is used for a condition. List the drug classes and drugs "
+               "the sections give for that condition (the most relevant) and set status to \"answered\". If the question also names a "
+               "patient group (pregnancy, asthma, ...) that the sections do not address for it, still answer the covered part and add "
+               "one sentence saying what the knowledge base does not state about that group. No doses.")
 ALTERNATIVES_HINT = ("The question asks for ALTERNATIVES: the other Trade Names that have the SAME Active Ingredient as "
                      "the drug it names. List them from the sections. Do not just name the Active Ingredient.")
 
@@ -144,10 +154,12 @@ class ChatResponse(BaseModel):
     language: Language
 
 
-def build_prompt(question: str, sections: list[Section], language: str = "en", alternatives: bool = False) -> str:
+def build_prompt(question: str, sections: list[Section], language: str = "en", alternatives: bool = False,
+                 self_care: bool = False, lookup: bool = False) -> str:
     # Context is the Sections' render() text and section_id only, never `path`. The question comes last.
     blocks = [f"[section_id: {s.section_id}]\n{s.render()}" for s in sections]
-    hint = f"\n\nNOTE\n{ALTERNATIVES_HINT}" if alternatives else ""
+    notes = [h for h, on in ((ALTERNATIVES_HINT, alternatives), (SELF_CARE_HINT, self_care), (LOOKUP_HINT, lookup and not self_care)) if on]
+    hint = "".join(f"\n\nNOTE\n{h}" for h in notes)
     return ("KNOWLEDGE BASE SECTIONS\n\n" + "\n\n".join(blocks)
             + f"\n\nANSWER LANGUAGE\n{LANGUAGE_INSTRUCTION.get(language, LANGUAGE_INSTRUCTION['en'])}{hint}"
             + f"\n\nQUESTION\n{question}")
@@ -378,18 +390,22 @@ async def answer_question(
     backstop: bool = False,
     support: SupportCheck | None = None,
     alternatives: bool = False,
+    self_care: bool = False,
+    lookup: bool = False,
 ) -> ChatResponse:
     """`sections` are the retrieved Sections (retrieval runs off the event loop in the caller).
     `backstop`: the routing call did not run, so the answer call also classifies the message.
     `support`: the support check (support.py); without it every valid Citation is accepted.
     `language`: the Answer Language, written into the prompt as the language to reply in and returned as the label.
-    `alternatives`: the question asks for Alternatives (a hint to the model, which is told to list the other Trade Names)."""
+    `alternatives`: the question asks for Alternatives (a hint to the model, which is told to list the other Trade Names).
+    `self_care`: a first-person self-care question without a risk qualifier (selfcare.py): the model is told to give general
+    information, and a backstop treatment_decision is ignored (the other backstop triggers still escalate)."""
     if not sections:  # nothing related: no reason to ask the model
         log.info("out_of_scope: nothing retrieved")
         return out_of_scope(language)
     system = SYSTEM_PROMPT + BACKSTOP_PROMPT if backstop else SYSTEM_PROMPT
     try:
-        result = await llm.complete_json(system, build_prompt(question, sections, language, alternatives), answer_schema(backstop), deadline)
+        result = await llm.complete_json(system, build_prompt(question, sections, language, alternatives, self_care, lookup), answer_schema(backstop), deadline)
     except LLMTruncated:
         # The reply hit the output cap: it is incomplete, so nothing of it is shown.
         log.info("out_of_scope: the reply hit the output cap")
@@ -397,6 +413,8 @@ async def answer_question(
     raw = result.data
     if backstop:
         trigger = effective_trigger(raw)
+        if (self_care or lookup) and trigger == "treatment_decision":
+            trigger = None
         if trigger:
             return escalated(trigger, language)
     answer = raw.get("answer")

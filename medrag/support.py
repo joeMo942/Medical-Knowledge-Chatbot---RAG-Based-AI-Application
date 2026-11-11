@@ -63,6 +63,8 @@ tell give list name names kind type information info know say get take
 drug drugs medicine medicines medication medications treat treats treated treating treatment treatments
 therapy therapies safe safety suitable recommended common commonly mainly main usual usually please want need
 patient patients people person anything something everything thing things
+have has had having feel feels feeling felt got suffer suffers suffering
+her his him hers woman women man men
 cause causes caused causing help helps helping lower lowers reduce reduces increase increases work works
 stop start long short high low possible likely taken taking
 year years old age aged month months week weeks day days
@@ -89,6 +91,7 @@ _FRAME_AR = """
 روشته وصفه
 سنه سنين سنوات شهر شهور اسبوع اسابيع يوم ايام عمر عمره سن
 انا انت انتي احنا هو اخد اخذ ياخد خد بخد عايز عاوز عايزه عاوزه محتاج محتاجه ينفع لازم ممكن
+حاسس حاسه بعاني
 """
 _FRAME_FRANCO = """
 el ela l fe fi le li ma mn min w we wi eh ehh eih ee ey emta imta kam ya da dah di deh dee dy bta3 bta3t
@@ -126,6 +129,7 @@ _ALIASES = [
     {"diabetes", "السكر", "سكر", "antidiabetic"},
     {"cough", "كحه", "السعال", "سعال"},
     {"pain", "الم", "الالم", "ألم"},
+    {"headache", "headaches", "صداع", "الصداع", "soda3", "sodaa3", "sod3", "sora3", "soraa3"},  # sora3: how a Franco-Arabic user writes it
 ]
 
 

@@ -11,7 +11,8 @@ from evaluation.scoring import build_kb_index, load_cases
 
 
 @pytest.mark.kb
-@pytest.mark.parametrize("cases_file", [kb_check.DEFAULT_CASES, kb_check.DEFAULT_CASES.with_name("cases_issue5.json")])
+@pytest.mark.parametrize("cases_file", [kb_check.DEFAULT_CASES, kb_check.DEFAULT_CASES.with_name("cases_issue5.json"),
+                                        kb_check.DEFAULT_CASES.with_name("cases_issue32.json")])
 def test_every_expected_kb_id_is_backed_by_the_real_kb_and_every_trap_is_a_real_gap(real_kb, cases_file):
     cases = load_cases(cases_file)
     texts = kb_check.doc_texts(list(real_kb.values()))
