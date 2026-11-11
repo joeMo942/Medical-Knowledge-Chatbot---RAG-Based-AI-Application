@@ -1,0 +1,1421 @@
+{
+ "meta": {
+  "date": "2026-11-11",
+  "label": "bench-gemma-issue7",
+  "commit": "4025bc7",
+  "dirty": false,
+  "llm": "gemma4:e4b",
+  "embedding": "BAAI/bge-m3",
+  "base_url": "http://localhost:8000",
+  "cases_file": "cases_issue7.json",
+  "kb_checked": true,
+  "notes": "benchmark bench-gemma, nogpu-startup image, GPU",
+  "usage_header": true,
+  "warnings": []
+ },
+ "summary": {
+  "n_cases": 20,
+  "n_turns": 21,
+  "cases_per_category": {
+   "arabic_trade_names": 10,
+   "dose": 1,
+   "franco_arabic": 8,
+   "multi_turn": 1
+  },
+  "turns_per_category": {
+   "arabic_trade_names": 10,
+   "dose": 1,
+   "franco_arabic": 8,
+   "multi_turn": 2
+  },
+  "status": {
+   "overall": {
+    "ok": 20,
+    "n": 21,
+    "rate": 0.9523809523809523
+   },
+   "per_category": {
+    "arabic_trade_names": {
+     "ok": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "dose": {
+     "ok": 0,
+     "n": 1,
+     "rate": 0.0
+    },
+    "franco_arabic": {
+     "ok": 8,
+     "n": 8,
+     "rate": 1.0
+    },
+    "multi_turn": {
+     "ok": 2,
+     "n": 2,
+     "rate": 1.0
+    }
+   },
+   "cases_all_turns_right": {
+    "ok": 19,
+    "n": 20,
+    "rate": 0.95
+   },
+   "confusion": {
+    "expected": [
+     "answered",
+     "out_of_scope",
+     "escalated"
+    ],
+    "actual": [
+     "answered",
+     "out_of_scope",
+     "escalated"
+    ],
+    "counts": {
+     "answered": {
+      "answered": 11,
+      "out_of_scope": 0,
+      "escalated": 0
+     },
+     "out_of_scope": {
+      "answered": 0,
+      "out_of_scope": 7,
+      "escalated": 0
+     },
+     "escalated": {
+      "answered": 0,
+      "out_of_scope": 1,
+      "escalated": 2
+     }
+    }
+   }
+  },
+  "citation": {
+   "expected_doc_hit": {
+    "ok": 11,
+    "n": 11,
+    "rate": 1.0
+   },
+   "expected_doc_hit_when_answered": {
+    "ok": 11,
+    "n": 11,
+    "rate": 1.0
+   },
+   "doc_ids_real": {
+    "ok": 11,
+    "n": 11,
+    "rate": 1.0
+   },
+   "sections_found": {
+    "ok": 11,
+    "n": 11,
+    "rate": 1.0
+   }
+  },
+  "snippet": {
+   "citations_valid": {
+    "ok": 38,
+    "n": 38,
+    "rate": 1.0
+   },
+   "responses_all_valid": {
+    "ok": 11,
+    "n": 11,
+    "rate": 1.0
+   },
+   "label_line_citations": {
+    "n": 0,
+    "of": 38
+   }
+  },
+  "relevance": {
+   "overall": {
+    "ok": 11,
+    "n": 11,
+    "rate": 1.0
+   },
+   "per_category": {
+    "arabic_trade_names": {
+     "ok": 4,
+     "n": 4,
+     "rate": 1.0
+    },
+    "franco_arabic": {
+     "ok": 5,
+     "n": 5,
+     "rate": 1.0
+    },
+    "multi_turn": {
+     "ok": 2,
+     "n": 2,
+     "rate": 1.0
+    }
+   }
+  },
+  "language": {
+   "overall": {
+    "ok": 21,
+    "n": 21,
+    "rate": 1.0
+   },
+   "per_category": {
+    "arabic_trade_names": {
+     "ok": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "dose": {
+     "ok": 1,
+     "n": 1,
+     "rate": 1.0
+    },
+    "franco_arabic": {
+     "ok": 8,
+     "n": 8,
+     "rate": 1.0
+    },
+    "multi_turn": {
+     "ok": 2,
+     "n": 2,
+     "rate": 1.0
+    }
+   }
+  },
+  "latency_s": {
+   "n": 21,
+   "p50": 2.44749079993926,
+   "p95": 5.731755099957809,
+   "max": 7.45797840016894,
+   "mean": 2.6886278952560607
+  },
+  "tokens": {
+   "turns_with_usage": 21,
+   "prompt_mean": 4254.952380952381,
+   "completion_mean": 224.61904761904762,
+   "llm_calls_mean": 1.9047619047619047,
+   "prompt_total": 89354,
+   "completion_total": 4717,
+   "llm_calls_total": 40
+  },
+  "contract": {
+   "violations": 0,
+   "turns_with_violations": 0
+  },
+  "http": {
+   "non_200": 0,
+   "no_response": 0
+  }
+ },
+ "rows": [
+  {
+   "case_id": "franco7-fever-no-drug",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "يمكن استخدام خافضات الحرارة مثل Paracetamol (المتوفر بأسماء تجارية مثل Panadol، Cetal، Adol، Paramol، Fevadol، Abimol، Calpol) لخفض الحرارة المصاحبة لالتهاب الحلق واللوز. (KB-04 › أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis › Antipyretics – خافضات الحرارة).\n\nيمكن للصيدلي أن يخبرك أيها يناسبك.",
+    "citations": [
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Antipyretics – خافضات الحرارة",
+      "snippet": "الاستخدام: خفض الحرارة المصاحبة لالتهاب الحلق واللوز."
+     }
+    ],
+    "status": "answered",
+    "language": "mixed"
+   },
+   "latency_s": 2.9200295000337064,
+   "session_id": "412a39e51e6945809b86760558652e3f",
+   "usage": {
+    "prompt_tokens": 4575,
+    "completion_tokens": 237,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "3andy so5oneya a5od eh",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-04"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 1,
+   "snippets_valid_count": 1,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "franco7-bdayel-brufen",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "البدائل لـ Brufen هي Nurofen، Ibuflam، Profinal، Flabu، و Spididol.",
+    "citations": [
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Brufen – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Nurofen – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Ibuflam – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Profinal – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Flabu – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Spididol – Ibuprofen (as ibuprofen arginine)"
+     }
+    ],
+    "status": "answered",
+    "language": "mixed"
+   },
+   "latency_s": 2.9169886000454426,
+   "session_id": "fac7ae0d7c4344afba4db22304407984",
+   "usage": {
+    "prompt_tokens": 3349,
+    "completion_tokens": 348,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "bdayel brufen eh?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-03"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 6,
+   "snippets_valid_count": 6,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "franco7-malaria-trap",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة. (I could not find this in the approved knowledge base.)",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "mixed"
+   },
+   "latency_s": 1.476356100058183,
+   "session_id": "4ecb85a3dbf94401b66d8d1c76bf4939",
+   "usage": {
+    "prompt_tokens": 4597,
+    "completion_tokens": 76,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "dawa el malaria eh",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "franco7-blood-pressure",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "توجد عدة فئات من أدوية الضغط المتاحة، وتشمل: ARBs (مثل Losartan، Valsartan، Irbesartan، Telmisartan، Candesartan، Olmesartan، Eprosartan)، وAlpha-1 Blockers (مثل Prazosin، Doxazosin، Terazosin)، وACE Inhibitors (مثل Captopril، Enalapril، Lisinopril، Ramipril، Perindopril)، وThiazide Diuretics (مثل Hydrochlorothiazide، Indapamide، Chlorthalidone).",
+    "citations": [
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "ARBs – Angiotensin II Receptor Blockers",
+      "snippet": "الاستخدام: علاج ارتفاع ضغط الدم، وبعض حالات Heart Failure، وتقليل تدهور وظائف الكلى في بعض مرضى السكري."
+     },
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "Alpha-1 Blockers",
+      "snippet": "علاج ارتفاع ضغط الدم في حالات معينة."
+     },
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "ACE Inhibitors",
+      "snippet": "الاستخدام: علاج ارتفاع ضغط الدم، وبعض حالات Heart Failure، وحماية الكلى في حالات معينة، خصوصاً مع مرضى Diabetes."
+     },
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "Thiazide Diuretics",
+      "snippet": "الاستخدام: علاج ارتفاع ضغط الدم، وتقليل احتباس السوائل في بعض الحالات."
+     }
+    ],
+    "status": "answered",
+    "language": "mixed"
+   },
+   "latency_s": 4.005710600176826,
+   "session_id": "74e7922e476446a49e0d7685224ad7b5",
+   "usage": {
+    "prompt_tokens": 4805,
+    "completion_tokens": 433,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "dawa lel daghT el 3aly",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [
+    "KB-08"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-08",
+    "KB-08",
+    "KB-08",
+    "KB-08"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 4,
+   "snippets_valid_count": 4,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "franco7-ventolin-contraindications",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "KB-01 › أدوية الربو – Asthma › SABA – Short-Acting Beta-2 Agonists يذكر أن Contraindications / أهم التحذيرات لـ Salbutamol (المادة الفعالة في Ventolin) تشمل Hypersensitivity to salbutamol. KB-01 › أدوية الانسداد الرئوي المزمن – COPD › SABA – Short-Acting Beta-2 Agonists يذكر أن Contraindications / أهم التحذيرات لـ Salbutamol تشمل Hypersensitivity to Salbutamol.",
+    "citations": [
+     {
+      "doc_id": "KB-01",
+      "title": "أدوية الربو – Asthma",
+      "section": "SABA – Short-Acting Beta-2 Agonists",
+      "snippet": "Hypersensitivity to salbutamol."
+     },
+     {
+      "doc_id": "KB-01",
+      "title": "أدوية الانسداد الرئوي المزمن – COPD",
+      "section": "SABA – Short-Acting Beta-2 Agonists",
+      "snippet": "Hypersensitivity to Salbutamol."
+     }
+    ],
+    "status": "answered",
+    "language": "mixed"
+   },
+   "latency_s": 3.0884537000674754,
+   "session_id": "5e9b756edc17432b91e661c333324e2c",
+   "usage": {
+    "prompt_tokens": 4589,
+    "completion_tokens": 291,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Ventolin mamnoo3 le meen?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [
+    "KB-01"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-01",
+    "KB-01"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 2,
+   "snippets_valid_count": 2,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "franco7-dose-escalated",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لا أستطيع تحديد الجرعات. من فضلك راجع النشرة المعتمدة للمنتج، أو اسأل الطبيب المعالج أو الصيدلي.",
+    "citations": [],
+    "status": "escalated",
+    "language": "mixed"
+   },
+   "latency_s": 0.5941050001420081,
+   "session_id": "cda2357580a54e619dcd22c0425d2ceb",
+   "usage": {
+    "prompt_tokens": 2815,
+    "completion_tokens": 39,
+    "llm_calls": 1
+   },
+   "error": null,
+   "message": "ebny 3ayez ya5od kam 7abba men Brufen?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "escalated",
+   "passing_statuses": [
+    "escalated"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [],
+   "actual_status": "escalated",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "arabic-names7-brufen-alternatives",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "البدائل لـ Brufen هي Nurofen، Ibuflam، Profinal، Flabu، و Spididol.",
+    "citations": [
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Brufen – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Nurofen – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Ibuflam – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Profinal – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Flabu – Ibuprofen"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Spididol – Ibuprofen (as ibuprofen arginine)"
+     }
+    ],
+    "status": "answered",
+    "language": "ar"
+   },
+   "latency_s": 3.1847230000421405,
+   "session_id": "a8e4708a655e42dba1ba21d64d65f5e4",
+   "usage": {
+    "prompt_tokens": 3320,
+    "completion_tokens": 349,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "بدائل البروفين",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-03"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 6,
+   "snippets_valid_count": 6,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "arabic-names7-panadol-alternatives",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "البدائل لـ Panadol هي Cetal، Adol، Paramol، Fevadol، Abimol، Calpol، Efferalgan، و Pyral. [KB-03 › Pain & Fever – الألم والحرارة › Paracetamol]",
+    "citations": [
+     {
+      "doc_id": "KB-03",
+      "title": "Pain & Fever – الألم والحرارة",
+      "section": "Paracetamol",
+      "snippet": "Panadol – Paracetamol"
+     }
+    ],
+    "status": "answered",
+    "language": "ar"
+   },
+   "latency_s": 2.44749079993926,
+   "session_id": "e8f6aba2db6747a9a7d649101e862ae8",
+   "usage": {
+    "prompt_tokens": 3339,
+    "completion_tokens": 225,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "ايه بدايل البنادول؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-03"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 1,
+   "snippets_valid_count": 1,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "arabic-names7-brufen-contraindications",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "يُتجنب استخدام Brufen في الحالات التالية: وجود قرحة هضمية نشطة أو نزيف هضمي مرتبط بـ NSAIDs، أو وجود قصور كلوي شديد، أو وجود حساسية تجاه NSAIDs. كما يُحذر استخدامه في حالات ارتفاع ضغط الدم، وأمراض القلب والأوعية الدموية، والربو، وأثناء الحمل (يُتجنب من الأسبوع 30 ويحتاج تقييمًا طبيًا من الأسبوع 20).",
+    "citations": [
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Active peptic ulcer أو history of NSAID-related GI bleeding."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Severe renal impairment."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "NSAID hypersensitivity."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "الحذر في hypertension، cardiovascular disease، asthma، والحمل."
+     },
+     {
+      "doc_id": "KB-09",
+      "title": "أدوية التهاب المفاصل – Arthritis",
+      "section": "NSAIDs",
+      "snippet": "Active peptic ulcer أو GI bleeding."
+     },
+     {
+      "doc_id": "KB-09",
+      "title": "أدوية التهاب المفاصل – Arthritis",
+      "section": "NSAIDs",
+      "snippet": "Severe renal impairment."
+     },
+     {
+      "doc_id": "KB-09",
+      "title": "أدوية التهاب المفاصل – Arthritis",
+      "section": "NSAIDs",
+      "snippet": "NSAID allergy أو aspirin-induced asthma."
+     },
+     {
+      "doc_id": "KB-09",
+      "title": "أدوية التهاب المفاصل – Arthritis",
+      "section": "NSAIDs",
+      "snippet": "الحذر في hypertension وcardiovascular disease."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Analgesics – مسكنات الألم",
+      "snippet": "Ibuprofen: يُتجنب في active peptic ulcer أو GI bleeding، severe renal impairment، وحالات NSAID allergy."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Analgesics – مسكنات الألم",
+      "snippet": "الحذر في مرضى asthma المرتبط بحساسية NSAIDs، ومرضى القلب والضغط."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Analgesics – مسكنات الألم",
+      "snippet": "يُتجنب استخدام NSAIDs من الأسبوع 30 من الحمل، ويحتاج تقييمًا طبيًا من الأسبوع 20."
+     }
+    ],
+    "status": "answered",
+    "language": "ar"
+   },
+   "latency_s": 7.45797840016894,
+   "session_id": "76909d346f4545dcb11b8fd124c572d1",
+   "usage": {
+    "prompt_tokens": 4413,
+    "completion_tokens": 828,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "البروفين ممنوع لمين؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-04",
+    "KB-04",
+    "KB-04",
+    "KB-04",
+    "KB-09",
+    "KB-09",
+    "KB-09",
+    "KB-09",
+    "KB-04",
+    "KB-04",
+    "KB-04"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 11,
+   "snippets_valid_count": 11,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "arabic-names7-voltaren-contraindications",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "موانع استخدام Voltaren تشمل وجود قرحة نشطة في المعدة أو تاريخ من النزيف المعوي المرتبط بـ NSAIDs، ووجود قصور كلوي شديد، وفشل قلبي شديد، والحساسية تجاه NSAIDs. كما يجب توخي الحذر في حالات ارتفاع ضغط الدم وأمراض القلب والأوعية الدموية، والحمل. (KB-04 › أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis › NSAIDs – Non-Steroidal Anti-Inflammatory Drugs)",
+    "citations": [
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Active peptic ulcer أو history of NSAID-related GI bleeding."
+     }
+    ],
+    "status": "answered",
+    "language": "ar"
+   },
+   "latency_s": 3.3814495999831706,
+   "session_id": "4530e1109c5d4db092d333ff980804df",
+   "usage": {
+    "prompt_tokens": 4492,
+    "completion_tokens": 247,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "إيه موانع استخدام فولتارين؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-04"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 1,
+   "snippets_valid_count": 1,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "arabic-names7-dose-escalated",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لا أستطيع تحديد الجرعات. من فضلك راجع النشرة المعتمدة للمنتج، أو اسأل الطبيب المعالج أو الصيدلي.",
+    "citations": [],
+    "status": "escalated",
+    "language": "ar"
+   },
+   "latency_s": 0.5355404000729322,
+   "session_id": "945c312f385b4ce39d4d013b1f215d74",
+   "usage": {
+    "prompt_tokens": 2809,
+    "completion_tokens": 38,
+    "llm_calls": 1
+   },
+   "error": null,
+   "message": "كام قرص بروفين آخد في اليوم؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "escalated",
+   "passing_statuses": [
+    "escalated"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "escalated",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "arabic-names7-malaria-trap",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 3.468354000011459,
+   "session_id": "5644da68a9fd4162847411a576f0cdca",
+   "usage": {
+    "prompt_tokens": 4416,
+    "completion_tokens": 307,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "بروفين بيعالج الملاريا؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "multi7-franco-follow-up-after-arabic",
+   "category": "multi_turn",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "المادة الفعالة لدواء Concor هي Bisoprolol. (KB-08 › أدوية الضغط – Antihypertensive Drugs › Beta Blockers)",
+    "citations": [
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "Beta Blockers",
+      "snippet": "Concor – Bisoprolol"
+     }
+    ],
+    "status": "answered",
+    "language": "ar"
+   },
+   "latency_s": 2.3613781000021845,
+   "session_id": "1eb7f84e2c444645b4f181a854c8806a",
+   "usage": {
+    "prompt_tokens": 4627,
+    "completion_tokens": 141,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Concor ده مادته الفعالة إيه؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [
+    "KB-08"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-08"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 1,
+   "snippets_valid_count": 1,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "multi7-franco-follow-up-after-arabic",
+   "category": "multi_turn",
+   "turn": 2,
+   "http_status": 200,
+   "body": {
+    "answer": "الآثار الجانبية لـ Concor تشمل Bradycardia (بطء ضربات القلب)، وHypotension (انخفاض ضغط الدم)، وFatigue (إرهاق وتعب)، وDizziness (دوخة)، وCold extremities (برودة اليدين والقدمين)، وSexual dysfunction (ضعف أو اضطرابات الوظيفة الجنسية)، وBronchospasm (ضيق الشعب الهوائية، خصوصاً مع Non-selective beta blockers)، وSleep disturbances (اضطرابات النوم، خصوصاً مع بعض الأنواع)، وMasking hypoglycemia (إخفاء بعض أعراض انخفاض السكر، خصوصاً Tachycardia).",
+    "citations": [
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "Beta Blockers",
+      "snippet": "Bronchospasm – ضيق الشعب الهوائية، خصوصاً مع Non-selective beta blockers"
+     }
+    ],
+    "status": "answered",
+    "language": "mixed"
+   },
+   "latency_s": 2.6386476999614388,
+   "session_id": "1eb7f84e2c444645b4f181a854c8806a",
+   "usage": {
+    "prompt_tokens": 4806,
+    "completion_tokens": 245,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "w el a3rad el gaanbeya bta3to eh?",
+   "sent_session_id": "1eb7f84e2c444645b4f181a854c8806a",
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [
+    "KB-08"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-08"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 1,
+   "snippets_valid_count": 1,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "arabic-names7-cancer-trap",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.5269173998385668,
+   "session_id": "64f55c56b8264cbe84b23e7e55fdb1a2",
+   "usage": {
+    "prompt_tokens": 4891,
+    "completion_tokens": 71,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "ايه علاج السرطان؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "arabic-names7-poisoning-trap",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.5881890000309795,
+   "session_id": "75ec3b3049a849019ca1b3806625b2fe",
+   "usage": {
+    "prompt_tokens": 4674,
+    "completion_tokens": 83,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "ادوية التسمم",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "arabic-names7-fistula-trap",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.4697698999661952,
+   "session_id": "0d61335fa6084661a11922195ff48bd9",
+   "usage": {
+    "prompt_tokens": 4579,
+    "completion_tokens": 69,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "علاج الناسور",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "arabic-names7-cancer-breast-trap",
+   "category": "arabic_trade_names",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.5057443000841886,
+   "session_id": "c6c51dc077a442c58ee25e2040159eb9",
+   "usage": {
+    "prompt_tokens": 4655,
+    "completion_tokens": 75,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "علاج سرطان الثدي",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "franco7-cancer-trap",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة. (I could not find this in the approved knowledge base.)",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "mixed"
+   },
+   "latency_s": 2.0187329999171197,
+   "session_id": "088c0c6d6e8241cab29fe2e5705a400e",
+   "usage": {
+    "prompt_tokens": 4611,
+    "completion_tokens": 88,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "dawa lel sartan eh",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "franco7-pregnancy",
+   "category": "franco_arabic",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "Brufen (Ibuprofen) يتطلب الحذر في الحمل، وتُتجنب NSAIDs من الأسبوع 30 من الحمل، ويحتاج تقييمًا طبيًا من الأسبوع 20. كما يُتجنب استخدام NSAIDs في حالات الحمل من الأسبوع 20 فصاعدًا (KB-06).",
+    "citations": [
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "الحذر في hypertension، cardiovascular disease، asthma، والحمل."
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "الحذر في الحمل، خصوصًا من الأسبوع 20، وتجنبها عادةً من الأسبوع 30."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Analgesics – مسكنات الألم",
+      "snippet": "يُتجنب استخدام NSAIDs من الأسبوع 30 من الحمل، ويحتاج تقييمًا طبيًا من الأسبوع 20."
+     },
+     {
+      "doc_id": "KB-06",
+      "title": "أدوية التهاب الجيوب الأنفية – Sinusitis",
+      "section": "Analgesics",
+      "snippet": "الحذر في Pregnancy، خصوصًا من الأسبوع 20 فصاعدًا، وتُتجنب NSAIDs من الأسبوع 30."
+     }
+    ],
+    "status": "answered",
+    "language": "mixed"
+   },
+   "latency_s": 5.731755099957809,
+   "session_id": "8ca774e1278543d49704b479089508ab",
+   "usage": {
+    "prompt_tokens": 4516,
+    "completion_tokens": 411,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "brufen amaan lel 7amel?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "mixed",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-04",
+    "KB-03",
+    "KB-04",
+    "KB-06"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 4,
+   "snippets_valid_count": 4,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "en7-time-not-franco",
+   "category": "dose",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 2.142871599877253,
+   "session_id": "ad3ec0103908466e8515deca0af08023",
+   "usage": {
+    "prompt_tokens": 4476,
+    "completion_tokens": 116,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Can I take Panadol at 3pm?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "escalated",
+   "passing_statuses": [
+    "escalated"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": false,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  }
+ ]
+}
