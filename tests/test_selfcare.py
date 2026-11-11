@@ -66,6 +66,8 @@ QUALIFIED = [
     ("I have a headache and fever of 104F what can I take", "severity"),
     ("I have a headache and a temperature of 39.5 C what can I take", "severity"),
     ("I have a headache I drank alcohol last night what can I take", "severity"),
+    ("I have a headache after I fell what can I take", "severity"),
+    ("عندي صداع بعد ما وقعت اخد ايه", "severity"),
     ("عندي صداع وانا سكران اخد ايه", "severity"),
     ("عندي صداع جامد اخد ايه", "severity"),
     ("عندي صداع من ايام اخد ايه", "severity"),

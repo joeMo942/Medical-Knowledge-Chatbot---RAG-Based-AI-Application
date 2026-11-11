@@ -229,6 +229,7 @@ _SEVERITY = _rx(
     r"never (had|felt|experienced)|head injury|hit my head|trauma|surgery|operation|post[- ]?op\w*|emergency|urgent\w*|"
     r"alcohol|drunk|hangover)\b",
     r"\bstiff\w*[^.?!]{0,20}\bneck|\bneck[^.?!]{0,20}\bstiff",
+    r"\bi (fell|fall|slipped|bumped|banged|crashed)\b|\bafter (a |the |my )?(fall|accident|injury|blow|crash)\b|\bfell (down|off|over)\b",
     r"\b(fever|temperature|temp)\b[^.?!]{0,15}\b(39|40|41|42|10[3-9])\b",
     r"\b(10[3-9]|39|4[0-2])(\.\d)?\s*(°|degrees?|f|c)\b",
     # for / since / over a stretch of days, weeks, months, years (hours and minutes are an ordinary headache)
@@ -240,7 +241,7 @@ _SEVERITY = _rx(
     r"مش راضي يروح|ما بيروحش|مش بيخف|مبيخفش|بيزيد|بتزيد|بيزداد|\bاسوا\b|اسوء|فجاه|مفاجئ\w*|مفاجا\w*|\bحاد\w*|\bقوي\b|\bقويه\b|"
     r"\bجدا\b|\bاوي\b|\bاووي+\b|\bوحش\w*|\bصعب\b|مستمر\w*|متكرر\w*|بيتكرر|\bدايم\w*|كل شويه|\bدم\b|نزيف|دوخه|دوار|زغلل\w*|"
     r"تنميل|خدر|تورم|\bورم\b|اول مره|عمري ما|ضربه|حادث\w*|طوارئ|اسعاف|صدري|صدر\b|خفقان|رعشه|تشنج|"
-    r"ضعف|ضعيف\w*|كحول|خمره|سكران|"
+    r"ضعف|ضعيف\w*|كحول|خمره|سكران|وقعت|وقع على|خبطت|اتخبطت|"
     r"رقب\w*[^.؟?!]{0,20}(ناشف\w*|متخشب\w*|خشب\w*|يابس\w*)|(ناشف\w*|متخشب\w*)[^.؟?!]{0,20}رقب\w*",
     rf"\b(من|بقالي|بقالى|بقاله|بقالها|لمده|بقلي)\s+(\w+\s+){{0,2}}({_AR_DUR}|كتير|كثير)\b|\bمن (يوم|امبارح|ايام|فتره)\b",
     rf"\b\d+\s*{_AR_DUR}\b|\b(يومين|ايام|اسبوعين|اسابيع|شهرين|شهور|سنين)\b",

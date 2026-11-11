@@ -128,6 +128,10 @@ SELF_CARE_HINT = ("The user asks what drugs are used for their own everyday symp
                   "list the drug classes and drugs the sections give for that condition (the most relevant, at most four) and set "
                   "status to \"answered\" when the sections list any. General information only: no doses and no advice to take a "
                   "particular one. At most 60 words.")
+LOOKUP_HINT = ("This is a drug-information lookup: the user asks what is used for a condition. List the drug classes and drugs "
+               "the sections give for that condition (the most relevant) and set status to \"answered\". If the question also names a "
+               "patient group (pregnancy, asthma, ...) that the sections do not address for it, still answer the covered part and add "
+               "one sentence saying what the knowledge base does not state about that group. No doses.")
 ALTERNATIVES_HINT = ("The question asks for ALTERNATIVES: the other Trade Names that have the SAME Active Ingredient as "
                      "the drug it names. List them from the sections. Do not just name the Active Ingredient.")
 
@@ -151,10 +155,10 @@ class ChatResponse(BaseModel):
 
 
 def build_prompt(question: str, sections: list[Section], language: str = "en", alternatives: bool = False,
-                 self_care: bool = False) -> str:
+                 self_care: bool = False, lookup: bool = False) -> str:
     # Context is the Sections' render() text and section_id only, never `path`. The question comes last.
     blocks = [f"[section_id: {s.section_id}]\n{s.render()}" for s in sections]
-    notes = [h for h, on in ((ALTERNATIVES_HINT, alternatives), (SELF_CARE_HINT, self_care)) if on]
+    notes = [h for h, on in ((ALTERNATIVES_HINT, alternatives), (SELF_CARE_HINT, self_care), (LOOKUP_HINT, lookup and not self_care)) if on]
     hint = "".join(f"\n\nNOTE\n{h}" for h in notes)
     return ("KNOWLEDGE BASE SECTIONS\n\n" + "\n\n".join(blocks)
             + f"\n\nANSWER LANGUAGE\n{LANGUAGE_INSTRUCTION.get(language, LANGUAGE_INSTRUCTION['en'])}{hint}"
@@ -401,7 +405,7 @@ async def answer_question(
         return out_of_scope(language)
     system = SYSTEM_PROMPT + BACKSTOP_PROMPT if backstop else SYSTEM_PROMPT
     try:
-        result = await llm.complete_json(system, build_prompt(question, sections, language, alternatives, self_care), answer_schema(backstop), deadline)
+        result = await llm.complete_json(system, build_prompt(question, sections, language, alternatives, self_care, lookup), answer_schema(backstop), deadline)
     except LLMTruncated:
         # The reply hit the output cap: it is incomplete, so nothing of it is shown.
         log.info("out_of_scope: the reply hit the output cap")
