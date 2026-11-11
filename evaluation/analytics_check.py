@@ -19,9 +19,9 @@ def iso_utc(ts: float) -> str:
     return dt.datetime.fromtimestamp(ts, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def fetch(client: httpx.Client, token: str, since: float) -> dict:
+def fetch(client: httpx.Client, since: float) -> dict:
     r = client.get("/admin/analytics", params={"since": iso_utc(since), "limit": 1000},
-                   headers={"Authorization": f"Bearer {token}"}, timeout=30)
+                   timeout=30)
     r.raise_for_status()
     return r.json()
 
