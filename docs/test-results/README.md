@@ -57,10 +57,9 @@ Faithfulness (does the answer say only what the Section says) is not automated; 
 
 ## How to re-run it
 
-Needs Python 3.12+ on the host (`pip install -e .`), the KB files in `./data` (for the snippet check), and a running stack started with the usage header and an admin token:
+Needs Python 3.12+ on the host (`pip install -e .`), the KB files in `./data` (for the snippet check), and a running stack started with the usage header (the admin token these runs used has since been removed; `--analytics-check` now needs none):
 
 ```
-export MEDRAG_ADMIN_TOKEN=<the token the server was started with>   # only for --analytics-check
 MEDRAG_USAGE_HEADER=1 docker compose up -d --wait
 python -m evaluation.run --label final --analytics-check                                      # cases.json
 python -m evaluation.run --label final-issue5  --cases evaluation/cases_issue5.json  --analytics-check

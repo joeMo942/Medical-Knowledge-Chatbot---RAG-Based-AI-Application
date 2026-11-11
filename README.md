@@ -55,7 +55,6 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
 ```
 git clone <this repository> && cd <this repository>
 # put the nine .docx files in ./data  (see above)
-echo "MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)" > .env    # optional: enables the admin dashboard; .env is gitignored and read by docker compose
 docker compose up -d --build --wait
 ```
 
@@ -68,20 +67,19 @@ When `docker compose up` returns, everything is on <http://localhost:8000>:
 | What | URL | Notes |
 | --- | --- | --- |
 | **Chat page** | <http://localhost:8000> | Ask in Arabic, Egyptian dialect, Franco-Arabic or English. Escalated replies show the hand-off form. |
-| **Admin dashboard** | <http://localhost:8000/admin> | Sign in with the admin token (below). Tabs: Documents (upload, replace, delete KB Documents), Analytics, Hand-offs. |
+| **Admin dashboard** | <http://localhost:8000/admin> | Opens straight into the dashboard, no login. Tabs: Documents (upload, replace, delete KB Documents), Analytics, Hand-offs. |
 | Health | <http://localhost:8000/health> | `{"status":"ok", ...}` when the models and the index are ready (503 before). |
 | Interactive API docs | <http://localhost:8000/docs> | FastAPI's Swagger page for every endpoint. |
 | Chat API | `POST http://localhost:8000/chat` | See [API](#api). |
 
-**The admin token** is the value of `MEDRAG_ADMIN_TOKEN`. To see it: `cat .env` (or `echo $MEDRAG_ADMIN_TOKEN` if you exported it in your shell instead). The dashboard keeps it only for the browser tab (sessionStorage); "Sign out" forgets it.
-Without a token the admin dashboard says "admin disabled: set MEDRAG_ADMIN_TOKEN": add the line to `.env` and run `docker compose up -d` again (no rebuild needed). The chat page never needs a token.
+**No authentication:** I made the admin page and the `/admin` endpoints open, with no login or token, so they are easy to access for the review. Anyone who can reach port 8000 can upload, replace or delete KB Documents and read the analytics and hand-offs (including the contact details people typed), so run it only on a trusted machine or network. In production these endpoints would sit behind authentication.
 
 From a terminal:
 
 ```
 curl localhost:8000/health
 curl -X POST localhost:8000/chat -H 'content-type: application/json' -d '{"message":"What is the active ingredient in Cataflam?"}'
-curl -H "Authorization: Bearer $(sed -n 's/^MEDRAG_ADMIN_TOKEN=//p' .env)" localhost:8000/admin/documents
+curl localhost:8000/admin/documents
 ```
 
 Port 8000 busy? The API listens on host port 8000 (`docker-compose.yml`, `api` → `ports`); change the left side of `"8000:8000"` and use that port in the URLs.
@@ -119,7 +117,7 @@ Slow or offline network (optional; both default to an empty folder, which means 
 - Docker Desktop with the WSL 2 backend and GPU support. In Git Bash, put `MSYS_NO_PATHCONV=1` in front of any `docker ... exec/run` command that passes a Linux path (`/tmp/x.py`), or Git Bash rewrites it into a Windows path.
 - **Arabic or other non-ASCII text in a `curl` command line is mangled on Windows** (it arrives as `?`): the server then sees question marks and answers something else. Put the JSON in a UTF-8 file and send it with
   `curl -X POST localhost:8000/chat -H 'content-type: application/json' --data-binary @question.json`. The chat page and the Python eval runner are not affected.
-- The `curl` and `export` examples are for Git Bash / Linux / macOS. In PowerShell use `curl.exe` (not the `curl` alias), `$env:MEDRAG_ADMIN_TOKEN = '...'`, and a file for the JSON body.
+- The `curl` and `export` examples are for Git Bash / Linux / macOS. In PowerShell use `curl.exe` (not the `curl` alias), and a file for the JSON body.
 
 ## API
 
@@ -187,11 +185,11 @@ HTTP 200 when ready. 503 `{"status":"error", ...}` when the LLM backend is unrea
 | endpoint | what | detail |
 | --- | --- | --- |
 | `GET /`, `GET /admin` | chat page, admin page | [docs/operations.md](docs/operations.md) |
-| `GET /admin/analytics`, `GET /admin/handoffs` | analytics and hand-offs, `Authorization: Bearer $MEDRAG_ADMIN_TOKEN` | [Logging and analytics](#logging-and-analytics), [Hand-off](#hand-off) |
+| `GET /admin/analytics`, `GET /admin/handoffs` | analytics and hand-offs | [Logging and analytics](#logging-and-analytics), [Hand-off](#hand-off) |
 | `GET/POST /admin/documents`, `DELETE /admin/documents/{kb_id}` | list, upload or replace, delete a KB Document | [Admin page](#admin-page) |
 | `POST /handoff` | leave a summary and contact after an escalation | [Hand-off](#hand-off) |
 
-The `/admin` endpoints answer 503 until `MEDRAG_ADMIN_TOKEN` is set, and 401 for a wrong token.
+The `/admin` endpoints need no authentication (see the note under [Open it](#open-it)).
 
 ## Safety policy
 
@@ -275,12 +273,11 @@ swap a word for another one; Trade Names written in Arabic letters ("بروفي�
 
 ### Logging and analytics
 
-Every `/chat` turn and every model call is logged (status, language, cited KB IDs, latency, prompt and completion tokens per call kind). `GET /admin/analytics` (Bearer `MEDRAG_ADMIN_TOKEN`) returns volume over time, top and unanswered questions,
+Every `/chat` turn and every model call is logged (status, language, cited KB IDs, latency, prompt and completion tokens per call kind). `GET /admin/analytics` returns volume over time, top and unanswered questions,
 tokens per call type and per turn, and latency p50 and p95; `python -m evaluation.run ... --analytics-check` cross-checks it against a run. The log is written off the request path and a write failure never fails `/chat`. No real patient data is stored.
 
 ```
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)   # before docker compose up
-curl -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" "localhost:8000/admin/analytics?since=2026-11-10&bucket=hour&limit=10"
+curl "localhost:8000/admin/analytics?since=2026-11-10&bucket=hour&limit=10"
 ```
 
 Parameters and fields: [docs/operations.md](docs/operations.md). The measured token numbers are in [TOKEN_USAGE.md](TOKEN_USAGE.md).
@@ -296,12 +293,16 @@ curl -X POST localhost:8000/handoff -H "Content-Type: application/json" -H "X-Se
 
 ### Admin page
 
-`/admin` uploads, replaces and deletes KB Documents without touching code; the change is in the next answer. The page asks for `MEDRAG_ADMIN_TOKEN`. The KB lives in the `kb-store` volume (seeded once from `./data`); every upload is validated by the real ingest
+`/admin` uploads, replaces and deletes KB Documents without touching code; the change is in the next answer. The page opens straight into the dashboard, with no login.
+
+**No authentication:** I made the admin page and the `/admin` endpoints open, with no login or token, so they are easy to access for the review. Anyone who can reach port 8000 can upload, replace or delete KB Documents and read the analytics and hand-offs (including the contact details people typed), so run it only on a trusted machine or network. In production these endpoints would sit behind authentication.
+
+The KB lives in the `kb-store` volume (seeded once from `./data`); every upload is validated by the real ingest
 before anything changes and applied atomically. To go back to `./data`: `docker compose down`, `docker volume rm <project>_kb-store`, start again. Detail and the three endpoints: [docs/operations.md](docs/operations.md).
 
 ## Configuration (environment variables)
 
-No secrets are stored in the repository or the images: the only secret-like values, `MEDRAG_ADMIN_TOKEN` and the optional `MEDRAG_OPENAI_API_KEY`, come from the operator's shell at start (or an untracked `.env`, which is gitignored). `docker-compose.yml` passes them through with no default.
+No secrets are stored in the repository or the images: the only secret-like value, the optional `MEDRAG_OPENAI_API_KEY`, comes from the operator's shell at start (or an untracked `.env`, which is gitignored). `docker-compose.yml` passes it through with no default.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -320,7 +321,6 @@ No secrets are stored in the repository or the images: the only secret-like valu
 | `MEDRAG_LLM_MARGIN_S` | `2.5` | time kept back for prompt evaluation and overhead when sizing that cap |
 | `MEDRAG_USAGE_HEADER` | `0` | `1` sends the `X-Medrag-Usage` response header (JSON: `prompt_tokens`, `completion_tokens`, `llm_calls` of that request, also on 500s); needed for the token metrics of the evaluation runs. The response body never changes |
 | `MEDRAG_SESSIONS_DB` | `:memory:` (`/var/lib/medrag/sessions.db` in Docker, on the `sessions` volume) | SQLite file of the Sessions; with `:memory:` they last only until the process ends |
-| `MEDRAG_ADMIN_TOKEN` | unset | Bearer token of the `/admin` endpoints (see Logging and analytics); unset or empty makes every `/admin` endpoint answer 503. Set it in your shell, never in a file in the repo |
 | `MEDRAG_RETRIEVER` | `hybrid` | `bm25` searches without the embedding model (a quick start, or a baseline); `hybrid` is BGE-M3 + BM25, see Search |
 | `MEDRAG_MIN_DENSE` | `0.5` | with no query word in any Section (BM25 finds nothing), a best dense similarity below this means nothing matches (Out of Scope without an LLM call). On the test set the 5 such questions, all not answerable, reach 0.36-0.49 |
 | `MEDRAG_EMBED_THREADS` | `4` | CPU threads for embedding one question (measured: 4 threads take about 50 ms, 24 take about 200 ms); the index build always uses all cores; `0` uses all cores for questions too |
@@ -328,7 +328,7 @@ No secrets are stored in the repository or the images: the only secret-like valu
 | `MEDRAG_KB_DIR` | `./data` | KB `.docx` folder (fixed to the `./data` mount, `/kb`, in Docker); with a KB store it is only the one-time seed |
 | `MEDRAG_KB_STORE` | unset (`/kb-store` in Docker, on the `kb-store` volume) | writable KB store of the admin page, see Admin page; unset makes the KB read-only and the document endpoints 503 |
 
-All of these except `MEDRAG_KB_DIR` and `MEDRAG_SESSIONS_DB` are passed through by `docker-compose.yml`, with the defaults above (`MEDRAG_ADMIN_TOKEN` from your shell, with no default) (the KB folder is the fixed `./data` mount, and the Sessions path is set by the Dockerfile to the `sessions` volume).
+All of these except `MEDRAG_KB_DIR` and `MEDRAG_SESSIONS_DB` are passed through by `docker-compose.yml`, with the defaults above (the KB folder is the fixed `./data` mount, and the Sessions path is set by the Dockerfile to the `sessions` volume).
 A reply cut off at its cap is answered as `out_of_scope` (and logged as a warning), never as an error.
 `GET /health` returns 503 (`"status":"error"`) when the LLM backend is unreachable or the model is missing, or the embedding model and index are not loaded yet; when ready it reports `"embedding":"BAAI/bge-m3"` and `embedding_revision`. A `/chat` that needs search answers 500 `{"error": ...}` until then; Emergency and Dose messages are still escalated (that needs no search).
 
@@ -339,13 +339,13 @@ The test set and its runner live in `evaluation/`, outside the `medrag` package:
 - `evaluation/cases.json`: 85 cases, 90 turns (the 10 public dev questions, paraphrases, dialect, Franco-Arabic, Arabic-letter Trade Names, Strength, group-level questions, partly covered questions, multi-turn, prompt injection, off-topic traps, Emergency, Dose, Diagnosis, Treatment Decision), each with the expected status, KB IDs, relevance terms and a note.
 - `--cases` runs a smaller set: `cases_issue5.json` (17: drugs outside the KB and partly covered cases), `cases_issue7.json` (20: Franco-Arabic and Arabic-letter Trade Name cases), `cases_issue8.json` (4 multi-turn cases), `cases_issue32.json` (57: self-care wording and lookups).
 
-Run it against a started stack. It needs the usage header on (so tokens are measured) and, for `--analytics-check`, the same admin token the server was started with. The runner needs Python 3.12+ and the package's small dependencies on the host, and it reads the KB files in `./data` (for the snippet check):
+Run it against a started stack. It needs the usage header on (so tokens are measured). The runner needs Python 3.12+ and the package's small dependencies on the host, and it reads the KB files in `./data` (for the snippet check):
 
 ```
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16) MEDRAG_USAGE_HEADER=1
-docker compose up -d --build --wait                  # (re)start with both set
+export MEDRAG_USAGE_HEADER=1
+docker compose up -d --build --wait                  # (re)start with it set
 python -m evaluation.run --label final --analytics-check                               # every case, one at a time, against http://localhost:8000
 python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json, cases_issue32.json)
 python -m evaluation.review evaluation/results/<date>-final.json                       # the manual faithfulness-review sheet
@@ -385,6 +385,7 @@ What a user is most likely to notice (the full list is in the follow-up issue #1
 - **Franco-Arabic edge cases.** With no digit-letter word and only one Franco word, the message is labelled `en` unless the router agrees; the router's transliteration is not always word for word, in which case the raw message is searched.
 - **Sessions.** Two concurrent requests in the same Session can each miss the other's turn; clients that pick the same simple `session_id` share history; if the routing call fails, an emergency that only the history reveals comes back Out of Scope (never answered) rather than Escalated.
 - **Capacity.** One LLM call at a time: a request that cannot finish within the 25 s budget gets HTTP 500 "busy". Without an NVIDIA GPU (the CPU override) answers exceed the 30 s limit.
+- **No authentication on `/admin`.** The admin page and the `/admin` endpoints are open on purpose (no login or token), so anyone who can reach port 8000 can change the KB and read the analytics and hand-offs, including contact details; run it only on a trusted machine or network. In production they would sit behind authentication.
 - **Operations.** An out-of-range `since` or `until` on `/admin/analytics` answers 500 instead of 400; the log tables grow without limit; a few admin-page edge cases on Windows (a read racing a replace) are noted in the issue.
 - **Tested on one machine and one KB.** The 90/90 above is on the test set the pipeline was tuned against (the held-out sets were written by the same author), so it is evidence that the pipeline works, not a forecast for the hidden question set. The real internet download path of the models was not run in the final check (see [docs/submission-checks.md](docs/submission-checks.md)).
 
