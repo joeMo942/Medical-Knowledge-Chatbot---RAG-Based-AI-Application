@@ -40,3 +40,14 @@ python -m evaluation.run --label fresh --analytics-check
 ```
 
 Record the time to healthy and the score here when done.
+
+## 4. Download-start check (2026-11-11)
+
+Done to see that the real downloads start, not to complete them (the author asked only for that).
+
+- Fresh `git clone` from GitHub at `fc0c9e2`, the KB copied into `./data`, a separate compose project `medragdl`, and no cache variables (`MEDRAG_WHEELS_DIR`, `MEDRAG_EMBED_SRC` unset).
+- `docker compose build --no-cache api`: pip downloaded everything. One attempt broke at 833 s with a truncated index response, and the Dockerfile's whole-install retry recovered. The image was built, 1.65 GB.
+- `docker compose up -d`: `model-pull` pulled `qwen3.5:4b` from the Ollama registry at about 6 to 12 MB/s; `embedder-pull` downloaded `pytorch_model.bin` from Hugging Face (`BAAI/bge-m3@5617a9f6`), growing from 192 to 256 MB in 20 s.
+- Stopped on purpose before completion, then `docker compose -p medragdl down -v` on that project only.
+
+**Not verified:** the full completion and the SHA-256 check of a real download, and re-pulling the Ollama image. The `ollama/ollama` compressed download size (3.39 GB) was read from the registry manifest, not measured by pulling.

@@ -3,7 +3,7 @@
 What each model call of the pipeline costs in tokens and time, measured on the test hardware, and what could be
 cut. Every number says whether it could feed an admin panel in production or is only useful while developing, and why.
 
-Raw results (`evaluation/results/`) are gitignored, so the numbers below are copied here with their source.
+Raw results (`evaluation/results/`) are gitignored. The numbers below are from the final run `final` (2026-11-11, commit `4f07d12`, `--analytics-check`; counts #32's self-care hint and cases), whose report, raw JSON and analytics-check output are committed in [docs/test-results/](docs/test-results/README.md). Latencies in the final run were measured with the laptop plugged in, Windows Balanced power mode, the GPU sometimes power-capped; token counts do not depend on that.
 
 ## How it was measured
 
@@ -16,24 +16,24 @@ Raw results (`evaluation/results/`) are gitignored, so the numbers below are cop
 - **Token counts are what the model server reports, not estimates:** Ollama's `prompt_eval_count` and `eval_count` for the two LLM calls;
   for the embedding call, the BGE-M3 tokenizer's own count of the question (BGE-M3 runs in-process, so there is no server to report).
   They are logged per call in the `call_log` table and summed by `GET /admin/analytics`.
-- **Reproducible:** the model runs at temperature 0, so token counts repeat exactly. The run `issue9a` (#9, 2026-11-10) and the clean-clone run
-  `issue13-clean` (this issue, 2026-11-10, commit `95f009b`) have identical totals, call for call. Latencies move by a few percent between runs.
+- **Reproducible:** the model runs at temperature 0, so token counts repeat exactly for the same pipeline. The run `issue9a` (#9, 2026-11-10) and the clean-clone run
+  `issue13-clean` (2026-11-10, commit `95f009b`) had identical totals, call for call (328,180 prompt, 12,476 completion). The final run differs slightly (330,537 and 12,481 through the usage header) because #32 added a self-care hint to the answer prompt. Latencies move by a few percent between runs.
 - **`--analytics-check`** compares the server's analytics with the runner's own rows: turns 90, unanswered 46, status counts, and prompt
-  tokens 328,180, completion tokens 12,476, LLM calls 142 all matched exactly in both runs.
+  tokens, completion tokens and LLM calls all matched exactly in every run (final run: 330,537 prompt, 12,481 completion, 142 LLM calls).
 
 ## Tokens per model call
 
-From `GET /admin/analytics` after the run (`tokens_by_call_type`, `tokens_per_turn`), 90 turns:
+From `GET /admin/analytics` after the run `final` (`tokens_by_call_type`, `tokens_per_turn`), 90 turns:
 
 | call | calls | prompt tokens, total | completion tokens, total | per call (mean) | latency per call (mean, server side) |
 | --- | ---: | ---: | ---: | --- | ---: |
-| routing (LLM) | 83 | 225,159 | 3,037 | 2,713 prompt + 37 completion | 1,031 ms |
-| answer (LLM) | 59 | 103,021 | 9,439 | 1,746 prompt + 160 completion | 3,194 ms |
-| embedding (BGE-M3, CPU) | 62 | 2,022 | 0 | 33 prompt | 133 ms |
-| all three | 204 | 330,202 | 12,476 | | |
+| routing (LLM) | 83 | 227,483 | 3,031 | 2,741 prompt + 37 completion | 1,282 ms |
+| answer (LLM) | 59 | 103,054 | 9,450 | 1,747 prompt + 160 completion | 3,284 ms |
+| embedding (BGE-M3, CPU) | 62 | 2,010 | 0 | 32 prompt | 116 ms |
+| all three | 204 | 332,547 | 12,481 | | |
 
-Per turn (mean over the 90 turns, all call types): **3,669 prompt + 139 completion = 3,807.5 tokens** (analytics `tokens_per_turn`).
-The LLM calls alone are 3,646 prompt + 139 completion per turn, 1.58 LLM calls per turn (the `X-Medrag-Usage` figures of the run report).
+Per turn (mean over the 90 turns, all call types): **3,695 prompt + 139 completion = 3,833.6 tokens** (analytics `tokens_per_turn`).
+The LLM calls alone are 3,673 prompt + 139 completion per turn, 1.58 LLM calls per turn (the `X-Medrag-Usage` figures of the run report).
 
 Why the counts differ per turn: 7 of the 90 turns are rule-flagged emergencies and make no LLM call and no search; 21 more are escalated by the router
 after the routing call alone (no search); 3 Out of Scope turns are searched but nothing matches (the no-match gate), so there is no answer call; the other 59 make both
@@ -43,14 +43,14 @@ direct 5-question measurement below, and about 480 to 2,200 across the 90-turn r
 
 | turns | count | mean latency |
 | --- | ---: | ---: |
-| Answered (routing + answer) | 44 | 4.70 s |
-| Out of Scope, both LLM calls | 15 | 3.54 s |
-| Out of Scope, routing only (no Section matched) | 3 | 1.03 s |
-| Escalated by the router (routing only) | 21 | 0.98 s |
+| Answered (routing + answer) | 44 | 5.03 s |
+| Out of Scope, both LLM calls | 15 | 4.01 s |
+| Out of Scope, routing only (no Section matched) | 3 | 1.66 s |
+| Escalated by the router (routing only) | 21 | 1.07 s |
 | Escalated by a rule (no LLM call) | 7 | 0.03 s |
 
-(derived from the per-request rows of `issue13-clean`; the 30 s limit is never near.) End to end over all 90 turns: **p50 3.68 s, p95 6.04 s, max 7.23 s,
-mean 3.15 s** (client side; the server-side p50 and p95 were 3,658 and 6,077 ms in the analytics output). Earlier runs on the same hardware: p50 3.52 to 3.80 s,
+(derived from the per-request rows of `final`; the 30 s limit is never near.) End to end over all 90 turns: **p50 3.47 s, p95 6.65 s, max 12.48 s,
+mean 3.43 s** (client side; the server-side p50 and p95 were 3,459 and 6,661 ms in the analytics output). Run conditions: laptop plugged in, Windows Balanced power mode, the GPU sometimes power-capped (throttle reason 0x4 under load), so the tail is a little longer than in `issue13-clean` (3.68 / 6.04 s, max 7.23 s). Earlier runs on the same hardware: p50 3.52 to 3.80 s,
 p95 5.87 to 6.20 s (`issue7e`, `issue9a`, `issue11a`).
 
 ### Speed of the model itself
@@ -79,16 +79,16 @@ index of the 113 Sections took 42.7 s to build on the first start (embedder load
 | per-status latency table above | derived offline from the eval run's per-request rows | **development** | the analytics endpoint groups latency by call kind and overall, not by status; needs the run's labelled cases, or a `status` grouping added to the endpoint |
 | decode and prefill tokens/s | Ollama's `eval_duration` / `prompt_eval_duration`, read by the ad-hoc script | **development** | the API's `LLMResult` carries these durations but they are not stored in `call_log`, so the panel cannot show them today; storing them would make decode speed a cheap production metric (a drop means the GPU is throttled or the model fell back to the CPU) |
 | index build time, model load time, container start | server log lines (`embedder loaded in 7.7s, index built in 42.7s`) | **development** (a startup check) | happens once per start, so it is for tuning and for a first-run check, not for a time series |
-| share of the call's cost that is the prompt (65.7% routing prompt, see below) | computed from the totals above | **development** | a design lens for choosing what to cut, recomputed whenever the prompt changes |
+| share of the call's cost that is the prompt (65.9% routing prompt, see below) | computed from the totals above | **development** | a design lens for choosing what to cut, recomputed whenever the prompt changes |
 
 ## The most expensive call
 
-By tokens the **routing call** is the most expensive: its prompt is 225,159 of the 342,678 tokens of the run (**65.7%**; answer prompt 30.1%, answer completion 2.8%,
+By tokens the **routing call** is the most expensive: its prompt is 227,483 of the 345,028 tokens of the run (**65.9%**; answer prompt 29.9%, answer completion 2.7%,
 routing completion 0.9%, embedding 0.6%). Each routing call sends about 2,670 tokens of fixed system prompt (the rules and 35 few-shot examples; the
 message itself is about 35 tokens), identical on every call, and gets back about 37 tokens of JSON.
 
-By time the **answer call** is the most expensive: 3.19 s mean, against 1.03 s for routing, 133 ms for embedding. It spends about 2.7 s of that
-decoding 160 to 200 tokens at 60 tokens/s; its prefill is about 0.1 s. Across the run the answer call takes about 67% of all model time (59 x 3.19 s = 188 s of 282 s; routing 86 s, embedding 8 s).
+By time the **answer call** is the most expensive: 3.28 s mean, against 1.28 s for routing, 116 ms for embedding. It spends about 2.7 s of that
+decoding 160 to 200 tokens at 60 tokens/s; its prefill is about 0.1 s. Across the run the answer call takes about 63% of all model time (59 x 3.28 s = 194 s of 307 s; routing 106 s, embedding 7 s).
 
 So the two diagnoses differ, and so does the cure: the router costs tokens, the answer call costs seconds.
 
@@ -98,10 +98,10 @@ The effects are **estimates** from the measurements above, not measured; any cha
 the few-shot examples are what fixed the Emergency, Dose and Franco-Arabic misses (see MODEL_DECISION.md).
 
 1. **Fewer, shorter router examples.** Halving the system prompt (about 2,670 to 1,350 tokens) would cut about 1,300 prompt tokens per routed call,
-   about 110,000 of the 342,678 tokens of this run (**about -32% tokens overall**), and about 0.15 s per routed call at the measured 9,200 tokens/s prefill
+   about 110,000 of the 345,028 tokens of this run (**about -32% tokens overall**), and about 0.15 s per routed call at the measured 9,200 tokens/s prefill
    (about 5% of a typical 3 s turn). Cost: router accuracy, so it needs the eval.
 2. **Skip the router where the rules already decide.** It is already skipped for rule-flagged emergencies (7 of 90 turns). A safe, narrower extension is a plain
-   single-turn lookup in Latin script that names a KB drug and carries no person words (the router adds nothing there). Saving per skipped turn: 2,713 prompt tokens and about
+   single-turn lookup in Latin script that names a KB drug and carries no person words (the router adds nothing there). Saving per skipped turn: 2,741 prompt tokens and about
    1.0 s. With a share *s* of turns skipped, the overall token saving is about *s* x 66% and the time saving about *s* x 1 s per turn. The router also rewrites Franco-Arabic and follow-ups and is the only detector
    of Diagnosis and Treatment Decision, so only a very narrow rule is safe; the share *s* is not measured.
 3. **Reuse the fixed prefix (prompt caching).** About 98% of the routing prompt never changes. In this setup it is recomputed each call: four consecutive routing calls in the

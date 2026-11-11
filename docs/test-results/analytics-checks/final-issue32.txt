@@ -1,0 +1,17 @@
+Analytics check (GET /admin/analytics since the run start):
+ok   turns: run 58 | analytics 58
+ok   unanswered: run 39 | analytics 39
+ok   status counts: run {'answered': 19, 'escalated': 36, 'out_of_scope': 3} | analytics {'answered': 19, 'escalated': 36, 'out_of_scope': 3}
+ok   top-question turns: run 58 | analytics 58
+info latency p50 (ms, nearest-rank): client 815 | server 813
+info latency p95 (ms, nearest-rank): client 7532 | server 7530
+ok   prompt tokens (X-Medrag-Usage vs routing+answer): run 188611 | analytics 188611
+ok   completion tokens (X-Medrag-Usage vs routing+answer): run 8221 | analytics 8221
+ok   LLM calls (X-Medrag-Usage vs routing+answer): run 77 | analytics 77
+info answer: 22 calls, 38018 prompt + 6287 completion tokens, mean 4598 ms
+info embedding: 22 calls, 406 prompt + 0 completion tokens, mean 72 ms
+info routing: 55 calls, 150593 prompt + 1934 completion tokens, mean 851 ms
+info per turn: mean 3258.91 prompt + 141.74 completion = 3400.66 tokens (all call types, 58 turns)
+analytics check: all exact numbers match
+
+status accuracy 58/58; wrote D:\task-sebaie\evaluation\results\2026-11-11-final-issue32.json and 2026-11-11-final-issue32.md

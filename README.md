@@ -10,7 +10,7 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
 | [API](#api) | `POST /chat`, `GET /health`, examples |
 | [Safety policy](#safety-policy) | Answered / Out of Scope / Escalated, Dose vs Strength, why this suits pharmacists and doctors |
 | [Architecture](#architecture) | the pipeline, services, volumes |
-| [Evaluation](#evaluation) and [Test results](#test-results) | how to run the eval; where the recorded results go |
+| [Evaluation](#evaluation) and [Test results](#test-results) | how to run the eval; the recorded results ([docs/test-results/](docs/test-results/README.md)) |
 | [`MODEL_DECISION.md`](MODEL_DECISION.md), [`TOKEN_USAGE.md`](TOKEN_USAGE.md) | why these models; tokens and speed per model call |
 | [Known limitations](#known-limitations) | what a user will notice |
 | [`docs/adr/`](docs/adr), [`GLOSSARY.md`](GLOSSARY.md) | decisions and the domain vocabulary used here (Section, Citation, Dose, Strength, ...) |
@@ -101,7 +101,7 @@ Port 8000 busy? The API listens on host port 8000 (`docker-compose.yml`, `api` �
 | `qwen3.5:4b` (4.2 B parameters, Q4_K_M) | 3.3 GB | Ollama, into the `ollama-models` volume (`docker compose logs -f model-pull`) | download time of 3.3 GB |
 | BGE-M3, pinned revision, each file checked by size and SHA-256 | 2.3 GB | Hugging Face, into the `embed-models` volume (`docker compose logs -f embedder-pull`) | download time of 2.3 GB; the copy and check alone took 26 s from a local folder |
 | `api` image (CPU `torch`, `transformers`, ...) | 1.65 GB on disk (`docker images`) | built from the `Dockerfile` | build plus pip downloads |
-| `ollama/ollama` image | 8.5 GB on disk (`docker images`); the compressed download is smaller | Docker Hub | pull time |
+| `ollama/ollama` image | 3.39 GB compressed download (from the registry manifest), 8.5 GB on disk (`docker images`) | Docker Hub | download time of 3.39 GB |
 | search index of the 113 Sections | small | built by the API on the first start | **42.7 s** measured (embedder load 7.7 s), cached afterwards |
 
 How the times were measured: **the downloads themselves were not timed on a clean machine** (the author's connection is slow and flaky; see `docs/submission-checks.md`), so the time of the three big downloads is just
@@ -337,7 +337,7 @@ A reply cut off at its cap is answered as `out_of_scope` (and logged as a warnin
 The test set and its runner live in `evaluation/`, outside the `medrag` package: the system never sees them.
 
 - `evaluation/cases.json`: 85 cases, 90 turns (the 10 public dev questions, paraphrases, dialect, Franco-Arabic, Arabic-letter Trade Names, Strength, group-level questions, partly covered questions, multi-turn, prompt injection, off-topic traps, Emergency, Dose, Diagnosis, Treatment Decision), each with the expected status, KB IDs, relevance terms and a note.
-- `--cases` runs a smaller set: `cases_issue5.json` (11 drugs outside the KB and partly covered cases), `cases_issue7.json` (13 Franco-Arabic and Arabic-letter Trade Name cases), `cases_issue8.json` (multi-turn).
+- `--cases` runs a smaller set: `cases_issue5.json` (17: drugs outside the KB and partly covered cases), `cases_issue7.json` (20: Franco-Arabic and Arabic-letter Trade Name cases), `cases_issue8.json` (4 multi-turn cases), `cases_issue32.json` (57: self-care wording and lookups).
 
 Run it against a started stack. It needs the usage header on (so tokens are measured) and, for `--analytics-check`, the same admin token the server was started with. The runner needs Python 3.12+ and the package's small dependencies on the host, and it reads the KB files in `./data` (for the snippet check):
 
@@ -347,27 +347,32 @@ pip install -e .
 export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16) MEDRAG_USAGE_HEADER=1
 docker compose up -d --build --wait                  # (re)start with both set
 python -m evaluation.run --label final --analytics-check                               # every case, one at a time, against http://localhost:8000
-python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json)
+python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json, cases_issue32.json)
 python -m evaluation.review evaluation/results/<date>-final.json                       # the manual faithfulness-review sheet
 python -m evaluation.kb_check                                                          # checks expected KB IDs, sections and out-of-scope traps against the real KB files
 python -m evaluation.recall                                                            # offline search recall (needs torch and the BGE-M3 files, see the script)
 ```
 
 `run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
-The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request, and a name that already exists gets a numeric suffix. Without the usage header the runner warns and marks the token metrics absent. The results folder is gitignored, so results stay local until you copy them out (see Test results).
-The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; faithfulness is judged by a person, never by an LLM. The sheet never overwrites an existing one.
+The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request, and a name that already exists gets a numeric suffix. Without the usage header the runner warns and marks the token metrics absent. The results folder is gitignored; the final runs were copied to [docs/test-results/](docs/test-results/README.md).
+The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; the sheet is filled in a first pass by an AI reviewer (Claude Opus) that checks each claim against the cited Section; the author then checks it and signs it off, and the sheet says which is which. The sheet never overwrites an existing one.
 `--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides). Send no other traffic to the API while it runs: any other request in the window shows up as a DIFF.
 
 ## Test results
 
-> **TODO (author): link the final eval run and the faithfulness review here.** Not committed yet: `evaluation/results/` is gitignored, so add the files to the repository (for example under `docs/test-results/`, with `git add -f`) and link them in this section.
->
-> - the final run on `evaluation/cases.json`: `evaluation/results/<date>-<label>.md` and `.json`, produced by `python -m evaluation.run --label <label> --analytics-check` (stack started with `MEDRAG_USAGE_HEADER=1` and `MEDRAG_ADMIN_TOKEN` set, see Evaluation);
-> - the held-out runs, if you want them recorded: `--cases evaluation/cases_issue5.json`, `cases_issue7.json`, `cases_issue8.json`;
-> - the faithfulness review: `evaluation/results/<date>-<label>-faithfulness-review.md`, generated by `python -m evaluation.review evaluation/results/<date>-<label>.json` and then filled in by hand (the verdict columns and the summary at the end stay empty until a person reviews).
+Recorded final run, 2026-11-11 (laptop plugged in, Windows Balanced power mode, the GPU sometimes power-capped), one request at a time. Full reports, raw results, the analytics-check outputs, the recall output and the harness description (test sets, scoring, how to re-run, every failing case, caveats) are in [docs/test-results/](docs/test-results/README.md).
 
-What is already in the repository: the test set and runner (`evaluation/`), the unit tests below, and development numbers quoted from earlier runs in [MODEL_DECISION.md](MODEL_DECISION.md) (status accuracy from 55/90 to 90/90 as the pipeline grew) and [TOKEN_USAGE.md](TOKEN_USAGE.md).
-The submission check ran the 90 turns on a clean clone with fresh volumes: **90/90**, 0 contract violations, analytics check "all exact numbers match" ([docs/submission-checks.md](docs/submission-checks.md)); that run's files are not committed either.
+| set | status | language | Citation KB ID | snippets verbatim | contract violations | latency p50 / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `cases.json` (85 cases, 90 turns, includes the 10 dev questions) | **90/90** | 90/90 | 44/44 | 53/53 | 0 | 3.47 / 6.65 s |
+| `cases_issue5.json` (17: outside the KB, partly covered) | 15/17 | 17/17 | 5/7 | 6/6 | 0 | 3.87 / 5.79 s |
+| `cases_issue7.json` (20 cases, 21 turns: Franco-Arabic, Arabic-letter Trade Names) | 21/21 | 21/21 | 11/11 | 16/16 | 0 | 3.64 / 6.17 s |
+| `cases_issue8.json` (4 cases, 9 turns: multi-turn) | 9/9 | 9/9 | 5/5 | 5/5 | 0 | 3.20 / 4.65 s |
+| `cases_issue32.json` (57 cases, 58 turns: self-care wording, lookups) | 58/58 | 58/58 | 18/19 | 50/50 | 0 | 0.82 / 7.43 s |
+
+Search recall (75 questions, relevant Section among the 4 retrieved): hybrid 75, BM25 71.
+The two misses are partly covered questions that came back Out of Scope instead of answering the covered half (`partial5-metformin-contraindications-cost`, `partial5b-hypertension-and-malaria`); they fail every time. The sets were written by the author and used while tuning, so these are development numbers, not a forecast for the hidden set.
+The faithfulness review sheets are generated but not signed off yet; see the results folder.
 
 ## Known limitations
 
@@ -376,6 +381,7 @@ What a user is most likely to notice (the full list is in the follow-up issue #1
 - **It is a 4B model.** The router can classify an unusual wording differently from run to run; a grounded answer can contain one item the cited Section does not say; a Trade Name can be misspelled, or the wrong Section named in the prose while the Citations are right. The server checks Citations, snippets, doses and support, but not every sentence: this is what the faithfulness review is for.
 - **It refuses more than it should in some cases.** An English synonym of a word the KB writes only in Arabic counts as unsupported unless it is in the small alias list (hypertension, pregnancy, fever, ...); an Arabic comparison question with no drug named is refused; an Arabic-letter brand the mapper does not know (short or vowel-poor names such as اكتوس, Cozaar) is not recognised; "which drugs treat hypertension and malaria" is refused by the model itself although half of it is covered.
 - **It can answer more than it should for one kind of question.** "Cancer drugs and their side effects" (an aspect of a condition's drugs) can be Answered by citing a contraindication line that mentions the disease; a generic word that the cited text happens to contain can slip through the support check. Diagnosis and Treatment Decision are caught by the router alone (and the self-care rule can lower a router Treatment Decision for a first-person question it judges to have no risk qualifier: a wording of a risk that its word lists do not know is answered with the general information and the pharmacist note instead of escalated) (the answer-call backstop applies only when routing is skipped or fails); the dose check does no unit conversion ("0.5 g" in the KB against "500 mg" in the answer becomes a Dose escalation, which errs on the safe side).
+- **Unasked sentences in answers.** The faithfulness review found answers that add a sentence nobody asked for, such as "pregnancy guidance is not in the knowledge base" on a condition lookup, or "the price or an alternative is not in the knowledge base". Some of these are false. The model copies example words from the answer prompt. A prompt fix removed them but broke 4 other cases, so it was not kept (see [docs/test-results](docs/test-results/README.md#faithfulness-review)).
 - **Franco-Arabic edge cases.** With no digit-letter word and only one Franco word, the message is labelled `en` unless the router agrees; the router's transliteration is not always word for word, in which case the raw message is searched.
 - **Sessions.** Two concurrent requests in the same Session can each miss the other's turn; clients that pick the same simple `session_id` share history; if the routing call fails, an emergency that only the history reveals comes back Out of Scope (never answered) rather than Escalated.
 - **Capacity.** One LLM call at a time: a request that cannot finish within the 25 s budget gets HTTP 500 "busy". Without an NVIDIA GPU (the CPU override) answers exceed the 30 s limit.

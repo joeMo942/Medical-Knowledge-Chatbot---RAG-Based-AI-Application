@@ -3,13 +3,14 @@
     python -m evaluation.review evaluation/results/<date>-<label>.json [--n 15] [--seed 1]
 
 A stratified, seeded and reproducible sample, as a markdown table with the question, the answer and
-its Citations, and empty columns for a person to fill in. It always holds every reply that came back
+its Citations, and empty columns for a reviewer to fill in. It always holds every reply that came back
 answered although the question should have been escalated (the dangerous ones: an Emergency, a Dose, a
 Diagnosis or a Treatment Decision answered with facts), every answered reply of the Franco-Arabic, partly
 covered and multi-turn cases, up to 5 escalated replies (to check they give no medical advice), and a
 seeded sample of the other answered replies: enough to reach --n rows, and never fewer than 5. An existing
 sheet is never overwritten. Faithfulness
-(does the answer say only what the KB says) is judged by a human, never by an LLM.
+(does the answer say only what the KB says) is filled in a first pass by an AI reviewer (Claude Opus) that
+checks each claim against the cited Section; the author then checks it and signs it off. The sheet says which is which.
 """
 from __future__ import annotations
 
