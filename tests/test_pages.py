@@ -29,8 +29,8 @@ def test_page_is_themed_and_fits_a_phone(name):
     assert "Noto Sans Arabic" in page
 
 
-def test_admin_page_sends_the_bearer_token_and_keeps_it_in_session_storage_only():
+def test_admin_page_has_no_sign_in_and_stores_nothing_in_the_browser():
     page = PAGES["admin.html"]
-    assert '"Authorization": "Bearer " + token' in page and "sessionStorage" in page and "localStorage" not in page
+    assert not re.search(r"Bearer|Authorization|sessionStorage|localStorage|MEDRAG_ADMIN_TOKEN|type=\"password\"", page)
     for path in ("/admin/documents", "/admin/analytics", "/admin/handoffs"):
         assert path in page
