@@ -17,13 +17,11 @@ from medrag.sessions import SessionStore
 from medrag.usage import CallRecord
 
 Q = {"message": "What is the active ingredient in Cataflam?"}
-TOKEN = "s3cret-token"
 
 
 class Api:
     def __init__(self, llm, tmp_path, retriever=None, **settings):
         self.db = tmp_path / "sessions.db"
-        settings.setdefault("admin_token", TOKEN)
         self.app = create_app(SECTIONS, llm, Settings(sessions_db=str(self.db), **settings), retriever=retriever)
 
     def request(self, method, url, **kw):
@@ -35,9 +33,8 @@ class Api:
     def chat(self, message=Q["message"], **kw):
         return self.request("POST", "/chat", json={"message": message}, **kw)
 
-    def analytics(self, token=TOKEN, **params):
-        headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
-        return self.request("GET", "/admin/analytics", params=params, headers=headers)
+    def analytics(self, **params):
+        return self.request("GET", "/admin/analytics", params=params)
 
     def rows(self, sql):
         con = sqlite3.connect(self.db)
@@ -259,23 +256,12 @@ def test_an_empty_log_reports_zeros(tmp_path):
     assert rep["tokens_per_turn"]["mean_total_tokens"] is None
 
 
-# --- the endpoint and its auth ---
+# --- the endpoint (no authentication) ---
 
-def test_admin_is_disabled_without_a_token(tmp_path):
-    api = Api(FakeLLM(answered()), tmp_path, admin_token="")
-    r = api.analytics(token="anything")
-    assert r.status_code == 503 and r.json() == {"error": "admin disabled: set MEDRAG_ADMIN_TOKEN"}
-    assert api.analytics(token=None).status_code == 503
-
-
-def test_wrong_or_missing_token_is_401(tmp_path):
+def test_the_endpoint_answers_without_any_authorization_header(tmp_path):
     api = Api(FakeLLM(answered()), tmp_path)
-    assert api.analytics(token=None).status_code == 401
-    assert api.analytics(token="wrong").status_code == 401
-    # non-ASCII bytes must not crash the comparison
-    assert api.request("GET", "/admin/analytics", headers={"Authorization": b"Bearer "+bytes([0xc3, 0xa9])}).status_code == 401
-    assert api.request("GET", "/admin/analytics", headers={"Authorization": TOKEN}).status_code == 401
-    assert api.request("GET", "/admin/analytics", headers={"Authorization": f"Basic {TOKEN}"}).status_code == 401
+    r = api.request("GET", "/admin/analytics")
+    assert r.status_code == 200 and "Authorization" not in r.request.headers
 
 
 def test_endpoint_returns_the_report_after_chat_turns(tmp_path):

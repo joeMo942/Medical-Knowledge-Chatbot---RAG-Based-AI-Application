@@ -9,7 +9,7 @@ Method:
 - Working tree and every commit of every branch (125 commits): `git grep` / `git log --all -p -G` for `ghp_`, `github_pat_`, `hf_...`, `sk-...`, `AKIA...`, `BEGIN ... PRIVATE KEY`, `xox[abp]-`, `AIza...`, and generic `password|secret|api_key|token = "<value>"` assignments; file names in history matching `.env`, `.pem`, `.key`, `id_rsa`, `credentials`, `secret`; long base64/hex strings in tracked files.
 - Built `medrag-api` image: `docker history --no-trunc` (all `ENV` and `RUN` lines), `docker image inspect` (environment, labels, user), and a throwaway container listing `.env*`, `*.pem`, `*.key`, `id_rsa*`, `credentials*`, `.netrc` and grepping `/app` and the installed package for the token patterns.
 
-Result: **no secret found.** The only hits are test fixtures (`TOKEN = "s3cret-token"` in tests, used against an in-process app), the pinned model file hashes in `medrag/modelstore.py`, the public Python release key ID (`GPG_KEY` of the base image) and the CA certificate bundles of `certifi`/the OS. The image environment holds only `MEDRAG_*` paths and pip settings; `MEDRAG_ADMIN_TOKEN` and the optional API key are passed at run time from the operator's shell, never baked in. `.env` and `.env.*` are gitignored and dockerignored; no KB `.docx` is in git or in the image.
+Result: **no secret found.** The only hits are test fixtures (`TOKEN = "s3cret-token"` in tests of the admin token (removed since), used against an in-process app), the pinned model file hashes in `medrag/modelstore.py`, the public Python release key ID (`GPG_KEY` of the base image) and the CA certificate bundles of `certifi`/the OS. The image environment holds only `MEDRAG_*` paths and pip settings; the optional API key is passed at run time from the operator's shell, never baked in. `.env` and `.env.*` are gitignored and dockerignored; no KB `.docx` is in git or in the image.
 
 Noted, not a secret: the assessment brief PDF (`docs/MTI_AI_SOLUTIONS_AI_ENGINEER_TECHNICAL_ASSESSMENT.pdf`, marked confidential) is in git history (added in `204dc6f`, removed in `551db6c`). The repository is private; decide whether to rewrite history before sharing it.
 
@@ -33,7 +33,7 @@ docker compose down -v --rmi all                      # WARNING: deletes volumes
 git clone <repository> fresh && cd fresh
 mkdir data   # copy the nine KB .docx files in, with the names from the README
 unset MEDRAG_WHEELS_DIR MEDRAG_EMBED_SRC              # no local seeds: everything downloads
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16) MEDRAG_USAGE_HEADER=1
+export MEDRAG_USAGE_HEADER=1
 time docker compose up -d --build --wait
 python -m venv .venv && . .venv/bin/activate && pip install -e .
 python -m evaluation.run --label fresh --analytics-check

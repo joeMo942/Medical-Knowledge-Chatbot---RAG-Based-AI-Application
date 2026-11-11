@@ -15,7 +15,6 @@ from medrag.escalation import ESCALATION_TEXT
 from medrag.handoff import HandoffLog
 from medrag.sessions import SessionStore
 
-TOKEN = "s3cret-token"
 EMERGENCY_EN = "my child swallowed a whole bottle of panadol"
 EMERGENCY_AR = "طفلي ابتلع علبة بانادول كاملة"
 DOSE = "what dose of panadol should I take"
@@ -26,7 +25,6 @@ GOOD = {"summary": "My child swallowed tablets at 3pm (synthetic).", "contact": 
 class Api:
     def __init__(self, tmp_path, llm=None, **settings):
         self.db = tmp_path / "sessions.db"
-        settings.setdefault("admin_token", TOKEN)
         self.app = create_app(SECTIONS, llm or FakeLLM(answered()), Settings(sessions_db=str(self.db), **settings))
 
     def request(self, method, url, **kw):
@@ -43,9 +41,8 @@ class Api:
         headers = {"X-Session-Id": sid} if sid else {}
         return self.request("POST", "/handoff", json=body, headers=headers, **kw)
 
-    def admin(self, url, token=TOKEN, **params):
-        headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
-        return self.request("GET", url, params=params, headers=headers)
+    def admin(self, url, **params):
+        return self.request("GET", url, params=params)
 
     def rows(self, sql):
         con = sqlite3.connect(self.db)
@@ -198,11 +195,9 @@ def test_analytics_and_handoffs_endpoint_list_it_with_its_session(tmp_path):
     assert "summary" in api.admin("/admin/analytics").json()  # existing fields stay
 
 
-def test_admin_handoffs_needs_the_token(tmp_path):
-    api = Api(tmp_path)
-    assert api.admin("/admin/handoffs", token=None).status_code == 401
-    assert api.admin("/admin/handoffs", token="wrong").status_code == 401
-    assert Api(tmp_path / "off", admin_token="").admin("/admin/handoffs").status_code == 503
+def test_admin_handoffs_answers_without_any_authorization_header(tmp_path):
+    r = Api(tmp_path).admin("/admin/handoffs")
+    assert r.status_code == 200 and "Authorization" not in r.request.headers
 
 
 def test_chat_contract_is_unchanged(tmp_path):

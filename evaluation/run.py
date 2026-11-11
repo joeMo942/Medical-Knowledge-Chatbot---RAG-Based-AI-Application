@@ -144,14 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--notes", default="", help="free text recorded in the results (what the pipeline was at this run)")
     p.add_argument("--only", help="run only cases whose id contains this text (a smoke run)")
     p.add_argument("--analytics-check", action="store_true",
-                   help="after the run, compare GET /admin/analytics for the run's window with the run's own numbers "
-                        "(needs MEDRAG_ADMIN_TOKEN in the environment, the same one the server was started with)")
+                   help="after the run, compare GET /admin/analytics for the run's window with the run's own numbers")
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
-    token = os.environ.get("MEDRAG_ADMIN_TOKEN", "")
-    if args.analytics_check and not token:
-        print("--analytics-check needs MEDRAG_ADMIN_TOKEN in the environment", file=sys.stderr)
-        return 2
 
     cases = [c for c in load_cases(args.cases) if not args.only or args.only in c.id]
     if not cases:
@@ -178,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         report = None
         if args.analytics_check:
             try:
-                report = fetch(client, token, run_start)
+                report = fetch(client, run_start)
             except (httpx.HTTPError, ValueError) as exc:
                 print(f"WARNING: analytics check failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 

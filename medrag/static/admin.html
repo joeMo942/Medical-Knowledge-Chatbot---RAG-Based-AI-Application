@@ -43,13 +43,6 @@
   label { display: block; font-weight: 600; font-size: .88rem; margin: .8rem 0 .25rem; }
   .help { font-size: .8rem; color: var(--muted); margin: .15rem 0 0; }
 
-  /* sign in */
-  #login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
-  .login-card { width: 100%; max-width: 26rem; background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; padding: 1.5rem; }
-  .login-card h1 { margin: 0 0 .25rem; font-size: 1.3rem; }
-  .login-card p { margin: 0 0 .5rem; color: var(--muted); font-size: .9rem; }
-  .login-card .btn { margin-top: 1rem; width: 100%; }
-
   /* shell */
   .top { background: var(--surface); border-bottom: 1px solid var(--line); }
   .top .in { max-width: 70rem; margin: 0 auto; padding: .6rem 1rem 0; }
@@ -119,23 +112,11 @@
 </head>
 <body>
 
-<section id="login">
-  <form class="login-card" id="loginForm">
-    <h1>Admin</h1>
-    <p>Drug Information Assistant. Enter the admin token; it stays in this browser tab only and is sent as a Bearer header.</p>
-    <label for="token">MEDRAG_ADMIN_TOKEN</label>
-    <input id="token" type="password" autocomplete="off" required>
-    <div id="loginErr" class="help" role="alert" style="color:var(--danger-ink)"></div>
-    <button class="btn primary" type="submit" id="loginBtn">Sign in</button>
-    <p class="help" style="margin-top:1rem"><a href="/">Back to the chat page</a></p>
-  </form>
-</section>
-
-<div id="app" hidden>
+<div id="app">
   <div class="top"><div class="in">
     <div class="bar">
       <h1>Admin &middot; Drug Information Assistant</h1>
-      <div class="right"><a href="/">Chat page</a><button class="btn" type="button" id="signout">Sign out</button></div>
+      <div class="right"><a href="/">Chat page</a></div>
     </div>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-docs" aria-controls="p-docs" aria-selected="true" type="button">Documents</button>
@@ -210,9 +191,6 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const KEY = "medrag-admin-token";
-let token = "";
-try { token = sessionStorage.getItem(KEY) || ""; } catch (e) {}
 
 // ---- helpers: every API string goes in through textContent, never as markup
 function h(tag, props, ...kids) {
@@ -235,7 +213,7 @@ const when = (iso) => { const d = new Date(iso); return isNaN(d) ? String(iso) :
 
 function say(kind, text) { const m = $("msg"); m.hidden = !kind; m.className = kind; m.textContent = text; }
 async function call(method, url, body) {
-  const headers = {"Authorization": "Bearer " + token};
+  const headers = {};
   if (body) headers["Content-Type"] = "application/json";
   let r;
   try { r = await fetch(url, {method, headers, body: body ? JSON.stringify(body) : undefined}); }
@@ -244,7 +222,7 @@ async function call(method, url, body) {
   try { data = await r.json(); } catch (e) {}
   if (!r.ok) {
     const detail = data.error || data.detail || r.statusText;
-    const e = new Error(r.status === 401 ? "401: wrong or missing token" : r.status + ": " + detail);
+    const e = new Error(r.status + ": " + detail);
     e.status = r.status; throw e;
   }
   return data;
@@ -257,29 +235,6 @@ function table(el, head, rows, emptyText) {
   for (const r of rows) body.append(h("tr", {}, ...r.map((c, i) => h("td", {text: c.v, dir: c.dir === false ? "ltr" : "auto", class: c.cls || "", label: head[i][0]}))));
   el.append(body);
 }
-
-// ---- sign in / out
-function showApp(on) { $("login").hidden = on; $("app").hidden = !on; }
-async function enter(t) {
-  token = t;
-  try { await call("GET", "/admin/handoffs?limit=1"); }  // cheapest call that needs the token and nothing else
-  catch (err) {
-    if (err.status === 401 || err.status === 503) { token = ""; try { sessionStorage.removeItem(KEY); } catch (e) {}
-      $("loginErr").textContent = err.status === 503 ? err.message + " (admin disabled: set MEDRAG_ADMIN_TOKEN on the server)" : err.message; showApp(false); return; }
-    $("loginErr").textContent = err.message; showApp(false); return;
-  }
-  try { sessionStorage.setItem(KEY, token); } catch (e) {}
-  $("loginErr").textContent = ""; showApp(true); say("", ""); open("docs");
-}
-$("loginForm").addEventListener("submit", async (e) => {
-  e.preventDefault(); $("loginBtn").disabled = true; $("loginErr").textContent = "";
-  await enter($("token").value); $("loginBtn").disabled = false; $("token").value = "";
-});
-$("signout").addEventListener("click", () => {
-  token = ""; try { sessionStorage.removeItem(KEY); } catch (e) {}
-  for (const id of ["docs", "kpis", "volume", "tokens", "statuses"]) $(id).textContent = "";
-  $("hTable").textContent = ""; showApp(false);
-});
 
 // ---- tabs
 const TABS = ["docs", "analytics", "handoffs"], loaded = {};
@@ -435,7 +390,7 @@ async function loadHandoffs() {
 }
 $("hForm").addEventListener("submit", (e) => { e.preventDefault(); loadHandoffs().catch(fail); });
 
-if (token) enter(token); else showApp(false);
+open("docs");
 </script>
 </body>
 </html>

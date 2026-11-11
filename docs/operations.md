@@ -17,16 +17,15 @@ Every `/chat` turn and every model call is logged, so the analytics endpoint and
 - **Per model call:** the kind (`routing`, `answer`, `embedding`), the model name, prompt and completion tokens, and the latency. The LLM tokens are the counts the model server reports (Ollama `prompt_eval_count` / `eval_count`, or the OpenAI-style `usage`), not estimates; a call that failed and reported nothing is logged with 0 tokens. The embedding (BGE-M3 runs in-process, so there is no server to report) is one call per search, its prompt tokens are the BGE-M3 tokenizer's own count of the query (the tokens the model reads), completion 0, and its model is `BAAI/bge-m3@<revision>`. Building the search index at startup is not a turn's call and is not logged. The `X-Medrag-Usage` header still counts the LLM calls only.
 - **The write** happens after the response is decided and runs off the request path; any failure (a locked database, a full disk) is written to the server log and swallowed, so it never makes a `/chat` request fail.
 
-`GET /admin/analytics` needs `Authorization: Bearer <token>`, where the token is the server's `MEDRAG_ADMIN_TOKEN` (wrong or missing: 401; the variable unset or empty: 503 `admin disabled: set MEDRAG_ADMIN_TOKEN`).
+`GET /admin/analytics` needs no authentication (the `/admin` endpoints are open; see the note in the README).
 
 ```
-export MEDRAG_ADMIN_TOKEN=$(openssl rand -hex 16)   # before docker compose up
-curl -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" "localhost:8000/admin/analytics?since=2026-11-10&bucket=hour&limit=10"
+curl "localhost:8000/admin/analytics?since=2026-11-10&bucket=hour&limit=10"
 ```
 
 Query parameters, all optional: `since` (inclusive) and `until` (exclusive), ISO 8601 date or date-time (no zone means UTC); `bucket` = `day` (default) or `hour` for the volume over time; `limit` (default 10) for the top lists. The response has `summary` (turns, unanswered, count per status), `volume` (turns, unanswered and errors per bucket), `top_questions` and `unanswered_questions` (grouped by the message after the project's text normaliser and whitespace collapse; each shows the most recent original text, the count and, for the unanswered, the latest status), `tokens_by_call_type` (calls, prompt, completion and total tokens per kind, a `total` row, and an `llm_total` row of routing plus answer), `tokens_per_turn` (sums over all calls and the mean per turn) and `latency_ms` (p50 and p95). Percentiles use the nearest-rank method: the value at rank ceil(p/100 x n) of the n sorted turn latencies in the window.
 
-`python -m evaluation.run --label x --analytics-check` (with the same `MEDRAG_ADMIN_TOKEN` in the environment) calls the endpoint for the run's window afterwards and compares turns, unanswered, status counts and, with `MEDRAG_USAGE_HEADER=1`, the token totals against the run's own rows; p50 and p95 latency are shown for the client and the server side and are not expected to be equal.
+`python -m evaluation.run --label x --analytics-check` calls the endpoint for the run's window afterwards and compares turns, unanswered, status counts and, with `MEDRAG_USAGE_HEADER=1`, the token totals against the run's own rows; p50 and p95 latency are shown for the client and the server side and are not expected to be equal.
 
 No real patient data is stored: this project has none, and the logged messages are test and demo questions about the Knowledge Base.
 
@@ -42,13 +41,13 @@ curl -X POST localhost:8000/handoff -H "Content-Type: application/json" -H "X-Se
 
 - **The gate.** A hand-off is accepted only if the Session has an Escalated turn among its stored turns (409 `no escalated question in this session` otherwise, also for an unknown Session; no or unusable header: 400), and at most 5 per Session (then 409). So the endpoint is not a free-text drop box. A failed write is a 500 to the hand-off request (the user must know it was not saved); `/chat` is not affected.
 - **What is stored.** Table `handoffs` in the Sessions SQLite file (created on start if missing; Session pruning never deletes it): Session ID, time, the summary and contact exactly as typed, the escalation kind of the Session's latest Escalated turn (`emergency`, `dose`, `diagnosis`, `treatment_decision`; read from the fixed reply text) and its language label. Nothing else.
-- **Where it shows.** `GET /admin/analytics` has `handoffs` (`count` in the window and the most recent `limit`, newest first, honouring `since` / `until` / `limit`); `GET /admin/handoffs` returns the same object. Both need the admin token. Each item has `id`, `session_id`, `created_at`, `kind`, `language`, `summary`, `contact`.
+- **Where it shows.** `GET /admin/analytics` has `handoffs` (`count` in the window and the most recent `limit`, newest first, honouring `since` / `until` / `limit`); `GET /admin/handoffs` returns the same object. Neither needs authentication. Each item has `id`, `session_id`, `created_at`, `kind`, `language`, `summary`, `contact`.
 
 Test data is synthetic: no real patient data is used or needed.
 
 ## Admin page
 
-`/admin` is a page for uploading, replacing and deleting KB Documents without touching code; changes are in the next answer. The page itself needs no token: it asks for `MEDRAG_ADMIN_TOKEN`, keeps it in `sessionStorage` (this tab only) and sends it as the Bearer header.
+`/admin` is a page for uploading, replacing and deleting KB Documents without touching code; changes are in the next answer. The page and its three endpoints need no authentication; it opens straight into the dashboard.
 
 **KB store.** With `MEDRAG_KB_STORE` set (`/kb-store` on the `kb-store` volume in compose) the KB lives in that writable folder: on the first start it is seeded once from `MEDRAG_KB_DIR` (`./data`) and the bundled `kb_manifest.json` (each file copied as `<KB ID>.docx`, plus a `manifest.json` with the disease headings); after that the store is the source of truth and `./data` is not read again. Files are named from the KB ID and the file's content, never from a client-supplied name, and every write is atomic (temp file + rename, manifest last), so a crash leaves the old KB. Without `MEDRAG_KB_STORE` (tests, plain local runs) the KB is read-only as before and the document endpoints answer 503.
 
@@ -58,8 +57,8 @@ Test data is synthetic: no real patient data is used or needed.
 | `POST /admin/documents` | JSON `{"kb_id": "KB-03", "diseases": ["1. Pain & Fever - ..."], "filename": "x.docx", "content_base64": "..."}`; adds the KB ID or replaces it. 413 above 10 MB |
 | `DELETE /admin/documents/{kb_id}` | removes it (404 if unknown) |
 
-All three need `Authorization: Bearer $MEDRAG_ADMIN_TOKEN` (503 when the token is unset, 401 when wrong). Example:
-`curl -X POST localhost:8000/admin/documents -H "Authorization: Bearer $MEDRAG_ADMIN_TOKEN" -H 'content-type: application/json' -d "{\"kb_id\":\"KB-04\",\"content_base64\":\"$(base64 -w0 pharyngitis.docx)\"}"`.
+Example:
+`curl -X POST localhost:8000/admin/documents -H 'content-type: application/json' -d "{\"kb_id\":\"KB-04\",\"content_base64\":\"$(base64 -w0 pharyngitis.docx)\"}"`.
 
 **Disease headings.** Word heading styles cannot tell a disease heading from a drug-class heading, so the upload carries the disease headings (a list, exactly as they appear in the file). They are required for a new KB ID; a replace without them keeps the current ones. A heading that is not in the file is rejected, naming it.
 
