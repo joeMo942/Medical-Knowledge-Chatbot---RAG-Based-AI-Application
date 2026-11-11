@@ -67,7 +67,7 @@ python -m evaluation.run --label final-issue7  --cases evaluation/cases_issue7.j
 python -m evaluation.run --label final-issue8  --cases evaluation/cases_issue8.json  --analytics-check
 python -m evaluation.run --label final-issue32 --cases evaluation/cases_issue32.json --analytics-check
 python -m evaluation.kb_check
-python -m evaluation.recall       # needs torch and the BGE-M3 files; run inside the api container, which has both
+python -m evaluation.recall       # needs torch and the BGE-M3 files: host Python with `pip install -e ".[embed]"`; the api container does not have `evaluation/` (it is in .dockerignore)
 python -m evaluation.review evaluation/results/<date>-final.json      # the faithfulness sheet
 ```
 

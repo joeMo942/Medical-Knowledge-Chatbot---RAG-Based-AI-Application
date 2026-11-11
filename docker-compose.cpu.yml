@@ -1,5 +1,10 @@
-# CPU-only fallback (no NVIDIA GPU). Much slower, and /chat may exceed 30 s.
+# CPU-only fallback (no NVIDIA GPU). Much slower, and /chat may exceed 30 s. See README "No NVIDIA GPU".
 #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
 services:
   ollama:
     deploy: !reset null
+  api:
+    environment:
+      # On the CPU the routing call (a 2,700-token prompt) alone can take 10-30 s; the default 4 s would drop it on every
+      # question. It is still capped per request by the time the answer call needs. Override from your shell if you like.
+      MEDRAG_ROUTE_TIMEOUT_S: ${MEDRAG_ROUTE_TIMEOUT_S:-25}

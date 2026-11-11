@@ -90,7 +90,24 @@ Port 8000 busy? The API listens on host port 8000 (`docker-compose.yml`, `api` â
 - `docker compose up -d --wait` starts it again; a restart is healthy in about 10 s (the models and the search index are cached).
 - Logs: `docker compose logs -f api` (and `ollama`, `model-pull`, `embedder-pull`). Status: `docker compose ps`.
 
-**No NVIDIA GPU:** `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build --wait`.
+### No NVIDIA GPU (CPU mode)
+
+`docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build --wait`
+
+Read this before you try it. The system was built and tested on one machine, an RTX 5070 Laptop GPU with 8 GB, and every number in this README comes from it. CPU mode starts and answers, but it is **not suitable for the 30 s limit**:
+
+- The LLM (`qwen3.5:4b`) then runs on the CPU. The routing prompt alone is about 2,700 tokens, and reading it can take 10 to 30 s, so most questions will be slow and many will pass 30 s or be refused as "busy". Expect wrong timing, not wrong rules: the safety rules (emergency, dose, diagnosis) still run first.
+- The first start is slow too: BGE-M3 loads and the 113 Sections are embedded on the CPU (43 s on a 24-thread CPU; a machine with few cores can take several minutes). The api healthcheck allows about 15 minutes before `--wait` gives up.
+- `docker-compose.cpu.yml` sets `MEDRAG_ROUTE_TIMEOUT_S` to `25` for the api (the GPU default is `4`), because a 4 s limit would drop the routing call on every question. A dropped routing call is not fatal (the fixed rules decide and the answer call classifies the question), but the answers get less reliable.
+
+Knobs you can set in your shell before `docker compose ... up`:
+
+| Variable | What to try on a CPU |
+| --- | --- |
+| `MEDRAG_ROUTE_TIMEOUT_S` | higher (for example `40`) if you want the routing call to finish; it is capped per request so that the answer call keeps the time it needs, so it cannot push a request past `MEDRAG_BUDGET_S` |
+| `MEDRAG_BUDGET_S` | the time budget of one request (default `25`, must stay above `MEDRAG_LLM_EST_S`); raise it to let slow answers finish, knowing that anything past 30 s breaks the contract |
+| `MEDRAG_RETRIEVER=bm25` | skips the BGE-M3 load and the index build (search is lexical only: recall 71 of 75 instead of 75 on the test set); it frees CPU and RAM for the LLM |
+| `MEDRAG_LLM_MODEL` | a smaller Ollama model (it changes answers; the results in this README are for `qwen3.5:4b`) |
 
 ### What the first start downloads
 
@@ -310,6 +327,7 @@ No secrets are stored in the repository or the images: the only secret-like valu
 | `MEDRAG_LLM_BACKEND` | `ollama` | `openai` selects any OpenAI-compatible endpoint |
 | `MEDRAG_OPENAI_BASE_URL`, `MEDRAG_OPENAI_MODEL`, `MEDRAG_OPENAI_API_KEY` | empty | only used when the backend is `openai`; keep the key in your shell or an untracked `.env` |
 | `MEDRAG_BUDGET_S` | `25` | total time budget for one `/chat` request |
+| `MEDRAG_ROUTE_TIMEOUT_S` | `4` (`25` in `docker-compose.cpu.yml`) | a routing call that takes longer is dropped (the fixed rules decide alone); also capped per request by the time left minus the answer call's estimate; an unparsable or non-positive value falls back to the default |
 | `MEDRAG_TOP_K` | `4` | Sections given to the model |
 | `MEDRAG_OLLAMA_NUM_CTX` | `8192` | Ollama context size (warm-up and chat use the same) |
 | `MEDRAG_MAX_MESSAGE_CHARS` | `2000` | longer messages get HTTP 400 |
@@ -350,7 +368,7 @@ python -m evaluation.run --label final --analytics-check                        
 python -m evaluation.run --label final-held-out --cases evaluation/cases_issue5.json   # a held-out set (also cases_issue7.json, cases_issue8.json, cases_issue32.json)
 python -m evaluation.review evaluation/results/<date>-final.json                       # the manual faithfulness-review sheet
 python -m evaluation.kb_check                                                          # checks expected KB IDs, sections and out-of-scope traps against the real KB files
-python -m evaluation.recall                                                            # offline search recall (needs torch and the BGE-M3 files, see the script)
+python -m evaluation.recall                                                            # offline search recall; host Python with `pip install -e ".[embed]"` and the BGE-M3 files (see the script); not available in the api container, `evaluation/` is not in the image
 ```
 
 `run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
