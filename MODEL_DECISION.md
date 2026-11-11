@@ -60,7 +60,7 @@ The results are the same, so I kept the GPU free for the LLM. Moving the embedde
 
 The same models also run on the CPU only. In that mode the time limits are raised (budget 240 s, routing call 90 s). Five questions, one at a time:
 
-| Question | Status | CPU only | GPU (final run, same dev question) |
+| Question (CPU wording) | Status | CPU only | GPU, closest dev question (final run) |
 |---|---|---:|---:|
 | Panadol ingredient (warm-up) | answered | 81.8 s | - |
 | Cataflam ingredient | answered | 78.0 s | 3.75 s |
@@ -68,7 +68,7 @@ The same models also run on the CPU only. In that mode the time limits are raise
 | cover letter | out_of_scope | 20.4 s | 2.35 s |
 | Voltaren mg | escalated | 21.1 s | 3.14 s |
 
-All five got the right status. On the CPU, an answer takes 70–80 s (two LLM calls) and a refusal about 20 s (one call). That is fine for trying the system, but it breaks the 30 s limit, so the GPU is required for the contract.
+The GPU times are for the dev questions on the same topic, which are worded a little differently. All five got the right status. On the CPU, an answer takes 70–80 s (two LLM calls) and a refusal about 20 s (one call). That is fine for trying the system, but it breaks the 30 s limit, so the GPU is required for the contract.
 
 ## Not tested
 
