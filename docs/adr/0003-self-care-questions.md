@@ -26,7 +26,7 @@ Matched on normalised text (`medrag/selfcare.py`), in English, Arabic, Egyptian 
 | a child or an age under 18 | child, kid, baby, infant, toddler, teenager, "I am 14", "6 months old", طفل, رضيع, tefl |
 | elderly or an age from 65 | elderly, senior, "I am 70", مسن, كبار السن |
 | kidney or liver disease | kidney, renal, dialysis, liver, hepatic, cirrhosis, كلى, كبد |
-| another chronic condition | diabetes, sugar, hypertension, blood pressure, asthma, COPD, heart, ulcer, epilepsy, thyroid, cancer, arthritis, IBS, gout, cholesterol, stroke, pneumonia, tuberculosis, migraine, depression, "chronic", سكر, ضغط, ربو, قلب, sokkar, daghT |
+| another chronic condition | diabetes, sugar, hypertension, blood pressure, asthma, COPD, heart, ulcer, epilepsy, thyroid, cancer, gout, cholesterol, stroke, pneumonia, tuberculosis, depression, "chronic" (only when the user says they have it; not migraine, arthritis, IBS or heartburn), سكر, ضغط, ربو, قلب, sokkar, daghT |
 | other medicines being taken | "I am taking", "I take warfarin", "my medication", "instead of", "switch", "didn't work", blood thinners, insulin, باخد, بدل |
 | an allergy | "allergic to penicillin", حساسية من |
 | a severity or red-flag word | worst, sudden, severe, very bad, unbearable, blurred vision, blood, dizzy, جامد, شديد, مش طايق, فظيع, shedeed, awy |
@@ -55,3 +55,31 @@ Matched on normalised text (`medrag/selfcare.py`), in English, Arabic, Egyptian 
 - The lists over-escalate: a word such as "chest", "blood", "condition" or "for days" anywhere in the message escalates it. That is intended.
 - Escalation of other-person questions is unchanged ("my wife has a headache, what can she take?" is still a Treatment Decision).
 - The evaluation has a new set (`evaluation/cases_issue32.json`) with the self-care wordings, each qualifier family, other-person and Dose variants, and the Out of Scope cases; the older sets contained no first-person self-care question, which is why this was not caught.
+
+## Revision 1 (review round after the first implementation)
+
+Found by review on the live stack and decided by the author:
+
+- **A lookup is not self-care.** Asking what is used FOR a condition is a normal drug-information question, even in the first person
+  ("Which drugs can I use for asthma?", "What can I take for migraine?", "What can I use for arthritis pain?", "Which NSAID can I use
+  in patients with heart failure?", "What can a pregnant woman take for her heartburn?", "If a patient has asthma, what can he take for
+  pain?"). The users are pharmacists and doctors. These are Answered (Out of Scope when the KB lacks the condition) and never
+  escalated; the router's `treatment_decision` is lowered for them. They get no pharmacist note.
+- **A condition is a qualifier only when the user says they HAVE it** ("I have / I'm / my X", "عندي X", "3andy X") and it is not the
+  condition being asked about. "I have asthma and a headache, what can I take?" escalates; "What can I take for asthma?" does not.
+  Pregnancy, breastfeeding, a child, an elderly person and other medicines likewise count when stated about oneself; group phrasings
+  ("in pregnancy", "a pregnant woman") stay lookups (GLOSSARY). Migraine, arthritis, IBS and GERD / heartburn are everyday
+  indications the KB covers and are off the chronic list; the words "chronic" and "long-term" still qualify.
+- **Another specific person** is a relative ("my wife", "my son", "my patient") or a pronoun with no generic noun before it; a pronoun
+  after a generic noun ("a patient ... he", "a pregnant woman ... her") is a group.
+- **Invariant.** A first-person strict "what can I take / use" ask is a lookup (answered), a self-care question (answered with the
+  note) or escalated; when the user states their own symptom it is never a plain answer. A qualifier found in the message, its
+  corrected form, the router's rewrite or an earlier turn of the Session escalates it even when the router says none (the first
+  version only blocked self-care there and fell through to a plain answer: "I'm pregnant" then "I have a headache, what can I take?"
+  was answered with NSAIDs).
+- **Red flags and misspellings.** Severity patterns now include weak\w*, a stiff neck (either word order, Arabic ناشفة / متخشبة), a
+  temperature of 39 C / 103 F or more and alcohol; qualifier words within one edit of a short keyword list ("pregnent", "sever",
+  "sevear", "childern") are read as the keyword.
+- **Dose-shaped asks** ("what can I take and how many / how often") get the Dose trigger and the Dose text.
+- **No prescription marking.** The self-care note stays the one fixed sentence (the author reversed an earlier idea to name the
+  prescription-only items).
