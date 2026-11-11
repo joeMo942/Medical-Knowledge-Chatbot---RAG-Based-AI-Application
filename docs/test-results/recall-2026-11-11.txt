@@ -1,0 +1,129 @@
+evaluation
+# bm25: ready in 0.0s
+### bm25, k=1
+
+| category | turns | kb (loose) | relevant | section | mention | precision |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabic_trade_names | 5 | 5/5 (100%) | 5/5 (100%) | 1/1 (100%) | 5/5 (100%) | 100% |
+| dev | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 6/6 (100%) | 100% |
+| dialect | 4 | 3/4 (75%) | 3/4 (75%) | 2/3 (67%) | 3/4 (75%) | 75% |
+| franco_arabic | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 100% |
+| group_level | 6 | 6/6 (100%) | 5/6 (83%) | 2/4 (50%) | 5/5 (100%) | 83% |
+| multi_turn | 4 | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 100% |
+| paraphrase | 5 | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 100% |
+| partial | 11 | 10/11 (91%) | 10/11 (91%) | 7/7 (100%) | 11/11 (100%) | 91% |
+| queries | 26 | 22/26 (85%) | 16/26 (62%) | 16/26 (62%) | - | 62% |
+| strength | 4 | 4/4 (100%) | 3/4 (75%) | - | 1/2 (50%) | 75% |
+| ALL | 75 | 69/75 (92%) | 61/75 (81%) | 44/57 (77%) | 44/46 (96%) | 81% |
+
+Misses (15): dialect-duspatalin[relevant section mention], strength-pantoprazole-otc[relevant mention], group-ace-inhibitors-pregnancy[section], group-statins-breastfeeding[relevant section], partial5b-hypertension-and-malaria[relevant], q-fever-franco[relevant section], q-heartburn-ar[relevant section], q-allergy-en[relevant section], q-bp-en[relevant section], q-asthma-dialect[relevant section], q-ibs-en[relevant section], q-pneumonia-en[relevant section], q-sore-throat-en[relevant section], q-constipation-ar[relevant section], q-arthritis-en[relevant section]
+Not-answered turns: 53, retrieving nothing: 9
+
+(search time over 128 turns: 0.0s)
+
+### bm25, k=2
+
+| category | turns | kb (loose) | relevant | section | mention | precision |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabic_trade_names | 5 | 5/5 (100%) | 5/5 (100%) | 1/1 (100%) | 5/5 (100%) | 90% |
+| dev | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 6/6 (100%) | 92% |
+| dialect | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 88% |
+| franco_arabic | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 100% |
+| group_level | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 5/5 (100%) | 67% |
+| multi_turn | 4 | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 100% |
+| paraphrase | 5 | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 90% |
+| partial | 11 | 10/11 (91%) | 10/11 (91%) | 7/7 (100%) | 11/11 (100%) | 82% |
+| queries | 26 | 23/26 (88%) | 23/26 (88%) | 23/26 (88%) | - | 65% |
+| strength | 4 | 4/4 (100%) | 4/4 (100%) | - | 2/2 (100%) | 50% |
+| ALL | 75 | 71/75 (95%) | 71/75 (95%) | 54/57 (95%) | 46/46 (100%) | 77% |
+
+Misses (4): partial5b-hypertension-and-malaria[relevant], q-fever-franco[relevant section], q-bp-en[relevant section], q-sore-throat-en[relevant section]
+Not-answered turns: 53, retrieving nothing: 9
+
+(search time over 128 turns: 0.0s)
+
+### bm25, k=4
+
+| category | turns | kb (loose) | relevant | section | mention | precision |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabic_trade_names | 5 | 5/5 (100%) | 5/5 (100%) | 1/1 (100%) | 5/5 (100%) | 80% |
+| dev | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 6/6 (100%) | 88% |
+| dialect | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 81% |
+| franco_arabic | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 100% |
+| group_level | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 5/5 (100%) | 38% |
+| multi_turn | 4 | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 100% |
+| paraphrase | 5 | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 85% |
+| partial | 11 | 10/11 (91%) | 10/11 (91%) | 7/7 (100%) | 11/11 (100%) | 80% |
+| queries | 26 | 23/26 (88%) | 23/26 (88%) | 23/26 (88%) | - | 60% |
+| strength | 4 | 4/4 (100%) | 4/4 (100%) | - | 2/2 (100%) | 31% |
+| ALL | 75 | 71/75 (95%) | 71/75 (95%) | 54/57 (95%) | 46/46 (100%) | 70% |
+
+Misses (4): partial5b-hypertension-and-malaria[relevant], q-fever-franco[relevant section], q-bp-en[relevant section], q-sore-throat-en[relevant section]
+Not-answered turns: 53, retrieving nothing: 9
+
+(search time over 128 turns: 0.0s)
+
+# hybrid: ready in 60.4s
+### hybrid, k=1
+
+| category | turns | kb (loose) | relevant | section | mention | precision |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabic_trade_names | 5 | 5/5 (100%) | 5/5 (100%) | 1/1 (100%) | 5/5 (100%) | 100% |
+| dev | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 6/6 (100%) | 100% |
+| dialect | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 100% |
+| franco_arabic | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 100% |
+| group_level | 6 | 6/6 (100%) | 5/6 (83%) | 4/4 (100%) | 4/5 (80%) | 83% |
+| multi_turn | 4 | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 100% |
+| paraphrase | 5 | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 100% |
+| partial | 11 | 11/11 (100%) | 11/11 (100%) | 7/7 (100%) | 11/11 (100%) | 100% |
+| queries | 26 | 23/26 (88%) | 20/26 (77%) | 20/26 (77%) | - | 77% |
+| strength | 4 | 4/4 (100%) | 2/4 (50%) | - | 0/2 (0%) | 50% |
+| ALL | 75 | 72/75 (96%) | 66/75 (88%) | 51/57 (89%) | 43/46 (93%) | 88% |
+
+Misses (9): strength-cetafen-plus[relevant mention], strength-pantoprazole-otc[relevant mention], group-brufen-pregnancy[relevant mention], q-allergy-en[relevant section], q-allergy-dialect[relevant section], q-pneumonia-en[relevant section], q-sore-throat-en[relevant section], q-diarrhea-ar[relevant section], q-arthritis-en[relevant section]
+Not-answered turns: 53, retrieving nothing: 3
+
+(search time over 128 turns: 60.0s)
+
+### hybrid, k=2
+
+| category | turns | kb (loose) | relevant | section | mention | precision |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabic_trade_names | 5 | 5/5 (100%) | 5/5 (100%) | 1/1 (100%) | 5/5 (100%) | 90% |
+| dev | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 6/6 (100%) | 83% |
+| dialect | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 75% |
+| franco_arabic | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 75% |
+| group_level | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 5/5 (100%) | 58% |
+| multi_turn | 4 | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 88% |
+| paraphrase | 5 | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 70% |
+| partial | 11 | 11/11 (100%) | 11/11 (100%) | 7/7 (100%) | 11/11 (100%) | 82% |
+| queries | 26 | 26/26 (100%) | 24/26 (92%) | 24/26 (92%) | - | 77% |
+| strength | 4 | 4/4 (100%) | 4/4 (100%) | - | 2/2 (100%) | 50% |
+| ALL | 75 | 75/75 (100%) | 73/75 (97%) | 55/57 (96%) | 46/46 (100%) | 76% |
+
+Misses (2): q-allergy-en[relevant section], q-allergy-dialect[relevant section]
+Not-answered turns: 53, retrieving nothing: 3
+
+(search time over 128 turns: 59.7s)
+
+### hybrid, k=4
+
+| category | turns | kb (loose) | relevant | section | mention | precision |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabic_trade_names | 5 | 5/5 (100%) | 5/5 (100%) | 1/1 (100%) | 5/5 (100%) | 70% |
+| dev | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 6/6 (100%) | 67% |
+| dialect | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 50% |
+| franco_arabic | 4 | 4/4 (100%) | 4/4 (100%) | 3/3 (100%) | 4/4 (100%) | 62% |
+| group_level | 6 | 6/6 (100%) | 6/6 (100%) | 4/4 (100%) | 5/5 (100%) | 46% |
+| multi_turn | 4 | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 4/4 (100%) | 62% |
+| paraphrase | 5 | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 45% |
+| partial | 11 | 11/11 (100%) | 11/11 (100%) | 7/7 (100%) | 11/11 (100%) | 64% |
+| queries | 26 | 26/26 (100%) | 26/26 (100%) | 26/26 (100%) | - | 69% |
+| strength | 4 | 4/4 (100%) | 4/4 (100%) | - | 2/2 (100%) | 25% |
+| ALL | 75 | 75/75 (100%) | 75/75 (100%) | 57/57 (100%) | 46/46 (100%) | 61% |
+
+Misses (0): 
+Not-answered turns: 53, retrieving nothing: 3
+
+(search time over 128 turns: 64.1s)
+
