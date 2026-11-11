@@ -1,4 +1,4 @@
-# CPU-only fallback (no NVIDIA GPU), for TRYING the system: it is far too slow for the 30 s limit (see README "No NVIDIA GPU").
+# CPU-only fallback (no NVIDIA GPU), for TRYING the system: answers take about 20-80 s, so it cannot meet the 30 s limit (see README "No NVIDIA GPU (CPU mode)").
 #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --wait
 # Every value below can be overridden from your shell. They only widen the time limits that assume a GPU, so that a slow
 # model gets answers instead of "busy" refusals and timeouts.

@@ -51,3 +51,19 @@ Done to see that the real downloads start, not to complete them (the author aske
 - Stopped on purpose before completion, then `docker compose -p medragdl down -v` on that project only.
 
 **Not verified:** the full completion and the SHA-256 check of a real download, and re-pulling the Ollama image. The `ollama/ollama` compressed download size (3.39 GB) was read from the registry manifest, not measured by pulling.
+
+## 5. CPU-only timing (2026-11-11)
+
+Measured on 2026-11-11 with `docker-compose.cpu.yml` (Ollama with no GPU: `ollama ps` showed `100% CPU`) on the author's laptop: Intel Core Ultra 9 275HX, Docker given 24 CPUs and 16 GB RAM. One question at a time, each in a new Session. Raw results: [docs/test-results/2026-11-11-cpu-timing.json](test-results/2026-11-11-cpu-timing.json).
+
+| question | status | time | LLM calls | tokens (prompt + completion) |
+| --- | --- | ---: | ---: | ---: |
+| warm-up: What is the active ingredient of Panadol? | answered (1 citation) | 81.8 s | 2 | 4,459 + 131 |
+| What is the active ingredient of Cataflam? | answered (1 citation) | 78.0 s | 2 | 4,533 + 142 |
+| ايه البدائل التجارية لـ Brufen؟ | answered in Arabic (1 citation) | 71.5 s | 2 | 3,276 + 185 |
+| Can you write me a cover letter for a job? | out_of_scope | 20.4 s | 1 | 2,737 + 36 |
+| How many mg of Voltaren should I take? | escalated | 21.1 s | 1 | 2,736 + 35 |
+
+All five got the right status. An answered question takes about **70 to 80 s** (two LLM calls); a refusal or an escalation takes about **20 s** (the routing call only). On the GPU the same questions take about 3 to 4 s. A CPU with fewer cores will be slower.
+
+The stack was then started again with the default compose file, and `ollama ps` showed `100% GPU`.

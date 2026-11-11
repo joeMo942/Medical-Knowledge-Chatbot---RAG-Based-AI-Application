@@ -96,16 +96,28 @@ Port 8000 busy? The API listens on host port 8000 (`docker-compose.yml`, `api` �
 
 Read this before you try it. The system was built and tested on one machine, an RTX 5070 Laptop GPU with 8 GB, and every number in this README comes from it. CPU mode starts and answers, but it is **not suitable for the 30 s limit**:
 
-- The LLM (`qwen3.5:4b`) then runs on the CPU. The routing prompt alone is about 2,700 tokens, and reading it can take 10 to 30 s, so most questions will be slow and many will pass 30 s or be refused as "busy". Expect wrong timing, not wrong rules: the safety rules (emergency, dose, diagnosis) still run first.
+- The LLM (`qwen3.5:4b`) then runs on the CPU. The routing prompt alone is about 2,700 tokens, and reading it can take 10 to 30 s, so every question that needs an answer passes 30 s (measured below). Expect wrong timing, not wrong rules: the safety rules (emergency, dose, diagnosis) still run first.
 - The first start is slow too: BGE-M3 loads and the 113 Sections are embedded on the CPU (43 s on a 24-thread CPU; a machine with few cores can take several minutes). The api healthcheck allows about 15 minutes before `--wait` gives up.
-- `docker-compose.cpu.yml` sets `MEDRAG_ROUTE_TIMEOUT_S` to `25` for the api (the GPU default is `4`), because a 4 s limit would drop the routing call on every question. A dropped routing call is not fatal (the fixed rules decide and the answer call classifies the question), but the answers get less reliable.
+- `docker-compose.cpu.yml` widens the time limits that assume a GPU, so that slow answers finish instead of being refused as "busy": `MEDRAG_BUDGET_S` `240` (GPU `25`), `MEDRAG_ROUTE_TIMEOUT_S` `90` (GPU `4`), `MEDRAG_LLM_EST_S` `40`, `MEDRAG_DECODE_TOK_S` `8` and `MEDRAG_LLM_MARGIN_S` `30`. Each one can be overridden from your shell.
+
+**Measured CPU times**, on 2026-11-11 with `docker-compose.cpu.yml` (Ollama with no GPU: `ollama ps` showed `100% CPU`) on the author's laptop: Intel Core Ultra 9 275HX, Docker given 24 CPUs and 16 GB RAM. One question at a time, each in a new Session. Raw results: [docs/test-results/2026-11-11-cpu-timing.json](docs/test-results/2026-11-11-cpu-timing.json).
+
+| question | status | time | LLM calls | tokens (prompt + completion) |
+| --- | --- | ---: | ---: | ---: |
+| warm-up: What is the active ingredient of Panadol? | answered (1 citation) | 81.8 s | 2 | 4,459 + 131 |
+| What is the active ingredient of Cataflam? | answered (1 citation) | 78.0 s | 2 | 4,533 + 142 |
+| ايه البدائل التجارية لـ Brufen؟ | answered in Arabic (1 citation) | 71.5 s | 2 | 3,276 + 185 |
+| Can you write me a cover letter for a job? | out_of_scope | 20.4 s | 1 | 2,737 + 36 |
+| How many mg of Voltaren should I take? | escalated | 21.1 s | 1 | 2,736 + 35 |
+
+All five got the right status. An answered question takes about **70 to 80 s** (two LLM calls); a refusal or an escalation takes about **20 s** (the routing call only). On the GPU the same questions take about 3 to 4 s. A CPU with fewer cores will be slower.
 
 Knobs you can set in your shell before `docker compose ... up`:
 
 | Variable | What to try on a CPU |
 | --- | --- |
-| `MEDRAG_ROUTE_TIMEOUT_S` | higher (for example `40`) if you want the routing call to finish; it is capped per request so that the answer call keeps the time it needs, so it cannot push a request past `MEDRAG_BUDGET_S` |
-| `MEDRAG_BUDGET_S` | the time budget of one request (default `25`, must stay above `MEDRAG_LLM_EST_S`); raise it to let slow answers finish, knowing that anything past 30 s breaks the contract |
+| `MEDRAG_ROUTE_TIMEOUT_S` | `90` in the CPU file; it is capped per request so that the answer call keeps the time it needs, so it cannot push a request past `MEDRAG_BUDGET_S` |
+| `MEDRAG_BUDGET_S` | the time budget of one request (`25` on the GPU, `240` in the CPU file; must stay above `MEDRAG_LLM_EST_S`); lower it to fail fast, knowing that anything past 30 s breaks the contract anyway |
 | `MEDRAG_RETRIEVER=bm25` | skips the BGE-M3 load and the index build (search is lexical only: recall 71 of 75 instead of 75 on the test set); it frees CPU and RAM for the LLM |
 | `MEDRAG_LLM_MODEL` | a smaller Ollama model (it changes answers; the results in this README are for `qwen3.5:4b`) |
 
@@ -327,7 +339,7 @@ No secrets are stored in the repository or the images: the only secret-like valu
 | `MEDRAG_LLM_BACKEND` | `ollama` | `openai` selects any OpenAI-compatible endpoint |
 | `MEDRAG_OPENAI_BASE_URL`, `MEDRAG_OPENAI_MODEL`, `MEDRAG_OPENAI_API_KEY` | empty | only used when the backend is `openai`; keep the key in your shell or an untracked `.env` |
 | `MEDRAG_BUDGET_S` | `25` | total time budget for one `/chat` request |
-| `MEDRAG_ROUTE_TIMEOUT_S` | `4` (`25` in `docker-compose.cpu.yml`) | a routing call that takes longer is dropped (the fixed rules decide alone); also capped per request by the time left minus the answer call's estimate; an unparsable or non-positive value falls back to the default |
+| `MEDRAG_ROUTE_TIMEOUT_S` | `4` (`90` in `docker-compose.cpu.yml`) | a routing call that takes longer is dropped (the fixed rules decide alone); also capped per request by the time left minus the answer call's estimate; an unparsable or non-positive value falls back to the default |
 | `MEDRAG_TOP_K` | `4` | Sections given to the model |
 | `MEDRAG_OLLAMA_NUM_CTX` | `8192` | Ollama context size (warm-up and chat use the same) |
 | `MEDRAG_MAX_MESSAGE_CHARS` | `2000` | longer messages get HTTP 400 |

@@ -1,0 +1,67 @@
+[
+ {
+  "label": "warm-up",
+  "q": "What is the active ingredient of Panadol?",
+  "secs": 81.8,
+  "code": 200,
+  "status": "answered",
+  "language": "en",
+  "citations": 1,
+  "usage": {
+   "x-medrag-usage": "{\"prompt_tokens\":4459,\"completion_tokens\":131,\"llm_calls\":2}"
+  },
+  "answer": "The active ingredient of Panadol is Paracetamol."
+ },
+ {
+  "label": "Q1",
+  "q": "What is the active ingredient of Cataflam?",
+  "secs": 78.0,
+  "code": 200,
+  "status": "answered",
+  "language": "en",
+  "citations": 1,
+  "usage": {
+   "x-medrag-usage": "{\"prompt_tokens\":4533,\"completion_tokens\":142,\"llm_calls\":2}"
+  },
+  "answer": "The active ingredient of Cataflam is Diclofenac potassium."
+ },
+ {
+  "label": "Q2",
+  "q": "ايه البدائل التجارية لـ Brufen؟",
+  "secs": 71.5,
+  "code": 200,
+  "status": "answered",
+  "language": "ar",
+  "citations": 1,
+  "usage": {
+   "x-medrag-usage": "{\"prompt_tokens\":3276,\"completion_tokens\":185,\"llm_calls\":2}"
+  },
+  "answer": "بدائل Brufen (التي تحتوي على نفس المادة الفعالة Ibuprofen) هي: Nurofen, Ibuflam, Profinal, Flabu, و Spididol."
+ },
+ {
+  "label": "Q3",
+  "q": "Can you write me a cover letter for a job?",
+  "secs": 20.4,
+  "code": 200,
+  "status": "out_of_scope",
+  "language": "en",
+  "citations": 0,
+  "usage": {
+   "x-medrag-usage": "{\"prompt_tokens\":2737,\"completion_tokens\":36,\"llm_calls\":1}"
+  },
+  "answer": "I could not find this in the approved knowledge base."
+ },
+ {
+  "label": "Q4",
+  "q": "How many mg of Voltaren should I take?",
+  "secs": 21.1,
+  "code": 200,
+  "status": "escalated",
+  "language": "en",
+  "citations": 0,
+  "usage": {
+   "x-medrag-usage": "{\"prompt_tokens\":2736,\"completion_tokens\":35,\"llm_calls\":1}"
+  },
+  "answer": "I cannot give doses. Please check the approved leaflet of the product, or ask the prescriber or a pharmacist."
+ }
+]

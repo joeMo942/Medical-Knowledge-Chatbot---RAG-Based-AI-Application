@@ -6,5 +6,5 @@ So the default compose file requests the NVIDIA GPU, and model choices are sized
 
 ## Consequences
 
-- On a machine without an NVIDIA GPU, the default compose file will not start; the CPU override is needed, and responses may exceed 30 s: the routing prompt alone (about 2,700 tokens) can take 10 to 30 s on a CPU. The CPU override therefore raises `MEDRAG_ROUTE_TIMEOUT_S` (4 s on the GPU, 25 s on the CPU); the README section "No NVIDIA GPU" lists the knobs. Only the 8 GB NVIDIA GPU was tested.
+- On a machine without an NVIDIA GPU, the default compose file will not start; the CPU override is needed, and responses may exceed 30 s: the routing prompt alone (about 2,700 tokens) can take 10 to 30 s on a CPU. The CPU override therefore widens the time limits: `MEDRAG_BUDGET_S` (25 s on the GPU, 240 s on the CPU) and `MEDRAG_ROUTE_TIMEOUT_S` (4 s on the GPU, 90 s on the CPU), among others; the README section "No NVIDIA GPU" lists the knobs. Only the 8 GB NVIDIA GPU was tested.
 - If the project ever has to run on unknown hardware, the model choice in `MODEL_DECISION.md` has to be revisited, not just the compose file.
