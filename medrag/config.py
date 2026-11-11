@@ -53,10 +53,8 @@ class Settings:
     # five such questions (all not answerable: off-topic, an injection, a malaria trap) reach 0.36-0.49; no answerable
     # question is BM25-empty, so the test set cannot say how high the threshold may go.
     min_dense: float = 0.5
-    # Bearer token of the /admin endpoints; empty disables them (503). Only from the environment, never in the repo.
     # Writable KB store (kbstore.py): empty = the KB is the read-only MEDRAG_KB_DIR and the admin document endpoints answer 503.
     kb_store: str = ""
-    admin_token: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         if self.budget_s <= self.llm_est_s:
@@ -92,6 +90,5 @@ class Settings:
             embed_threads=int(e("MEDRAG_EMBED_THREADS") or d.embed_threads),
             min_dense=float(e("MEDRAG_MIN_DENSE") or d.min_dense),
             kb_store=e("MEDRAG_KB_STORE") or d.kb_store,
-            admin_token=e("MEDRAG_ADMIN_TOKEN") or d.admin_token,
             usage_header=(e("MEDRAG_USAGE_HEADER") or str(int(d.usage_header))).strip().lower() in TRUE_VALUES,
         )

@@ -16,7 +16,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .admin import admin_guard
 from .analytics import ERROR, AnalyticsLog, Window
 from .answering import ChatResponse
 from .config import EMBEDDING_PLACEHOLDER, Settings
@@ -185,7 +184,6 @@ def create_app(
     store = SessionStore(settings.sessions_db)
     analytics = AnalyticsLog(store)
     handoffs = HandoffLog(store)
-    admin = Depends(admin_guard(settings.admin_token))
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
                    settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
 
@@ -279,7 +277,7 @@ def create_app(
         except Exception:
             log.exception("could not write the conversation log; the reply was sent anyway")
 
-    @app.get("/admin/analytics", dependencies=[admin])
+    @app.get("/admin/analytics")
     async def admin_analytics(since: str | None = None, until: str | None = None, bucket: str = "day",
                               limit: int = 10) -> JSONResponse:
         if bucket not in ("hour", "day"):
@@ -291,7 +289,7 @@ def create_app(
         report["handoffs"] = await asyncio.to_thread(handoffs.listing, window, limit)
         return JSONResponse(report)
 
-    @app.get("/admin/handoffs", dependencies=[admin])
+    @app.get("/admin/handoffs")
     async def admin_handoffs(since: str | None = None, until: str | None = None, limit: int = 10) -> JSONResponse:
         if not 1 <= limit <= 1000:
             raise HTTPException(400, "'limit' must be between 1 and 1000")
@@ -334,12 +332,12 @@ def create_app(
         if not manager.enabled:
             raise HTTPException(503, "KB store not configured: set MEDRAG_KB_STORE")
 
-    @app.get("/admin/documents", dependencies=[admin])
+    @app.get("/admin/documents")
     async def admin_documents() -> JSONResponse:
         need_store()
         return JSONResponse({"documents": await asyncio.to_thread(manager.listing)})
 
-    @app.post("/admin/documents", dependencies=[admin])
+    @app.post("/admin/documents")
     async def admin_upload(request: Request) -> JSONResponse:
         need_store()
         try:
@@ -356,7 +354,7 @@ def create_app(
             return _error(503, str(exc))
         return JSONResponse(summary)
 
-    @app.delete("/admin/documents/{kb_id}", dependencies=[admin])
+    @app.delete("/admin/documents/{kb_id}")
     async def admin_delete(kb_id: str) -> JSONResponse:
         need_store()
         try:

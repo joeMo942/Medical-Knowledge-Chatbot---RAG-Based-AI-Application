@@ -22,8 +22,6 @@ from medrag.manifest import load_manifest
 from medrag.retrieval import tokenize
 from medrag.splitter import strip_numbering
 
-TOKEN = "s3cret-admin-token"
-AUTH = {"Authorization": f"Bearer {TOKEN}"}
 DISEASE = "1. Asthma"
 
 
@@ -76,12 +74,11 @@ def seed_dir(tmp_path):
 
 
 class Admin:
-    def __init__(self, tmp_path, retriever=None, llm=None, token=TOKEN, seed=True):
+    def __init__(self, tmp_path, retriever=None, llm=None, seed=True):
         tmp_path.mkdir(parents=True, exist_ok=True)
         self.store_dir = tmp_path / "store"
         self.src = seed_dir(tmp_path) if seed else tmp_path / "none"
         self.llm = llm or FakeLLM(answer_fn=cite_first)
-        self.token = token
         self.start(retriever)
 
     def start(self, retriever_for=None):
@@ -89,17 +86,17 @@ class Admin:
         store, docs = open_store(str(self.store_dir), self.src)
         sections = [s for d in docs for s in d.sections]
         retriever = retriever_for(sections) if retriever_for else None
-        self.app = create_app(sections, self.llm, Settings(admin_token=self.token), retriever=retriever, kb_store=store,
+        self.app = create_app(sections, self.llm, Settings(), retriever=retriever, kb_store=store,
                               documents=docs)
         self.api = SyncClient(self.app)
         return self
 
     def docs(self):
-        r = self.api.get("/admin/documents", headers=AUTH)
+        r = self.api.get("/admin/documents")
         assert r.status_code == 200, r.text
         return {d["kb_id"]: d for d in r.json()["documents"]}
 
-    def upload(self, kb_id, content, diseases=None, filename="f.docx", headers=AUTH, **extra):
+    def upload(self, kb_id, content, diseases=None, filename="f.docx", headers=None, **extra):
         body = {"kb_id": kb_id, "content_base64": b64(content), "filename": filename, **extra}
         if diseases is not None:
             body["diseases"] = diseases
@@ -130,15 +127,15 @@ def test_first_start_seeds_the_store_from_the_read_only_folder(admin):
 
 def test_a_second_start_does_not_seed_again_even_if_the_folder_changed(tmp_path):
     a = Admin(tmp_path)
-    a.api.request("DELETE", "/admin/documents/KB-01", headers=AUTH)
+    a.api.request("DELETE", "/admin/documents/KB-01")
     a.start()  # the folder still has KB-01, the store (the source of truth) does not
     assert "KB-01" not in a.docs()
 
 
 def test_without_a_store_the_endpoints_answer_503_and_health_is_unchanged():
-    api = SyncClient(create_app([], FakeLLM({}), Settings(admin_token=TOKEN)))
-    for r in (api.get("/admin/documents", headers=AUTH), api.request("DELETE", "/admin/documents/KB-01", headers=AUTH),
-              api.post("/admin/documents", json={}, headers=AUTH)):
+    api = SyncClient(create_app([], FakeLLM({}), Settings()))
+    for r in (api.get("/admin/documents"), api.request("DELETE", "/admin/documents/KB-01"),
+              api.post("/admin/documents", json={})):
         assert r.status_code == 503 and "KB store not configured" in r.json()["error"]
     assert set(api.get("/health").json()) == {"status", "llm", "embedding"}
 
@@ -147,20 +144,19 @@ def test_health_gains_the_document_count_with_a_store(admin):
     assert admin.api.get("/health").json()["kb_documents"] == 9
 
 
-def test_the_admin_page_is_served_without_a_token(admin):
+def test_the_admin_page_is_served_without_any_sign_in(admin):
     r = admin.api.get("/admin")
-    assert r.status_code == 200 and "text/html" in r.headers["content-type"] and "sessionStorage" in r.text
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"] and "Bearer" not in r.text
 
 
-# ------------------------------------------------------------------ auth
-@pytest.mark.parametrize("method,url", [("GET", "/admin/documents"), ("POST", "/admin/documents"),
-                                        ("DELETE", "/admin/documents/KB-01")])
-def test_auth_503_without_a_configured_token_and_401_with_a_wrong_one(tmp_path, method, url):
-    off = Admin(tmp_path / "a", token="")
-    assert off.api.request(method, url, headers=AUTH).status_code == 503
-    on = Admin(tmp_path / "b")
-    assert on.api.request(method, url).status_code == 401
-    assert on.api.request(method, url, headers={"Authorization": "Bearer nope"}).status_code == 401
+# ------------------------------------------------------------------ no authentication
+@pytest.mark.parametrize("method,url,ok", [("GET", "/admin/documents", 200), ("POST", "/admin/documents", 400),
+                                           ("DELETE", "/admin/documents/KB-01", 200)])
+def test_the_admin_endpoints_answer_without_any_authorization_header(tmp_path, method, url, ok):
+    a = Admin(tmp_path)
+    r = a.api.request(method, url, json={} if method == "POST" else None)
+    assert r.status_code == ok, r.text  # never 401 or 503 "admin disabled"
+    assert "Authorization" not in r.request.headers
 
 
 # ------------------------------------------------------------------ upload, replace, delete
@@ -199,16 +195,16 @@ def test_replace_keeps_the_existing_headings_when_none_are_sent_and_a_new_id_nee
 
 def test_delete_makes_its_questions_out_of_scope_and_a_missing_id_is_404(admin):
     assert admin.chat("What is the active ingredient of Brand02?")["status"] != "out_of_scope"
-    r = admin.api.request("DELETE", "/admin/documents/KB-02", headers=AUTH)
+    r = admin.api.request("DELETE", "/admin/documents/KB-02")
     assert r.status_code == 200 and r.json() == {"deleted": "KB-02"}
     assert admin.chat("What is the active ingredient of Brand02?")["status"] == "out_of_scope"
     assert "KB-02" not in admin.docs()
-    assert admin.api.request("DELETE", "/admin/documents/KB-02", headers=AUTH).status_code == 404
+    assert admin.api.request("DELETE", "/admin/documents/KB-02").status_code == 404
 
 
 def test_deleting_every_document_leaves_an_empty_kb_that_answers_out_of_scope(admin):
     for kb_id in list(admin.docs()):
-        assert admin.api.request("DELETE", f"/admin/documents/{kb_id}", headers=AUTH).status_code == 200
+        assert admin.api.request("DELETE", f"/admin/documents/{kb_id}").status_code == 200
     assert admin.docs() == {}
     assert admin.chat("What is the active ingredient of Brand01?")["status"] == "out_of_scope"
     assert admin.api.get("/health").json()["kb_documents"] == 0
@@ -218,7 +214,7 @@ def test_deleting_every_document_leaves_an_empty_kb_that_answers_out_of_scope(ad
 
 def test_changes_survive_a_restart(admin):
     admin.upload("KB-10", make_docx("1. Gout", {"Xanthine": [("Zorbex", "Allopurinol")]}), diseases=["1. Gout"])
-    admin.api.request("DELETE", "/admin/documents/KB-03", headers=AUTH)
+    admin.api.request("DELETE", "/admin/documents/KB-03")
     before = admin.docs()
     admin.start()
     after = admin.docs()
@@ -279,18 +275,18 @@ def test_invalid_replace_keeps_the_live_document(admin):
 def test_body_problems_are_400(admin):
     for body in (b"not json", b"[1]", json.dumps({"kb_id": "KB-10", "content_base64": "@@@"}).encode(),
                  json.dumps({"kb_id": "KB-10", "content_base64": b64(b"x"), "filename": 5}).encode()):
-        r = admin.api.post("/admin/documents", content=body, headers=AUTH)
+        r = admin.api.post("/admin/documents", content=body)
         assert r.status_code == 400, body
 
 
 def test_a_huge_request_body_is_413_before_it_is_parsed(admin):
-    r = admin.api.post("/admin/documents", content=b"{" + b" " * (MAX_UPLOAD_BYTES * 2), headers=AUTH)
+    r = admin.api.post("/admin/documents", content=b"{" + b" " * (MAX_UPLOAD_BYTES * 2))
     assert r.status_code == 413
 
 
 def test_delete_with_a_bad_id_is_400(admin):
-    assert admin.api.request("DELETE", "/admin/documents/KB-1", headers=AUTH).status_code == 400
-    assert admin.api.request("DELETE", "/admin/documents/..%2F..%2Fx", headers=AUTH).status_code in (400, 404)
+    assert admin.api.request("DELETE", "/admin/documents/KB-1").status_code == 400
+    assert admin.api.request("DELETE", "/admin/documents/..%2F..%2Fx").status_code in (400, 404)
 
 
 def test_a_failure_while_building_the_next_snapshot_leaves_store_and_live_kb_alone(admin):
@@ -337,7 +333,7 @@ def test_a_request_in_flight_keeps_its_snapshot(admin):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=admin.app), base_url="http://t") as c:
             chat = asyncio.ensure_future(c.post("/chat", json={"message": "What is the active ingredient of Brand01?"}))
             await asyncio.sleep(0.1)
-            d = await c.delete("/admin/documents/KB-01", headers=AUTH)
+            d = await c.delete("/admin/documents/KB-01")
             return d.status_code, await chat
 
     status, resp = asyncio.run(go())
@@ -398,7 +394,7 @@ def test_hybrid_replace_reembeds_only_the_changed_sections_and_writes_the_index_
     data = json.loads(caches[0].read_text("utf-8"))
     assert len(data["docs"]) == total
     emb.calls.clear()
-    assert admin.api.request("DELETE", "/admin/documents/KB-02", headers=AUTH).status_code == 200
+    assert admin.api.request("DELETE", "/admin/documents/KB-02").status_code == 200
     assert emb.calls == []  # a delete embeds nothing
     assert len(json.loads(next((tmp_path / "index").glob("index-*.json")).read_text("utf-8"))["docs"]) == total - len(load_manifest()[1].diseases)
 
@@ -412,7 +408,7 @@ def test_hybrid_search_sees_the_new_document_and_an_empty_kb_is_out_of_scope(tmp
     admin.chat("What is the active ingredient of Zorbex?")
     assert "Allopurinol" in seen[-1]
     for kb_id in list(admin.docs()):
-        admin.api.request("DELETE", f"/admin/documents/{kb_id}", headers=AUTH)
+        admin.api.request("DELETE", f"/admin/documents/{kb_id}")
     assert admin.chat("What is the active ingredient of Zorbex?")["status"] == "out_of_scope"
 
 
@@ -420,7 +416,7 @@ def test_a_change_before_the_index_is_loaded_is_503(tmp_path):
     emb = FakeEmbedder()
     unloaded = lambda sections: HybridRetriever(sections, lambda: emb, emb.model_id, emb.revision)  # noqa: E731
     admin = Admin(tmp_path, retriever=unloaded)
-    r = admin.api.request("DELETE", "/admin/documents/KB-01", headers=AUTH)
+    r = admin.api.request("DELETE", "/admin/documents/KB-01")
     assert r.status_code == 503 and "still loading" in r.json()["error"]
 
 
@@ -499,4 +495,4 @@ def test_the_real_kb_files_pass_validation(real_kb, tmp_path):
 def test_kb_ids_with_non_ascii_digits_are_rejected(admin, kb_id):
     r = admin.upload(kb_id, make_docx(), diseases=[DISEASE])
     assert r.status_code == 400 and "'kb_id'" in r.json()["error"]
-    assert admin.api.request("DELETE", f"/admin/documents/{kb_id}", headers=AUTH).status_code == 400
+    assert admin.api.request("DELETE", f"/admin/documents/{kb_id}").status_code == 400
