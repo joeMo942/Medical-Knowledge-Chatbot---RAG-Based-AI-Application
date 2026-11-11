@@ -33,9 +33,9 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
 - **An NVIDIA GPU with 8 GB of VRAM** and the NVIDIA Container Toolkit (on Windows, Docker Desktop with GPU support), because the default compose file requests the GPU for the LLM (ADR 0001).
   The author's test machine: RTX 5070 Laptop GPU, 8 GB. **No GPU:** use the CPU override `docker-compose.cpu.yml` (below); it works but is far slower and answers will exceed the 30 s limit.
 - About **16 GB of free disk** for the images and models, and about 2.5 GB of RAM for the search model.
-- **The Knowledge Base files.** They are not in git. Put the nine `.docx` files in `./data` with exactly these file names (they are listed in `medrag/kb_manifest.json`):
+- **The Knowledge Base files.** They are not in git. Put the nine `.docx` files in `./data`, named **either by their KB ID** (`KB-01.docx` … `KB-09.docx`; case does not matter, and `KB-01 Asthma.docx` also works) **or with these names** (listed in `medrag/kb_manifest.json`):
 
-  | KB ID | file in `./data` |
+  | KB ID | or this file name in `./data` |
   | --- | --- |
   | KB-01 | `asthma w copd.docx` |
   | KB-02 | `gerd& vomiting.docx` |
@@ -47,7 +47,7 @@ Franco-Arabic (Arabic in Latin letters) or a mix. Everything runs in Docker with
   | KB-08 | `ادويه الضغط و الكوليسترول.docx` |
   | KB-09 | `ادويه القولون و التهابات المفاصل.docx` |
 
-  A missing file stops the API at start with the list of the names it did not find.
+  If both names are present, the name in the table wins. A missing file stops the API at start with the list of the names it did not find.
 - **Python 3.12+ on the host**, only to run the evaluation (not needed to run the system).
 
 ### Start

@@ -7,7 +7,7 @@ import pytest
 from docx import Document
 
 from medrag.dump import render_dump
-from medrag.ingest import kb_dir, load_knowledge_base
+from medrag.ingest import kb_dir, load_knowledge_base, resolve_file
 from medrag.manifest import load_manifest
 from medrag.models import Line, Table
 from medrag.splitter import strip_numbering
@@ -72,7 +72,7 @@ def test_known_traps(real_kb):
 
 def test_no_table_row_is_lost(real_kb):
     for entry in load_manifest():
-        doc = Document(str(kb_dir() / entry.file))
+        doc = Document(str(resolve_file(entry, kb_dir())))
         expected = sum(len(t.rows) - 1 for t in doc.tables)
         assert sum(s.row_count for s in real_kb[entry.kb_id].sections) == expected
 
@@ -156,7 +156,7 @@ def test_reversed_tables_are_typed_with_active_ingredient_first(real_kb):
 def test_citation_headings_come_from_the_source(real_kb):
     for entry in load_manifest():
         paragraphs = {
-            strip_numbering(p.text) for p in Document(str(kb_dir() / entry.file)).paragraphs
+            strip_numbering(p.text) for p in Document(str(resolve_file(entry, kb_dir()))).paragraphs
         }
         for s in real_kb[entry.kb_id].sections:
             assert s.title in paragraphs, (s.section_id, s.title)
@@ -184,7 +184,7 @@ def test_every_source_paragraph_is_accounted_for_exactly_once(real_kb):
     for entry in load_manifest():
         raw = Counter(
             strip_numbering(p.text)
-            for p in Document(str(kb_dir() / entry.file)).paragraphs
+            for p in Document(str(resolve_file(entry, kb_dir()))).paragraphs
             if p.text.strip()
         )
         doc = real_kb[entry.kb_id]
@@ -198,7 +198,7 @@ def test_render_and_section_id_contain_only_source_text(real_kb):
     ids = []
     for entry in load_manifest():
         paragraphs = {
-            strip_numbering(p.text) for p in Document(str(kb_dir() / entry.file)).paragraphs
+            strip_numbering(p.text) for p in Document(str(resolve_file(entry, kb_dir()))).paragraphs
         }
         for s in real_kb[entry.kb_id].sections:
             ids.append(s.section_id)

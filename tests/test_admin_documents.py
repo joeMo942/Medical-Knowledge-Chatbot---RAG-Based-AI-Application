@@ -484,10 +484,10 @@ def test_the_default_limits_pass_a_normal_document(admin):
 
 
 def test_the_real_kb_files_pass_validation(real_kb, tmp_path):
-    from medrag.ingest import kb_dir
+    from medrag.ingest import kb_dir, resolve_file
     store = KBStore(tmp_path)
     for e in load_manifest():
-        doc = store.validate(e.kb_id, e.diseases, (kb_dir() / e.file).read_bytes())
+        doc = store.validate(e.kb_id, e.diseases, resolve_file(e, kb_dir()).read_bytes())
         assert doc.sections
 
 
@@ -496,3 +496,12 @@ def test_kb_ids_with_non_ascii_digits_are_rejected(admin, kb_id):
     r = admin.upload(kb_id, make_docx(), diseases=[DISEASE])
     assert r.status_code == 400 and "'kb_id'" in r.json()["error"]
     assert admin.api.request("DELETE", f"/admin/documents/{kb_id}").status_code == 400
+
+
+def test_seeding_accepts_files_named_by_kb_id(tmp_path):
+    src = seed_dir(tmp_path)
+    for e in load_manifest():
+        (src / e.file).rename(src / f"{e.kb_id}.docx")
+    store, docs = open_store(str(tmp_path / "store"), src)
+    assert sorted(d.kb_id for d in docs) == [e.kb_id for e in load_manifest()]
+    assert {s.uploaded_as for s in store.documents()} == {f"{e.kb_id}.docx" for e in load_manifest()}
