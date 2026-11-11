@@ -101,7 +101,7 @@ Port 8000 busy? The API listens on host port 8000 (`docker-compose.yml`, `api` â
 | `qwen3.5:4b` (4.2 B parameters, Q4_K_M) | 3.3 GB | Ollama, into the `ollama-models` volume (`docker compose logs -f model-pull`) | download time of 3.3 GB |
 | BGE-M3, pinned revision, each file checked by size and SHA-256 | 2.3 GB | Hugging Face, into the `embed-models` volume (`docker compose logs -f embedder-pull`) | download time of 2.3 GB; the copy and check alone took 26 s from a local folder |
 | `api` image (CPU `torch`, `transformers`, ...) | 1.65 GB on disk (`docker images`) | built from the `Dockerfile` | build plus pip downloads |
-| `ollama/ollama` image | 8.5 GB on disk (`docker images`); the compressed download is smaller | Docker Hub | pull time |
+| `ollama/ollama` image | 3.39 GB compressed download (from the registry manifest), 8.5 GB on disk (`docker images`) | Docker Hub | download time of 3.39 GB |
 | search index of the 113 Sections | small | built by the API on the first start | **42.7 s** measured (embedder load 7.7 s), cached afterwards |
 
 How the times were measured: **the downloads themselves were not timed on a clean machine** (the author's connection is slow and flaky; see `docs/submission-checks.md`), so the time of the three big downloads is just
@@ -355,7 +355,7 @@ python -m evaluation.recall                                                     
 
 `run` writes `evaluation/results/<date>-<label>.json` (a row per turn: full response, latency, Session IDs) and `.md` (status accuracy overall and per category, confusion matrix, Citation, snippet and relevance checks, language accuracy, latency p50 and p95, tokens, contract violations).
 The label may hold only letters, digits, `.`, `_` and `-` (`qwen3.5-4b`, not `qwen3.5:4b`); it is checked before the first request, and a name that already exists gets a numeric suffix. Without the usage header the runner warns and marks the token metrics absent. The results folder is gitignored, so results stay local until you copy them out (see Test results).
-The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; faithfulness is judged by a person, never by an LLM. The sheet never overwrites an existing one.
+The review sheet always includes every reply that came back answered although it should have been escalated, every answered Franco-Arabic, partial and multi-turn reply, up to 5 escalated ones and at least 5 seeded random answered replies; the sheet is filled in a first pass by an AI reviewer (Claude Opus) that checks each claim against the cited Section; the author then checks it and signs it off, and the sheet says which is which. The sheet never overwrites an existing one.
 `--analytics-check` compares `GET /admin/analytics` with the run's own numbers (turns, unanswered, status counts and token totals must match exactly; latency is shown from both sides). Send no other traffic to the API while it runs: any other request in the window shows up as a DIFF.
 
 ## Test results
