@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import unicodedata
 from pathlib import Path
 
 from docx import Document
@@ -50,18 +51,57 @@ def read_blocks(path: Path) -> list[Block]:
     return blocks
 
 
+def _name_key(name: str) -> str:
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def _named_by_id(stem: str, kb_id: str) -> bool:
+    """True for the stems "KB-01", "kb-01", "KB-01 Asthma" or "KB-01_asthma": the KB ID, then nothing or a space, "_" or
+    "-". Not "KB-012", and not the store's old versions "KB-01.<hash>"."""
+    stem, kb_id = stem.casefold(), kb_id.casefold()
+    return stem.startswith(kb_id) and (len(stem) == len(kb_id) or stem[len(kb_id)] in " _-")
+
+
+def resolve_file(entry: ManifestEntry, directory: Path) -> Path:
+    """The file of a KB Document in `directory`.
+
+    First the manifest's name ("asthma w copd.docx"), also when it differs only in case or Unicode normal form (an
+    Arabic name copied through macOS can arrive decomposed). Then the one .docx named by the KB ID ("KB-01.docx",
+    as the brief says the starter files are named). Two files named by the same ID count as none, so the right file is
+    never guessed. If nothing matches, the manifest's path, which does not exist."""
+    exact = directory / entry.file
+    if exact.is_file():
+        return exact
+    try:
+        files = sorted(p for p in directory.iterdir() if p.is_file())
+    except OSError:
+        return exact
+    want = _name_key(entry.file)
+    same = [p for p in files if _name_key(p.name) == want]
+    if len(same) == 1:
+        return same[0]
+    by_id = [p for p in files if p.suffix.casefold() == ".docx" and _named_by_id(p.stem, entry.kb_id)]
+    return by_id[0] if len(by_id) == 1 else exact
+
+
 def missing_files(entries: tuple[ManifestEntry, ...], directory: Path) -> list[Path]:
-    return [directory / e.file for e in entries if not (directory / e.file).is_file()]
+    return [directory / e.file for e in entries if not resolve_file(e, directory).is_file()]
+
+
+def missing_message(missing: list[Path]) -> str:
+    return (", ".join(str(m) for m in missing)
+            + " (each file may also be named by its KB ID, for example KB-01.docx)")
 
 
 def load_document(entry: ManifestEntry, directory: Path) -> KBDocument:
     """The KB ID comes from the manifest entry, never from the file name."""
+    path = resolve_file(entry, directory)
     try:
-        blocks = read_blocks(directory / entry.file)
+        blocks = read_blocks(path)
         diseases, sections = split_sections(entry.kb_id, entry.diseases, blocks)
     except Exception as exc:  # PackageNotFoundError, BadZipFile, KeyError, SplitError...
         raise IngestError(
-            f"{entry.kb_id} ({entry.file}): {type(exc).__name__}: {exc}"
+            f"{entry.kb_id} ({path.name}): {type(exc).__name__}: {exc}"
         ) from exc
     return KBDocument(
         kb_id=entry.kb_id, file=entry.file, diseases=diseases, sections=sections
@@ -76,8 +116,7 @@ def load_knowledge_base(
     missing = missing_files(entries, directory)
     if missing:
         raise FileNotFoundError(
-            f"KB files not found (set {KB_DIR_ENV}): "
-            + ", ".join(str(m) for m in missing)
+            f"KB files not found (set {KB_DIR_ENV}): " + missing_message(missing)
         )
     return tuple(load_document(e, directory) for e in entries)
 
@@ -88,5 +127,5 @@ def kb_files_hash(directory: Path | None = None, entries: tuple[ManifestEntry, .
     h = hashlib.sha256()
     for e in entries if entries is not None else load_manifest():
         h.update(e.file.encode())
-        h.update((directory / e.file).read_bytes())
+        h.update(resolve_file(e, directory).read_bytes())
     return h.hexdigest()

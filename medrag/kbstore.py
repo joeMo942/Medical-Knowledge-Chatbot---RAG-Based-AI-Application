@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .ingest import IngestError, load_document, read_blocks
+from .ingest import IngestError, load_document, missing_files, missing_message, read_blocks, resolve_file
 from .manifest import KB_ID_PATTERN, ManifestEntry, load_manifest, parse_manifest
 from .models import KBDocument
 from .splitter import ParagraphBlock, TableBlock, strip_numbering
@@ -100,15 +100,17 @@ class KBStore:
         if self.seeded():
             return
         entries = load_manifest()
-        missing = [e.file for e in entries if not (source_dir / e.file).is_file()]
+        source_dir = Path(source_dir)
+        missing = missing_files(entries, source_dir)
         if missing:
-            raise FileNotFoundError(f"cannot seed the KB store: KB files not found in {source_dir}: {', '.join(missing)}")
+            raise FileNotFoundError(f"cannot seed the KB store: KB files not found in {source_dir}: {missing_message(missing)}")
         self.dir.mkdir(parents=True, exist_ok=True)
         docs = []
         for e in entries:
             stored = f"{e.kb_id}.docx"
-            _atomic_write(self.dir / stored, (source_dir / e.file).read_bytes())
-            docs.append(StoredDocument(ManifestEntry(e.kb_id, stored, e.diseases), e.file, _now()))
+            src = resolve_file(e, source_dir)
+            _atomic_write(self.dir / stored, src.read_bytes())
+            docs.append(StoredDocument(ManifestEntry(e.kb_id, stored, e.diseases), src.name, _now()))
         self._write_manifest(docs)  # last: without it the store counts as unseeded and is seeded again
 
     def documents(self) -> tuple[StoredDocument, ...]:

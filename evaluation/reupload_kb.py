@@ -15,6 +15,9 @@ from pathlib import Path
 
 import httpx
 
+from medrag.ingest import resolve_file
+from medrag.manifest import ManifestEntry
+
 ROOT = Path(__file__).resolve().parents[1]
 QUESTION = "What is the active ingredient of Controloc?"
 
@@ -34,8 +37,10 @@ def main(argv: list[str] | None = None) -> int:
             status = c.post("/chat", json={"message": QUESTION}).json().get("status")
             print(f"after deleting everything: {QUESTION!r} -> {status}")
         for e in manifest:
-            body = {"kb_id": e["kb_id"], "diseases": e["diseases"], "filename": e["file"],
-                    "content_base64": base64.b64encode((args.data_dir / e["file"]).read_bytes()).decode()}
+            # The manifest's file name or the KB ID's ("KB-01.docx"), like the API's own seeding.
+            path = resolve_file(ManifestEntry(e["kb_id"], e["file"], tuple(e["diseases"])), args.data_dir)
+            body = {"kb_id": e["kb_id"], "diseases": e["diseases"], "filename": path.name,
+                    "content_base64": base64.b64encode(path.read_bytes()).decode()}
             t0 = time.perf_counter()
             r = c.post("/admin/documents", json=body)
             print(f"upload {e['kb_id']}: {r.status_code} in {time.perf_counter() - t0:.1f}s {r.text[:120]}")

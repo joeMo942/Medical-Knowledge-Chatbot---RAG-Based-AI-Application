@@ -91,3 +91,48 @@ def test_default_kb_dir_is_relative_to_repo_root(monkeypatch):
     monkeypatch.delenv("MEDRAG_KB_DIR", raising=False)
     monkeypatch.chdir("/")
     assert kb_dir().name == "data" and (kb_dir().parent / "pyproject.toml").is_file()
+
+
+# ------------------------------------------------------------------ KB file names: the manifest's or the KB ID's
+def test_files_named_by_kb_id_are_found(tmp_path):
+    # The brief names the starter files by ID; the author's copies have descriptive names. Both work.
+    make_docx(tmp_path / "KB-01.docx")
+    make_docx(tmp_path / "kb-02 Asthma.docx")
+    entries = (ManifestEntry("KB-01", "asthma w copd.docx", ("1. Asthma",)),
+               ManifestEntry("KB-02", "gerd& vomiting.docx", ("1. Asthma",)))
+    docs = load_knowledge_base(tmp_path, entries)
+    assert [d.kb_id for d in docs] == ["KB-01", "KB-02"]
+
+
+def test_the_manifest_name_wins_over_an_id_name(tmp_path):
+    from medrag.ingest import resolve_file
+    make_docx(tmp_path / "asthma w copd.docx")
+    make_docx(tmp_path / "KB-01.docx")
+    entry = ManifestEntry("KB-01", "asthma w copd.docx", ("1. Asthma",))
+    assert resolve_file(entry, tmp_path).name == "asthma w copd.docx"
+
+
+def test_a_decomposed_arabic_name_is_the_same_file(tmp_path):
+    import unicodedata
+    from medrag.ingest import resolve_file
+    name = "أدوية الالتهاب الرئوي.docx"
+    decomposed = unicodedata.normalize("NFD", name)
+    assert decomposed != name
+    make_docx(tmp_path / decomposed)
+    if not any(p.name == decomposed for p in tmp_path.iterdir()):
+        pytest.skip("this file system normalises names itself")
+    assert resolve_file(ManifestEntry("KB-05", name, ("1. Asthma",)), tmp_path).name == decomposed
+
+
+@pytest.mark.parametrize("names", [
+    ["KB-012.docx"],                       # another ID, not KB-01
+    ["KB-01.0123456789ab.docx"],           # the KB store's old version of a Document
+    ["KB-01.txt"],                         # not a .docx
+    ["KB-01.docx", "KB-01 copy.docx"],     # two candidates: never guess
+])
+def test_id_names_that_do_not_count(tmp_path, names):
+    for n in names:
+        make_docx(tmp_path / n)
+    entries = (ManifestEntry("KB-01", "asthma w copd.docx", ("1. Asthma",)),)
+    with pytest.raises(FileNotFoundError, match="KB-01.docx"):
+        load_knowledge_base(tmp_path, entries)
