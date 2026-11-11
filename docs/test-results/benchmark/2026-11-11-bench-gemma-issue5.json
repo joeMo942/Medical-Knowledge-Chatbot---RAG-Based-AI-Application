@@ -1,0 +1,1060 @@
+{
+ "meta": {
+  "date": "2026-11-11",
+  "label": "bench-gemma-issue5",
+  "commit": "4025bc7",
+  "dirty": false,
+  "llm": "gemma4:e4b",
+  "embedding": "BAAI/bge-m3",
+  "base_url": "http://localhost:8000",
+  "cases_file": "cases_issue5.json",
+  "kb_checked": true,
+  "notes": "benchmark bench-gemma, nogpu-startup image, GPU",
+  "usage_header": true,
+  "warnings": []
+ },
+ "summary": {
+  "n_cases": 17,
+  "n_turns": 17,
+  "cases_per_category": {
+   "partial": 7,
+   "trap_out_of_scope": 10
+  },
+  "turns_per_category": {
+   "partial": 7,
+   "trap_out_of_scope": 10
+  },
+  "status": {
+   "overall": {
+    "ok": 16,
+    "n": 17,
+    "rate": 0.9411764705882353
+   },
+   "per_category": {
+    "partial": {
+     "ok": 6,
+     "n": 7,
+     "rate": 0.8571428571428571
+    },
+    "trap_out_of_scope": {
+     "ok": 10,
+     "n": 10,
+     "rate": 1.0
+    }
+   },
+   "cases_all_turns_right": {
+    "ok": 16,
+    "n": 17,
+    "rate": 0.9411764705882353
+   },
+   "confusion": {
+    "expected": [
+     "answered",
+     "out_of_scope",
+     "escalated"
+    ],
+    "actual": [
+     "answered",
+     "out_of_scope",
+     "escalated"
+    ],
+    "counts": {
+     "answered": {
+      "answered": 6,
+      "out_of_scope": 1,
+      "escalated": 0
+     },
+     "out_of_scope": {
+      "answered": 0,
+      "out_of_scope": 10,
+      "escalated": 0
+     },
+     "escalated": {
+      "answered": 0,
+      "out_of_scope": 0,
+      "escalated": 0
+     }
+    }
+   }
+  },
+  "citation": {
+   "expected_doc_hit": {
+    "ok": 6,
+    "n": 7,
+    "rate": 0.8571428571428571
+   },
+   "expected_doc_hit_when_answered": {
+    "ok": 6,
+    "n": 6,
+    "rate": 1.0
+   },
+   "doc_ids_real": {
+    "ok": 6,
+    "n": 6,
+    "rate": 1.0
+   },
+   "sections_found": {
+    "ok": 6,
+    "n": 6,
+    "rate": 1.0
+   }
+  },
+  "snippet": {
+   "citations_valid": {
+    "ok": 19,
+    "n": 19,
+    "rate": 1.0
+   },
+   "responses_all_valid": {
+    "ok": 6,
+    "n": 6,
+    "rate": 1.0
+   },
+   "label_line_citations": {
+    "n": 0,
+    "of": 19
+   }
+  },
+  "relevance": {
+   "overall": {
+    "ok": 6,
+    "n": 7,
+    "rate": 0.8571428571428571
+   },
+   "per_category": {
+    "partial": {
+     "ok": 6,
+     "n": 7,
+     "rate": 0.8571428571428571
+    }
+   }
+  },
+  "language": {
+   "overall": {
+    "ok": 17,
+    "n": 17,
+    "rate": 1.0
+   },
+   "per_category": {
+    "partial": {
+     "ok": 7,
+     "n": 7,
+     "rate": 1.0
+    },
+    "trap_out_of_scope": {
+     "ok": 10,
+     "n": 10,
+     "rate": 1.0
+    }
+   }
+  },
+  "latency_s": {
+   "n": 17,
+   "p50": 2.2863439000211656,
+   "p95": 4.025292960088699,
+   "max": 5.122942000161856,
+   "mean": 2.573496217661373
+  },
+  "tokens": {
+   "turns_with_usage": 17,
+   "prompt_mean": 4634.529411764706,
+   "completion_mean": 195.2941176470588,
+   "llm_calls_mean": 2.0,
+   "prompt_total": 78787,
+   "completion_total": 3320,
+   "llm_calls_total": 34
+  },
+  "contract": {
+   "violations": 0,
+   "turns_with_violations": 0
+  },
+  "http": {
+   "non_200": 0,
+   "no_response": 0
+  }
+ },
+ "rows": [
+  {
+   "case_id": "trap5-hydroxychloroquine-antimalarial",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 2.7138515999540687,
+   "session_id": "1113a743b53743ea8d2784e4d056a84f",
+   "usage": {
+    "prompt_tokens": 4484,
+    "completion_tokens": 203,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Is Hydroxychloroquine an antimalarial drug?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5-doxycycline-treat-malaria",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 2.0051686000078917,
+   "session_id": "11f363a76cc14d4bb6ea656574ba09f2",
+   "usage": {
+    "prompt_tokens": 4781,
+    "completion_tokens": 74,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Does Doxycycline treat malaria?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5-doxycycline-malaria-arabic",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 3.605441699968651,
+   "session_id": "3f8e2d8257de4916a977dbb3a2c6bb11",
+   "usage": {
+    "prompt_tokens": 4801,
+    "completion_tokens": 309,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "هل Doxycycline بيعالج الملاريا؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5-malaria-prophylaxis-tablets",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 1.6787906000390649,
+   "session_id": "ab06cbe55c324af49a89cde6bfbd9940",
+   "usage": {
+    "prompt_tokens": 4628,
+    "completion_tokens": 73,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Which tablets prevent malaria for travellers?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5-plaquenil-lupus",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 2.309251300059259,
+   "session_id": "aa5e11fd5e29451588af31112c1f0196",
+   "usage": {
+    "prompt_tokens": 4738,
+    "completion_tokens": 184,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Is Plaquenil used to treat lupus?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5-azithromycin-typhoid",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 2.114182500168681,
+   "session_id": "13eb6d3d2c324b519b26dd2a9d4660e1",
+   "usage": {
+    "prompt_tokens": 4697,
+    "completion_tokens": 132,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Is Azithromycin used for typhoid fever?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5-metformin-fertility",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 1.5913229000288993,
+   "session_id": "5bf2ef6ed82f43caaae0a1a32ab7fc21",
+   "usage": {
+    "prompt_tokens": 4813,
+    "completion_tokens": 72,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Does Metformin affect fertility?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "partial5-metformin-contraindications-cost",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "The contraindications for Metformin are severe renal impairment (eGFR less than 30 mL/min/1.73m²), metabolic acidosis (including Diabetic Ketoacidosis), severe hypoxia (such as in some cases of Shock or Acute respiratory failure), and severe hepatic impairment. The knowledge base does not contain information regarding the cost of Metformin.",
+    "citations": [
+     {
+      "doc_id": "KB-07",
+      "title": "أدوية السكر – Antidiabetic Drugs",
+      "section": "Biguanides",
+      "snippet": "Severe renal impairment: eGFR أقل من 30 mL/min/1.73m²."
+     },
+     {
+      "doc_id": "KB-07",
+      "title": "أدوية السكر – Antidiabetic Drugs",
+      "section": "Biguanides",
+      "snippet": "Metabolic acidosis: بما فيها Diabetic Ketoacidosis."
+     },
+     {
+      "doc_id": "KB-07",
+      "title": "أدوية السكر – Antidiabetic Drugs",
+      "section": "Biguanides",
+      "snippet": "Severe hypoxia: مثل بعض حالات Shock أو Acute respiratory failure."
+     },
+     {
+      "doc_id": "KB-07",
+      "title": "أدوية السكر – Antidiabetic Drugs",
+      "section": "Biguanides",
+      "snippet": "Severe hepatic impairment: زيادة خطر Lactic acidosis."
+     }
+    ],
+    "status": "answered",
+    "language": "en"
+   },
+   "latency_s": 3.572607700014487,
+   "session_id": "6e7a5391e600444c90fc375f5647d577",
+   "usage": {
+    "prompt_tokens": 4718,
+    "completion_tokens": 334,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "What are the contraindications of Metformin and how much does it cost?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [
+    "KB-07"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-07",
+    "KB-07",
+    "KB-07",
+    "KB-07"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 4,
+   "snippets_valid_count": 4,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "partial5-voltaren-ingredient-manufacturer",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "The active ingredient of Voltaren is Diclofenac sodium. The knowledge base does not state which company manufactures it.",
+    "citations": [
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Voltaren – Diclofenac sodium"
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Pain & Fever – الألم والحرارة",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Voltaren – Diclofenac sodium"
+     }
+    ],
+    "status": "answered",
+    "language": "en"
+   },
+   "latency_s": 2.460286100162193,
+   "session_id": "61e8bcfea21242788a0f3e2778c04427",
+   "usage": {
+    "prompt_tokens": 4490,
+    "completion_tokens": 197,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "What is the active ingredient of Voltaren and which company manufactures it?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-04",
+    "KB-03"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 2,
+   "snippets_valid_count": 2,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "partial5-brufen-contraindications-price-arabic",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "موانع استخدام Brufen تشمل: وجود قرحة هضمية نشطة أو تاريخ من النزيف المعوي المرتبط بـ NSAIDs، وجود قصور كلوي شديد، أو وجود حساسية تجاه NSAIDs. كما يجب الحذر عند وجود ارتفاع في ضغط الدم، أو أمراض القلب والأوعية الدموية، أو الربو. لا تتوفر معلومات عن سعره في قاعدة المعرفة.",
+    "citations": [
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Active peptic ulcer أو history of NSAID-related GI bleeding."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "Severe renal impairment."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "NSAID hypersensitivity."
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Active peptic ulcer أو history of GI bleeding."
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "Severe renal impairment."
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "NSAID hypersensitivity أو aspirin-induced asthma."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Analgesics – مسكنات الألم",
+      "snippet": "Ibuprofen: يُتجنب في active peptic ulcer أو GI bleeding، severe renal impairment، وحالات NSAID allergy."
+     }
+    ],
+    "status": "answered",
+    "language": "ar"
+   },
+   "latency_s": 5.122942000161856,
+   "session_id": "e8d4cc1b8d2241f8935fb13ed7cb7fe4",
+   "usage": {
+    "prompt_tokens": 4424,
+    "completion_tokens": 537,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "إيه موانع استخدام Brufen وبيتباع بكام؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-04",
+    "KB-04",
+    "KB-04",
+    "KB-03",
+    "KB-03",
+    "KB-03",
+    "KB-04"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 7,
+   "snippets_valid_count": 7,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "partial5-salbutamol-discovery",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "The common side effects associated with Salbutamol include Tremors, Palpitations and Tachycardia, Headache, Nervousness, and Hypokalemia, especially with high or repeated doses (KB-01 › أدوية الربو – Asthma › SABA – Short-Acting Beta-2 Agonists; KB-01 › أدوية الانسداد الرئوي المزمن – COPD › SABA – Short-Acting Beta-2 Agonists). The knowledge base does not state the year Salbutamol was discovered.",
+    "citations": [
+     {
+      "doc_id": "KB-01",
+      "title": "أدوية الربو – Asthma",
+      "section": "SABA – Short-Acting Beta-2 Agonists",
+      "snippet": "Hypokalemia، خصوصًا مع الجرعات العالية أو المتكررة."
+     },
+     {
+      "doc_id": "KB-01",
+      "title": "أدوية الانسداد الرئوي المزمن – COPD",
+      "section": "SABA – Short-Acting Beta-2 Agonists",
+      "snippet": "Hypokalemia مع الجرعات العالية."
+     }
+    ],
+    "status": "answered",
+    "language": "en"
+   },
+   "latency_s": 3.750880700070411,
+   "session_id": "029ecc853c4240ac9c168bd363a185eb",
+   "usage": {
+    "prompt_tokens": 4520,
+    "completion_tokens": 350,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "What are the common side effects of salbutamol and in what year was it discovered?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [
+    "KB-01"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-01",
+    "KB-01"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 2,
+   "snippets_valid_count": 2,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "trap5b-malaria-contraindications-arabic",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.6129599998239428,
+   "session_id": "9b98789dcabd42fabaee4bdf76a0ad0e",
+   "usage": {
+    "prompt_tokens": 4520,
+    "completion_tokens": 85,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "إيه موانع استعمال دواء الملاريا؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5b-malaria-side-effects-arabic",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.5944922999478877,
+   "session_id": "8f1ee9edd7694795ae488dfe30d00def",
+   "usage": {
+    "prompt_tokens": 4404,
+    "completion_tokens": 89,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "إيه الأعراض الجانبية لأدوية الملاريا؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "trap5b-malaria-alternatives-arabic",
+   "category": "trap_out_of_scope",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "لم أجد هذه المعلومة في قاعدة المعرفة المعتمدة.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "ar"
+   },
+   "latency_s": 1.5609289000276476,
+   "session_id": "9c9f65ac95d74826b5917da54da2a816",
+   "usage": {
+    "prompt_tokens": 4838,
+    "completion_tokens": 78,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "إيه بدائل علاج الملاريا؟",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "out_of_scope",
+   "passing_statuses": [
+    "out_of_scope"
+   ],
+   "expected_language": "ar",
+   "expected_kb_ids": [],
+   "actual_status": "out_of_scope",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": null,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": null
+  },
+  {
+   "case_id": "partial5b-concor-used-for-cost",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "Concor is used for the treatment of high blood pressure in certain cases, Angina, Heart Failure for some types, Arrhythmias, and after Myocardial Infarction in certain cases. The knowledge base does not contain information regarding its cost.",
+    "citations": [
+     {
+      "doc_id": "KB-08",
+      "title": "أدوية الضغط – Antihypertensive Drugs",
+      "section": "Beta Blockers",
+      "snippet": "علاج ارتفاع ضغط الدم في حالات معينة."
+     }
+    ],
+    "status": "answered",
+    "language": "en"
+   },
+   "latency_s": 2.2863439000211656,
+   "session_id": "789479907bbe453bbcf90e042b7f9e50",
+   "usage": {
+    "prompt_tokens": 4612,
+    "completion_tokens": 161,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "What is Concor used for and how much does it cost?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [
+    "KB-08"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-08"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 1,
+   "snippets_valid_count": 1,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  },
+  {
+   "case_id": "partial5b-hypertension-and-malaria",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "I could not find this in the approved knowledge base.",
+    "citations": [],
+    "status": "out_of_scope",
+    "language": "en"
+   },
+   "latency_s": 2.1324276998639107,
+   "session_id": "7a73d7ad0a4c46b790838540f4c7f529",
+   "usage": {
+    "prompt_tokens": 4764,
+    "completion_tokens": 108,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Which drugs treat hypertension and malaria?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [
+    "KB-08"
+   ],
+   "actual_status": "out_of_scope",
+   "status_ok": false,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [],
+   "citation_doc_ok": false,
+   "citation_ids_real": null,
+   "citation_sections_found": null,
+   "citation_snippets_valid": null,
+   "citation_count": 0,
+   "snippets_valid_count": null,
+   "label_snippet_count": null,
+   "relevance_ok": false
+  },
+  {
+   "case_id": "partial5b-brufen-pregnancy-cost",
+   "category": "partial",
+   "turn": 1,
+   "http_status": 200,
+   "body": {
+    "answer": "Regarding pregnancy, NSAIDs, including those like Brufen, require caution. It is generally avoided from week 30 of pregnancy, and use from week 20 requires medical evaluation. The knowledge base does not contain information about the cost of Brufen.",
+    "citations": [
+     {
+      "doc_id": "KB-03",
+      "title": "Headache & Migraine – الصداع",
+      "section": "NSAIDs",
+      "snippet": "الحذر في الحمل، خصوصًا من الأسبوع 20، وتجنبها عادةً من الأسبوع 30."
+     },
+     {
+      "doc_id": "KB-03",
+      "title": "Pain & Fever – الألم والحرارة",
+      "section": "NSAIDs – Non-Steroidal Anti-Inflammatory Drugs",
+      "snippet": "تجنب استخدامها في الحمل، خصوصًا من الأسبوع 20 وما بعده إلا بتوجيه طبي، وتُمنع عادةً من الأسبوع 30."
+     },
+     {
+      "doc_id": "KB-04",
+      "title": "أدوية التهاب الحلق واللوز – Pharyngitis & Tonsillitis",
+      "section": "Analgesics – مسكنات الألم",
+      "snippet": "يُتجنب استخدام NSAIDs من الأسبوع 30 من الحمل، ويحتاج تقييمًا طبيًا من الأسبوع 20."
+     }
+    ],
+    "status": "answered",
+    "language": "en"
+   },
+   "latency_s": 3.6375571999233216,
+   "session_id": "68dda3063ce7412893969462b5b43bde",
+   "usage": {
+    "prompt_tokens": 4555,
+    "completion_tokens": 334,
+    "llm_calls": 2
+   },
+   "error": null,
+   "message": "Is Brufen safe in pregnancy and what does it cost?",
+   "sent_session_id": null,
+   "session_problem": null,
+   "expected_status": "answered",
+   "passing_statuses": [
+    "answered"
+   ],
+   "expected_language": "en",
+   "expected_kb_ids": [
+    "KB-03",
+    "KB-04",
+    "KB-06",
+    "KB-09"
+   ],
+   "actual_status": "answered",
+   "status_ok": true,
+   "language_ok": true,
+   "contract_violations": [],
+   "cited_doc_ids": [
+    "KB-03",
+    "KB-03",
+    "KB-04"
+   ],
+   "citation_doc_ok": true,
+   "citation_ids_real": true,
+   "citation_sections_found": true,
+   "citation_snippets_valid": true,
+   "citation_count": 3,
+   "snippets_valid_count": 3,
+   "label_snippet_count": 0,
+   "relevance_ok": true
+  }
+ ]
+}

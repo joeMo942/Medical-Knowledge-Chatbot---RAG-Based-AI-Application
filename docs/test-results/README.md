@@ -17,6 +17,7 @@ The assessors' hidden test set is different from everything here (see [Caveats](
 | `analytics-checks/<set>.txt` | the `--analytics-check` output of each run (the server's own analytics compared with the runner's numbers) |
 | `recall-2026-11-11.txt` | `python -m evaluation.recall`: offline search recall, BM25 and hybrid, k = 1, 2, 4 |
 | `kb_check-2026-11-11.txt` | `python -m evaluation.kb_check`: the test set checked against the real KB files (85 cases, 0 errors) |
+| [`benchmark/`](benchmark/README.md) | small benchmark: `qwen3.5:4b` against `gemma4:e4b` on all five sets, and BGE-M3 on the CPU against `bge-m3` through Ollama |
 
 The faithfulness review sheets are described under [Faithfulness review](#faithfulness-review).
 No admin token or other secret is in these files (searched for the token value and for "Bearer").

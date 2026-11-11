@@ -14,7 +14,7 @@ Both are open-weights models. `GET /health` reports both names.
 | GPU | NVIDIA GeForce RTX 5070 Laptop, **8 GB VRAM** |
 | CPU | Intel Core Ultra 9 275HX |
 | RAM | 31 GB |
-| Disk | 1 TB SSD; the system drive C: has **27 GB free**, and Docker's data (images, models, volumes) already uses 59 GB of it |
+| Disk | 1 TB SSD; the system drive C: has **about 23 GB free**, and Docker's data (images, models, volumes) already uses 59 GB of it |
 | OS | Windows 11 Pro, Docker Desktop (WSL 2) |
 
 ## Why qwen3.5:4b: what I measured
@@ -41,9 +41,31 @@ Recall test with 75 questions (re-run 2026-11-11, results in [docs/test-results/
 - **Multilingual:** it handles Arabic, dialect, Franco-Arabic and English in one model. Questions with brand names written in Arabic letters went from 1/5 to 5/5 correct (with the name mapping added in #7).
 - **Speed:** about 133 ms per question on the CPU, which keeps the GPU free for the LLM.
 
-## Why I did not try other models
+## What else I tried
 
-1. **The results already met the brief.** The system scored 90/90 with no invented citations, at p95 6 s against a 30 s limit, and fits the 8 GB GPU. Nothing failed that another model was needed to fix.
-2. **Storage.** The project already takes about 16 GB on disk. Only 27 GB is free on the drive Docker uses. The other candidates I considered would each add several GB, and the largest (Qwen3.6-35B-A3B) about 20 GB on its own. Downloading and testing them would have meant freeing disk space that this machine does not have.
+A small benchmark on 2026-11-11, with the laptop plugged in. Each alternative was run against the chosen model on the same code, one model loaded at a time. The full tables are in [docs/test-results/benchmark/](docs/test-results/benchmark/README.md).
 
-So **no other LLM or embedding model was tested, and none was rejected on measured evidence.** The only comparison made is BGE-M3 hybrid search against the BM25 search it replaced (the table above). Comparisons that are still open: Gemma 4 E4B as the LLM, and BGE-M3 served through Ollama instead of CPU torch.
+**LLM: `gemma4:e4b` against `qwen3.5:4b`**, both through Ollama, on all five test sets (195 turns):
+
+| | qwen3.5:4b (chosen) | gemma4:e4b |
+|---|---|---|
+| Status correct | **193/195** | 191/195 |
+| Latency p50 / p95 | 3.81 / 7.62 s | **2.03 / 5.12 s** |
+| VRAM | **4.2 GB** | 5.0 GB |
+| Download | **3.3 GB** | 6.6 GB |
+| Contract violations | 0 | 0 |
+
+Gemma is about 40% faster. I kept Qwen for these reasons:
+- **Gemma answered something nobody asked.** After "What is the capital of France?", it answered "What are its side effects?" with the side effects of Misoprostol, a drug the user never named. Qwen refused it.
+- **Gemma missed some questions.** It also missed a Franco-Arabic metformin question and an escalation case.
+- **Fit.** Qwen needs less VRAM and half the download.
+- **Tuning.** The prompts were tuned on Qwen, so Gemma would need its own tuning round.
+
+**Embedding: `bge-m3` served by Ollama on the GPU against BGE-M3 in the api on the CPU:**
+- **Same results.** Recall was the same (75/75), the dense vectors were practically identical (cosine of at least 0.9997 on all 113 Sections), and a question took about the same time to embed (54 ms against 52 ms).
+- **Faster start.** Ollama builds the index in 10 s instead of 48 s.
+- **The cost.** It adds about 0.8 GB of VRAM next to the LLM, and Ollama returns no sparse vectors.
+
+I kept the CPU model so the GPU stays free for the LLM.
+
+I did not test larger models because of disk space. The two benchmark models took the free space on the drive Docker uses down to about 23 GB, and the largest candidate I considered, Qwen3.6-35B-A3B, needs about 20 GB on its own.

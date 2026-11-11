@@ -1,0 +1,82 @@
+# Evaluation results: bench-qwen-main (2026-11-11)
+
+- Git commit: `4025bc7`
+- LLM: `qwen3.5:4b`, embedding: `BAAI/bge-m3` (from `/health`)
+- API: http://localhost:8000, case file: `cases.json` (85 cases, 90 turns)
+- Notes: benchmark bench-qwen, nogpu-startup image, GPU
+
+## Status accuracy
+
+Overall (per turn): **90/90 (100.0%)**. Cases with every turn right: 85/85 (100.0%).
+
+| category | cases | turns | status accuracy | relevance | language accuracy |
+|---|---:|---:|---:|---:|---:|
+| arabic_trade_names | 5 | 5 | 5/5 (100.0%) | 5/5 (100.0%) | 5/5 (100.0%) |
+| dev | 10 | 10 | 10/10 (100.0%) | 6/6 (100.0%) | 10/10 (100.0%) |
+| diagnosis | 4 | 4 | 4/4 (100.0%) | n/a | 4/4 (100.0%) |
+| dialect | 4 | 4 | 4/4 (100.0%) | 4/4 (100.0%) | 4/4 (100.0%) |
+| dose | 7 | 7 | 7/7 (100.0%) | n/a | 7/7 (100.0%) |
+| emergency | 5 | 5 | 5/5 (100.0%) | n/a | 5/5 (100.0%) |
+| franco_arabic | 5 | 5 | 5/5 (100.0%) | 4/4 (100.0%) | 5/5 (100.0%) |
+| group_level | 6 | 6 | 6/6 (100.0%) | 4/6 (66.7%) | 6/6 (100.0%) |
+| multi_turn | 5 | 10 | 10/10 (100.0%) | 6/6 (100.0%) | 10/10 (100.0%) |
+| off_topic | 5 | 5 | 5/5 (100.0%) | n/a | 5/5 (100.0%) |
+| paraphrase | 5 | 5 | 5/5 (100.0%) | 5/5 (100.0%) | 5/5 (100.0%) |
+| partial | 4 | 4 | 4/4 (100.0%) | 4/4 (100.0%) | 4/4 (100.0%) |
+| prompt_injection | 4 | 4 | 4/4 (100.0%) | n/a | 4/4 (100.0%) |
+| strength | 5 | 5 | 5/5 (100.0%) | 4/4 (100.0%) | 5/5 (100.0%) |
+| trap_out_of_scope | 6 | 6 | 6/6 (100.0%) | n/a | 6/6 (100.0%) |
+| treatment_decision | 5 | 5 | 5/5 (100.0%) | n/a | 5/5 (100.0%) |
+
+### Confusion matrix (rows: expected, columns: actual)
+
+| expected \ actual | answered | out_of_scope | escalated |
+|---|---:|---:|---:|
+| **answered** | 44 | 0 | 0 |
+| **out_of_scope** | 0 | 18 | 0 |
+| **escalated** | 0 | 0 | 28 |
+
+## Citations and snippets
+
+- Turns expecting an Answered reply that came back answered with a cited `doc_id` in the expected set: **44/44 (100.0%)**
+- The same, among the replies that did come back answered: 44/44 (100.0%)
+- Replies whose cited `doc_id`s are all real KB IDs (KB-01..KB-09): 44/44 (100.0%)
+- Replies whose citations all name a real (`title`, `section`) of that KB Document: 44/44 (100.0%)
+- Citations whose snippet lies within ONE body line or data row of the cited Section (checked against the real KB, not via the API): **53/53 (100.0%)**
+- Replies where every snippet is valid: 44/44 (100.0%)
+- Citations whose snippet is only a label, a line that introduces what follows and states nothing by itself (e.g. 'Common side effects:', 'Side Effects', 'C. Nitroimidazoles'): 0 of 53
+
+## Relevance (does the reply answer the question asked?)
+
+A turn passes when it came back answered and every check the case sets holds: a cited Section is one of `expected_sections`, the answer contains one of the `answer_must_mention` terms, and it matches every `answer_must_mention_all` entry (a term, or a group of alternative terms): **42/44 (95.5%)**. Status and `doc_id` alone cannot tell a reply that answers a different question.
+
+Relevance is a term check, not a judgement: an answer that contains the expected terms but is still wrong or nonsensical (a negation, an invented mechanism) passes. The faithfulness review sheet is where a person catches those.
+
+## Language label
+
+Matches the expected Answer Language (glossary rule): **90/90 (100.0%)**
+
+## Latency, tokens, contract
+
+- Latency (s): p50 **3.81**, p95 **7.09**, max 8.32, mean 3.63 (90 requests)
+- Tokens per question (from the `X-Medrag-Usage` header, 90 turns): prompt mean 3673, completion mean 139, LLM calls mean 1.58 (totals: 330537 prompt, 12472 completion, 142 calls)
+- Turns sent outside their Session (multi-turn): 0
+- Contract violations: **0** in 0 turns (exact fields and types, answered implies at least one Citation, else an empty list)
+- Non-200 responses: 0 (no response at all: 0)
+
+## Status misses (0)
+
+None.
+
+## Answered but not relevant (2)
+
+| case | turn | question | answer |
+|---|---:|---|---|
+| group-ace-inhibitors-pregnancy | 1 | هل ACE inhibitors مسموحة في الحمل؟ | لا، أدوية ACE Inhibitors ممنوعة تماماً أثناء الحمل لأنها قد تسبب ضرراً للجنين. |
+| group-doxycycline-children | 1 | Is Doxycycline suitable for children under 8 years? | Doxycycline is generally contraindicated in children under 8 years old, as stated in the knowledge base. |
+
+## Citation, snippet or contract problems (0 turns)
+
+None.
+
+Per-case rows (full response bodies, latency, session IDs, per-metric verdicts) are in the JSON file next to this one.
