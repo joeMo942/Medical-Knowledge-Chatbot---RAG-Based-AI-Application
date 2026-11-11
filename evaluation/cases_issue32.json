@@ -608,6 +608,9 @@
     "language": "en",
     "message": "If a patient has asthma, what can he take for pain?",
     "expected_status": "answered",
+    "acceptable_statuses": [
+      "out_of_scope"
+    ],
     "expected_kb_ids": [
       "KB-03"
     ],
@@ -618,7 +621,7 @@
       "Paracetamol",
       "NSAID"
     ],
-    "note": "A pronoun after a generic noun ('a patient ... he') is a group, not a specific person: a lookup, Answered."
+    "note": "A pronoun after a generic noun ('a patient ... he') is a group, not a specific person: a lookup, never Escalated. Out of Scope is also accepted: the KB has no pain drugs for asthma patients and retrieval returns the asthma Sections."
   },
   {
     "id": "selfcare32-qualifier-asthma-headache",

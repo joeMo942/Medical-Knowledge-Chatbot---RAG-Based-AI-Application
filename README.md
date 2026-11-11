@@ -384,7 +384,7 @@ What a user is most likely to notice (the full list is in the follow-up issue #1
 
 ## Tests
 
-`pip install -e ".[dev]" && pytest`: 1,275 tests pass with a stack running (that also runs the stack-dependent test files; 1 skips without the embedding libraries). CI-style, as GitHub Actions runs it, with no KB files: `MEDRAG_KB_DIR=/nonexistent pytest` gives 1,179 passed and 97 skipped (the tests that need the real `.docx` files).
+`pip install -e ".[dev]" && pytest`: 1,277 tests pass with a stack running (that also runs the stack-dependent test files; 1 skips without the embedding libraries). CI-style, as GitHub Actions runs it, with no KB files: `MEDRAG_KB_DIR=/nonexistent pytest` gives 1,181 passed and 97 skipped (the tests that need the real `.docx` files).
 No Ollama, torch or model is needed for the unit tests (the search tests use a fake embedder); `tests/test_embedding_real.py` runs only where torch (`pip install -e ".[embed]"`) and the BGE-M3 files (`MEDRAG_EMBED_PATH`) exist.
 
 ## Submission checks
