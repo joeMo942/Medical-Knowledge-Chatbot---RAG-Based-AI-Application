@@ -185,7 +185,7 @@ def create_app(
     analytics = AnalyticsLog(store)
     handoffs = HandoffLog(store)
     gate = LLMGate(llm, settings.llm_concurrency, settings.llm_est_s, settings.decode_tok_s,
-                   settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens)
+                   settings.llm_margin_s, settings.min_output_tokens, settings.max_output_tokens, settings.route_timeout_s)
 
     warmed = {"done": getattr(gate, "warm", None) is None}  # nothing to warm: ready at once
     loader = getattr(retriever, "load", None)

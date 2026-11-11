@@ -1,5 +1,18 @@
-# CPU-only fallback (no NVIDIA GPU). Much slower, and /chat may exceed 30 s.
-#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
+# CPU-only fallback (no NVIDIA GPU), for TRYING the system: answers take about 20-80 s, so it cannot meet the 30 s limit (see README "No NVIDIA GPU (CPU mode)").
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --wait
+# Every value below can be overridden from your shell. They only widen the time limits that assume a GPU, so that a slow
+# model gets answers instead of "busy" refusals and timeouts.
 services:
   ollama:
     deploy: !reset null
+  api:
+    environment:
+      # The routing call (a 2,700-token prompt) alone can take 10-30 s on a CPU; still capped per request by the time left.
+      MEDRAG_ROUTE_TIMEOUT_S: ${MEDRAG_ROUTE_TIMEOUT_S:-90}
+      # Time budget of one /chat request (25 on the GPU; the 30 s contract cannot be met on a CPU).
+      MEDRAG_BUDGET_S: ${MEDRAG_BUDGET_S:-240}
+      # Gate: floor of the expected duration of one LLM call (the queue check and "can the routing call still be afforded").
+      MEDRAG_LLM_EST_S: ${MEDRAG_LLM_EST_S:-40}
+      # Output cap = (time left - margin) x decode speed: a CPU decodes about 8-10 tok/s, and prompt evaluation takes 10-30 s.
+      MEDRAG_DECODE_TOK_S: ${MEDRAG_DECODE_TOK_S:-8}
+      MEDRAG_LLM_MARGIN_S: ${MEDRAG_LLM_MARGIN_S:-30}

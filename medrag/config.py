@@ -1,6 +1,7 @@
 """Runtime settings, read from environment variables only (no secrets in the repo)."""
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -9,6 +10,15 @@ from dataclasses import dataclass, field
 EMBEDDING_PLACEHOLDER = "none (lexical BM25 only)"
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _positive_float(raw: str | None, default: float) -> float:
+    """A positive number from an environment value; unset, unparsable, non-finite or not above zero means the default."""
+    try:
+        value = float(raw) if raw else default
+    except ValueError:
+        return default
+    return value if math.isfinite(value) and value > 0 else default
 
 
 @dataclass(frozen=True)
@@ -36,6 +46,10 @@ class Settings:
     min_output_tokens: int = 150
     decode_tok_s: float = 53.0
     llm_margin_s: float = 2.5
+    # A routing call that takes longer is dropped (the fixed rules then decide alone, the answer call carries a backstop
+    # classification). Raise it on slow hardware (CPU-only LLM). Per call it is also capped so that the answer call keeps its
+    # estimated time: min(this, time left - the gate's answer-call estimate); a value above the budget has no further effect.
+    route_timeout_s: float = 4.0
     # Send the X-Medrag-Usage response header (tokens and LLM calls of the request); body unchanged.
     # Off by default: it is for evaluation runs (MEDRAG_USAGE_HEADER=1).
     usage_header: bool = False
@@ -82,6 +96,7 @@ class Settings:
             min_output_tokens=int(e("MEDRAG_MIN_OUTPUT_TOKENS") or d.min_output_tokens),
             decode_tok_s=float(e("MEDRAG_DECODE_TOK_S") or d.decode_tok_s),
             llm_margin_s=float(e("MEDRAG_LLM_MARGIN_S") or d.llm_margin_s),
+            route_timeout_s=_positive_float(e("MEDRAG_ROUTE_TIMEOUT_S"), d.route_timeout_s),
             sessions_db=e("MEDRAG_SESSIONS_DB") or d.sessions_db,
             retriever=(e("MEDRAG_RETRIEVER") or d.retriever).lower(),
             embed_path=e("MEDRAG_EMBED_PATH") or d.embed_path,

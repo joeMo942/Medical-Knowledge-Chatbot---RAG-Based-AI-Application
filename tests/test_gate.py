@@ -170,3 +170,48 @@ def test_cap_settings_come_from_the_environment(monkeypatch):
         monkeypatch.setenv(k, v)
     s = Settings.from_env()
     assert (s.max_output_tokens, s.min_output_tokens, s.decode_tok_s, s.llm_margin_s) == (900, 80, 40.5, 3.5)
+
+
+# ------------------------------------------------------------------------------ routing timeout setting
+
+def test_route_timeout_default_override_and_bad_values(monkeypatch):
+    from medrag import routing
+    monkeypatch.delenv("MEDRAG_ROUTE_TIMEOUT_S", raising=False)
+    assert Settings.from_env().route_timeout_s == 4.0 == routing.ROUTE_TIMEOUT_S
+    monkeypatch.setenv("MEDRAG_ROUTE_TIMEOUT_S", "20")
+    assert Settings.from_env().route_timeout_s == 20.0
+    for bad in ("abc", "0", "-3", "nan", "inf", ""):
+        monkeypatch.setenv("MEDRAG_ROUTE_TIMEOUT_S", bad)
+        assert Settings.from_env().route_timeout_s == 4.0, bad
+
+
+def test_route_timeout_is_capped_by_the_time_the_answer_call_needs():
+    import asyncio
+    import time
+    from medrag import routing
+
+    class Seen:
+        route_timeout_s = 100.0
+        estimate = 5.0
+        seen = None
+
+        async def complete_json(self, *a, **k):
+            raise RuntimeError("stop")
+
+    seen = {}
+    real = asyncio.wait_for
+
+    async def spy(coro, timeout):
+        seen["t"] = timeout
+        return await real(coro, timeout)
+
+    llm = Seen()
+    orig = routing.asyncio.wait_for
+    routing.asyncio.wait_for = spy
+    try:
+        asyncio.run(routing.route_message("hi", llm, time.monotonic() + 20.0))
+        assert 14.0 < seen["t"] <= 15.0          # 20 s left - 5 s for the answer call
+        asyncio.run(routing.route_message("hi", llm, None))
+        assert seen["t"] == 100.0                # no deadline: the setting as given
+    finally:
+        routing.asyncio.wait_for = orig

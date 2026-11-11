@@ -66,7 +66,8 @@ class _Slots:
 class LLMGate:
     def __init__(self, llm: LLMClient, concurrency: int = 1, est_s: float = 5.0,
                  decode_tok_s: float = 53.0, margin_s: float = 2.5,
-                 min_tokens: int = 150, max_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS):
+                 min_tokens: int = 150, max_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+                 route_timeout_s: float | None = None):
         self._llm = llm
         self._slots = _Slots(max(1, concurrency))
         self._concurrency = max(1, concurrency)
@@ -81,6 +82,7 @@ class LLMGate:
         self._margin = margin_s  # prompt evaluation + HTTP + post-processing
         self._min_tokens = min_tokens
         self._max_tokens = max_tokens
+        self.route_timeout_s = route_timeout_s  # read by routing.route_message; None = its default
 
     @property
     def model(self) -> str:

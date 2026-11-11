@@ -257,11 +257,10 @@ def test_routing_durations_do_not_enter_the_answer_estimate():
     assert route_est == 1.5     # its own floor
 
 
-def test_a_slow_routing_call_is_dropped_after_its_own_timeout(monkeypatch):
-    monkeypatch.setattr(routing, "ROUTE_TIMEOUT_S", 0.1)
+def test_a_slow_routing_call_is_dropped_after_its_own_timeout():
     llm = FakeLLM(answered(), route_delay=2.0)
     t0 = time.monotonic()
-    body = post(llm, "What is the active ingredient in Cataflam?").json()
+    body = post(llm, "What is the active ingredient in Cataflam?", route_timeout_s=0.1).json()
     assert body["status"] == "answered" and time.monotonic() - t0 < 1.5
     assert "trigger" in llm.answer_schemas[0]["properties"]   # backstop: the router did not answer
 
