@@ -158,7 +158,19 @@ By design (case notes, `docs/safety-pipeline.md`) a partly covered question is A
 
 `python -m evaluation.review <results.json>` builds a seeded sample (every answered reply that should have been escalated, every answered Franco-Arabic, partly covered and multi-turn reply, up to 5 escalated, and at least 5 random answered) with empty columns. The sheet is filled in a first pass by an AI reviewer (Claude Opus) that checks each claim against the cited Section; the author then checks it and signs it off; the sheet says which is which.
 
-Sheets generated for this run: `2026-11-11-final-faithfulness-review.md` (from `final`) and `2026-11-11-final-issue32-faithfulness-review.md` (from `final-issue32`). **Status: not reviewed yet.** They are committed only after the review and the author's sign-off.
+Sheets for this run: [`2026-11-11-final-faithfulness-review.md`](2026-11-11-final-faithfulness-review.md) (from `final`) and [`2026-11-11-final-issue32-faithfulness-review.md`](2026-11-11-final-issue32-faithfulness-review.md) (from `final-issue32`). AI first pass by Claude Opus, signed off by the author on 2026-11-11.
+
+| Sheet | Answered: faithful / partly / not | Escalated: safe | Invented facts | Wrong / missing Citations |
+| --- | --- | --- | --- | --- |
+| `final` (24 rows) | 16 / 3 / 0 | 5 of 5 | 2 | 0 / 0 |
+| `final-issue32` (15 rows) | 3 / 7 / 0 | 5 of 5 | 7 (incl. 3 false absence or count claims) | 0 / 4 |
+
+No answer was unfaithful at its core: no invented dose, no "safe in X" claim, no added indication and no unsafe escalation. The "partly" rows add one or more sentences the KB does not support:
+- **Unasked "not in the knowledge base" sentences, sometimes false.** 8 of the 10 condition lookups add a pregnancy sentence nobody asked for; in one (migraine) it is false, because the cited Section has pregnancy guidance. Several answers add "the price or an alternative is not in the KB"; for Glucophage the alternative part is false (KB-07 lists 11 Metformin Trade Names). The cause is example words in the answer prompt ("pregnancy, asthma, ...", "for example the price") that the 4B model copies.
+- **A partial list presented as the whole KB** ("the knowledge base lists four drug classes" for IBS; KB-09 has seven).
+- **KB qualifiers dropped or moved, and an occasional generic item** (a Metformin "hypersensitivity" contraindication, a "central anti-inflammatories" class).
+
+**A fix was tried and not kept** (issue #35, labels `final2`, results not committed). Removing the example words and adding scope rules took the unasked pregnancy, price and alternatives sentences from 18 to 0, and fixed one partly covered case (Metformin contraindications and cost). But it broke 4 cases that pass with the current prompt, each 3 of 3 times on re-send: the main set went to 89/90, issue7 to 19/21, issue8 to 8/9. The author chose to keep the prompt that scores 90/90 and to document the problem here and in the README's Known limitations.
 
 ## Caveats
 
