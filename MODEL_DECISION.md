@@ -1,71 +1,75 @@
 # Model decision record
 
-| | Chosen | Runs on |
+| | Chosen (open weights) | Runs on |
 |---|---|---|
-| **LLM** | `qwen3.5:4b` (4.2 B parameters, Q4_K_M, Apache 2.0) via Ollama | GPU |
-| **Embedding** | `BAAI/bge-m3` (pinned revision `5617a9f`), dense + sparse, fused with BM25 | CPU, inside the `api` container ([ADR 0001](docs/adr/0001-target-the-authors-laptop-gpu.md)) |
+| **LLM** | `qwen3.5:4b` (4.2 B, Q4_K_M, Apache 2.0) via Ollama | GPU |
+| **Embedding** | `BAAI/bge-m3` (revision `5617a9f`), dense + sparse, fused with BM25 | CPU, in the `api` container ([ADR 0001](docs/adr/0001-target-the-authors-laptop-gpu.md)) |
 
-Both are open-weights models. `GET /health` reports both names.
+`GET /health` reports both names. **Test machine:** RTX 5070 Laptop GPU (8 GB VRAM), Intel Core Ultra 9 275HX, 31 GB RAM, Windows 11 Pro with Docker Desktop (WSL 2), 1 TB SSD. Docker's data uses 59 GB of the system drive, which has about 23 GB free. All numbers below were measured on this machine, plugged in, in November 2026. Full results: [docs/test-results/](docs/test-results/README.md).
 
-## Test hardware
+## LLM: qwen3.5:4b, compared with gemma4:e4b
 
-| Part | Spec |
-|---|---|
-| GPU | NVIDIA GeForce RTX 5070 Laptop, **8 GB VRAM** |
-| CPU | Intel Core Ultra 9 275HX |
-| RAM | 31 GB |
-| Disk | 1 TB SSD; the system drive C: has **about 23 GB free**, and Docker's data (images, models, volumes) already uses 59 GB of it |
-| OS | Windows 11 Pro, Docker Desktop (WSL 2) |
+Both ran on the same code, one model loaded at a time, over all five test sets (195 turns):
 
-## Why qwen3.5:4b: what I measured
+| | **qwen3.5:4b (chosen)** | gemma4:e4b |
+|---|---|---|
+| Status correct | **193/195** | 191/195 |
+| Latency p50 / p95 | 3.81 / 7.62 s | **2.03 / 5.12 s** |
+| VRAM / download | **4.2 / 3.3 GB** | 5.0 / 6.6 GB |
+| Contract violations | 0 | 0 |
 
-On the 90-turn test set (final run `final`, 2026-11-11, the 10 dev questions plus my own cases in Arabic, Egyptian dialect, Franco-Arabic and English):
+On the main 90-turn set (final run, 2026-11-11), Qwen got:
+- **status 90/90**, including the 10 dev questions, and language 90/90;
+- **citations 44/44 valid**, and 53/53 snippets are verbatim text from the cited Section, so **no invented sources**;
+- latency p50 3.47 s and p95 6.65 s, far inside the 30 s limit, with output at 58–73 tokens/s;
+- 100% on the GPU.
 
-- **Status: 90/90 correct**, including all 10 dev questions. Language label: 90/90.
-- **Citations:** 44/44 valid, and 53/53 snippets are verbatim text from the cited Section. **No invented sources.**
-- **0 API contract violations.**
-- **Speed:** latency per `/chat` is p50 3.47 s and p95 6.65 s in the final run (2026-11-11; laptop plugged in, Windows Balanced power mode, the GPU sometimes power-capped; the earlier clean-clone run had 3.68 / 6.04 s), far inside the 30 s limit. Output runs at 58–73 tokens/s.
-- **Memory:** 3.4 GB loaded and 100% on the GPU, so it fits the 8 GB card with room for its context.
+**Why not Gemma**, although it is about 40% faster:
+- It answered a question nobody asked: after "What is the capital of France?", it answered "What are its side effects?" with Misoprostol, a drug the user never named. Qwen refused.
+- It missed a Franco-Arabic metformin question and an escalation case.
+- It needs more VRAM and twice the download.
+- The prompts were tuned on Qwen, so Gemma would need its own tuning round.
 
-Caveat: these 90 turns were also used to tune the pipeline, so the score describes this test set, not the hidden one. All five test sets and their results: [docs/test-results/](docs/test-results/README.md).
+Caveat: the main set was also used to tune the pipeline, so its score describes this set, not the hidden one.
 
-## Why BGE-M3: what I measured
+## Embedding: BGE-M3 on the CPU
 
-Recall test with 75 questions (re-run 2026-11-11, results in [docs/test-results/](docs/test-results/README.md)), counting a question as found when the right Section is among the 4 retrieved:
+Recall at k=4 on 75 questions:
 
-| Search | Found (of 75) | Everyday wording, no drug name (of 26) |
+| | All (of 75) | Everyday wording, no drug name (of 26) |
 |---|---:|---:|
 | BM25 keyword search (first version) | 62 | 17 |
 | **BGE-M3 hybrid (chosen)** | **75** | **26** |
 
-- **Multilingual:** it handles Arabic, dialect, Franco-Arabic and English in one model. Questions with brand names written in Arabic letters went from 1/5 to 5/5 correct (with the name mapping added in #7).
-- **Speed:** about 133 ms per question on the CPU, which keeps the GPU free for the LLM.
+- One model covers Arabic, dialect, Franco-Arabic and English.
+- With the name mapping from #7, brand names written in Arabic letters went from 1/5 to 5/5.
 
-## What else I tried
+**Compared with `bge-m3` served by Ollama on the GPU:**
 
-A small benchmark on 2026-11-11, with the laptop plugged in. Each alternative was run against the chosen model on the same code, one model loaded at a time. The full tables are in [docs/test-results/benchmark/](docs/test-results/benchmark/README.md).
-
-**LLM: `gemma4:e4b` against `qwen3.5:4b`**, both through Ollama, on all five test sets (195 turns):
-
-| | qwen3.5:4b (chosen) | gemma4:e4b |
+| | **CPU in the api (chosen)** | Ollama on the GPU |
 |---|---|---|
-| Status correct | **193/195** | 191/195 |
-| Latency p50 / p95 | 3.81 / 7.62 s | **2.03 / 5.12 s** |
-| VRAM | **4.2 GB** | 5.0 GB |
-| Download | **3.3 GB** | 6.6 GB |
-| Contract violations | 0 | 0 |
+| Recall | 75/75 | 75/75 (no sparse vectors) |
+| Vectors | | the same: cosine ≥ 0.9997 on all 113 Sections |
+| One question | 52 ms quiet, about 133 ms average under eval load | 54 ms |
+| Building the index (113 Sections) | 48 s, then cached | **10 s** |
+| Extra VRAM next to the LLM | **0** | about 0.8 GB |
 
-Gemma is about 40% faster. I kept Qwen for these reasons:
-- **Gemma answered something nobody asked.** After "What is the capital of France?", it answered "What are its side effects?" with the side effects of Misoprostol, a drug the user never named. Qwen refused it.
-- **Gemma missed some questions.** It also missed a Franco-Arabic metformin question and an escalation case.
-- **Fit.** Qwen needs less VRAM and half the download.
-- **Tuning.** The prompts were tuned on Qwen, so Gemma would need its own tuning round.
+The results are the same, so I kept the GPU free for the LLM. Moving the embedder to the GPU would not make answers faster: embedding is about 1% of an answer's time. Writing the answer is about 2.4 s of the 3.2 s answer call.
 
-**Embedding: `bge-m3` served by Ollama on the GPU against BGE-M3 in the api on the CPU:**
-- **Same results.** Recall was the same (75/75), the dense vectors were practically identical (cosine of at least 0.9997 on all 113 Sections), and a question took about the same time to embed (54 ms against 52 ms).
-- **Faster start.** Ollama builds the index in 10 s instead of 48 s.
-- **The cost.** It adds about 0.8 GB of VRAM next to the LLM, and Ollama returns no sparse vectors.
+## Without a GPU (`docker-compose.cpu.yml`)
 
-I kept the CPU model so the GPU stays free for the LLM.
+The same models also run on the CPU only. In that mode the time limits are raised (budget 240 s, routing call 90 s). Five questions, one at a time:
 
-I did not test larger models because of disk space. The two benchmark models took the free space on the drive Docker uses down to about 23 GB, and the largest candidate I considered, Qwen3.6-35B-A3B, needs about 20 GB on its own.
+| Question (CPU wording) | Status | CPU only | GPU, closest dev question (final run) |
+|---|---|---:|---:|
+| Panadol ingredient (warm-up) | answered | 81.8 s | - |
+| Cataflam ingredient | answered | 78.0 s | 3.75 s |
+| ايه البدائل التجارية لـ Brufen؟ | answered (ar) | 71.5 s | 4.28 s |
+| cover letter | out_of_scope | 20.4 s | 2.35 s |
+| Voltaren mg | escalated | 21.1 s | 3.14 s |
+
+The GPU times are for the dev questions on the same topic, which are worded a little differently. All five got the right status. On the CPU, an answer takes 70–80 s (two LLM calls) and a refusal about 20 s (one call). That is fine for trying the system, but it breaks the 30 s limit, so the GPU is required for the contract.
+
+## Not tested
+
+Larger models, for lack of disk space. The largest candidate, Qwen3.6-35B-A3B, needs about 20 GB on its own.
