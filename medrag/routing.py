@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -25,7 +26,7 @@ log = logging.getLogger("medrag")
 
 Trigger = Literal["emergency", "dose", "diagnosis", "treatment_decision"]
 TRIGGERS: tuple[str, ...] = ("emergency", "dose", "diagnosis", "treatment_decision")
-ROUTE_TIMEOUT_S = 4.0  # a routing call that takes longer is dropped (cold model, stuck backend)
+ROUTE_TIMEOUT_S = 4.0  # default of MEDRAG_ROUTE_TIMEOUT_S: a routing call that takes longer is dropped (cold model, stuck backend)
 ROUTE_MAX_TOKENS = 160  # the JSON is about 50-90 tokens; this keeps a runaway rewrite short
 HISTORY_TURNS = 3  # earlier turns shown to the router
 HISTORY_MESSAGE_CHARS = 300  # each earlier user message is cut to this
@@ -176,16 +177,19 @@ async def route_message(message: str, llm: LLMGate, deadline: float | None = Non
 
     The call is never skipped because other requests are running: it queues in the gate with
     priority over answer calls. It is skipped only when the gate predicts that the request cannot
-    afford it (the gate's `can_route`), and it has its own short timeout."""
+    afford it (the gate's `can_route`), and it has its own timeout (MEDRAG_ROUTE_TIMEOUT_S, default 4 s)."""
     can_route = getattr(llm, "can_route", None)
     if can_route is not None and not can_route(deadline):
         log.info("routing call skipped: not enough time budget left")
         return None
+    timeout = getattr(llm, "route_timeout_s", None) or ROUTE_TIMEOUT_S
+    if deadline is not None:  # never let a slow routing call eat the time the answer call needs
+        timeout = min(timeout, max(deadline - time.monotonic() - getattr(llm, "estimate", 0.0), 0.1))
     try:
         result = await asyncio.wait_for(
             llm.complete_json(ROUTE_SYSTEM_PROMPT, build_route_prompt(message, history), ROUTE_SCHEMA,
                               deadline, max_tokens=ROUTE_MAX_TOKENS, routing=True),
-            ROUTE_TIMEOUT_S)
+            timeout)
     except Exception as exc:  # LLMError, LLMTruncated, Busy, timeout, anything but cancellation
         log.warning("routing call failed (%s): the fixed rules decide alone", type(exc).__name__)
         return None
